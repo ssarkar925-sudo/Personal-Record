@@ -1,0 +1,17 @@
+{
+  "name": "Personal Ledger — Money, Notes & Vault",
+  "short_name": "Personal Ledger",
+  "description": "Local-first personal & business finance ledger, Google Keep-style notes, AI advisor, and zero-knowledge password vault.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

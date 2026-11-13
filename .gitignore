@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Production build outputs
+dist/
+
+# Logs & temp files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+
+# SQLite database and sensitive runtime storage
+data/*.db
+data/*.sqlite
+data/*.sqlite-wal
+data/*.sqlite-shm
+data/*.db-wal
+data/*.db-shm
+data/backups/
+data/whatsapp-auth/
+data/desktop-profile/
+data/attachments/
+data/exports/
+data/inbox/
+server/db/*.db-wal
+server/db/*.db-shm
+
+# Inbox statement processing temp
+inbox/processed/
+inbox/failed/

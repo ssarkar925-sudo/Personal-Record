@@ -1,0 +1,45 @@
+{
+  "name": "personal-ledger",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "start": "node --experimental-strip-types server/index.ts",
+    "start:prod": "node --experimental-strip-types server/index.ts",
+    "desktop": "scripts\\launch-desktop.bat",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "db:backup": "node --experimental-strip-types scripts/backup-db.ts",
+    "db:reset:clean": "node --experimental-strip-types scripts/reset-ledger.ts clean",
+    "db:reset:seed": "node --experimental-strip-types scripts/reset-ledger.ts seed",
+    "test": "node --experimental-strip-types --test shared/*.test.ts server/*.test.ts",
+    "test:stress": "node --experimental-strip-types --test server/stress.test.ts",
+    "test:maintenance": "node --experimental-strip-types --test server/db/maintenance.test.ts",
+    "test:all": "node --experimental-strip-types --test server/*.test.ts server/db/*.test.ts server/watcher/*.test.ts server/sync/*.test.ts shared/*.test.ts"
+  },
+  "dependencies": {
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.72.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tailwind-merge": "^3.7.0",
+    "tesseract.js": "^7.0.0",
+    "unpdf": "^2.1.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/node": "^26.6.6",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  }
+}
