@@ -11,9 +11,9 @@ import { CardSkeleton, MetricsSkeleton, RowSkeleton, Skeleton } from '../compone
 import type { Scope } from '../../shared/ledger-core.ts';
 import { UI_STRINGS, type AppLanguage } from '../../shared/i18n.ts';
 import { DashboardExecutiveKpiStrip } from './dashboard/DashboardExecutiveKpiStrip.tsx';
+import { AllModulesHub } from './dashboard/AllModulesHub.tsx';
 import { FinancialPulseSection } from './dashboard/FinancialPulseSection.tsx';
 import { ExecutiveCommandSection } from './dashboard/ExecutiveCommandSection.tsx';
-import { PortfolioHealthGrid } from './dashboard/PortfolioHealthGrid.tsx';
 import type { WorkspaceId } from './dashboard/types.ts';
 
 export type { WorkspaceId };
@@ -203,26 +203,26 @@ export function DashboardView({
         />
       </div>
 
-      {/* 4. Financial Pulse: 6-Month Trend & Spend Mix / Budgets */}
+      {/* 4. Executive All-Modules Command Center (Animated 6-Module Hub with Staggered Entrance & Details) */}
+      <AllModulesHub
+        data={data}
+        onNavigate={onNavigate}
+        onToggleChecklist={handleToggleChecklist}
+      />
+
+      {/* 5. Financial Pulse: 6-Month Trend & Spend Mix / Budgets */}
       <FinancialPulseSection
         data={data}
         scopeFilter={scopeFilter}
         onNavigate={onNavigate}
       />
 
-      {/* 5. Executive Command & Quick Action Launchpad */}
+      {/* 6. Executive Command & Quick Action Launchpad */}
       <ExecutiveCommandSection
         data={data}
         onNavigate={onNavigate}
         onOpenQuickAdd={onOpenQuickAdd}
         onOpenAgent={onOpenAgent}
-      />
-
-      {/* 6. Portfolio Health: Credit Cards (Daylight) + Khatabook Dues + Pinned Checklists */}
-      <PortfolioHealthGrid
-        data={data}
-        onNavigate={onNavigate}
-        onToggleChecklist={handleToggleChecklist}
       />
     </div>
   );
