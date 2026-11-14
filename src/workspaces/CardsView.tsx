@@ -12,7 +12,6 @@ import {
   Paperclip,
   Plus,
   Search,
-  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Split,
@@ -106,6 +105,14 @@ export function CardsView({
   const bankAccounts = useMemo(
     () => accounts.filter((a) => a.accountGroup === 'bank'),
     [accounts],
+  );
+  const liquidAccounts = useMemo(
+    () => accounts.filter((a) => a.accountGroup !== 'credit_card'),
+    [accounts],
+  );
+  const totalBankLiquidity = useMemo(
+    () => liquidAccounts.reduce((sum, a) => sum + (a.currentBalanceMinor || 0), 0),
+    [liquidAccounts],
   );
 
   // Active Card Filter (null = all cards)
@@ -963,22 +970,34 @@ export function CardsView({
           </div>
         </div>
 
-        {/* KPI 4: Active Cards & Statement Radar */}
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs">
+        {/* KPI 4: Bank Cash Debt Coverage Bridge */}
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
-            <span>Linked Cards Portfolio</span>
-            <span className="font-mono text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full">
-              {creditCards.length} Cards
+            <span>Bank Cash Coverage</span>
+            <span
+              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                totalBankLiquidity >= totalCardDebtMinor
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : 'bg-amber-50 text-amber-800 border-amber-200'
+              }`}
+            >
+              {totalBankLiquidity >= totalCardDebtMinor ? '100% Covered ✅' : 'Shortfall'}
             </span>
           </div>
-          <div className="mt-2 text-sm font-semibold text-slate-900 flex items-center gap-1.5">
-            <ShieldCheck className="h-4 w-4 text-blue-600" />
-            <span>Cycle Reconciliation Active</span>
+          <div className="mt-2 text-2xl font-bold tracking-tight text-emerald-700 font-mono">
+            {formatINR(totalBankLiquidity)}
           </div>
-          <div className="mt-2 text-xs text-slate-500 truncate">
-            {creditCards.length === 0
-              ? 'No cards linked yet'
-              : 'Auto-tracking billing cycle & statement grace'}
+          <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
+            <span>Liquid Funds to Settle Cards</span>
+            {onNavigateToMoney && (
+              <button
+                type="button"
+                onClick={onNavigateToMoney}
+                className="text-blue-600 font-bold hover:underline text-[11px] cursor-pointer inline-flex items-center gap-0.5"
+              >
+                <span>Bank Hub →</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1997,6 +2016,16 @@ export function CardsView({
         title={`Pay Bill · ${payCardAccount?.name || 'Credit Card'}`}
       >
         <form onSubmit={handlePayCardBill} className="space-y-4">
+          <div className="rounded-xl border border-blue-200/80 bg-blue-50/50 p-3 text-xs space-y-1">
+            <div className="font-bold text-blue-900 flex items-center gap-1.5 mb-1">
+              <Zap className="h-3.5 w-3.5 text-blue-600" />
+              <span>Double-Entry Bank Settlement</span>
+            </div>
+            <p className="text-slate-600 text-[11px]">
+              Deducts from your selected Bank Account and credits this Credit Card, clearing the liability and restoring available limit.
+            </p>
+          </div>
+
           <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs space-y-1">
             <div className="flex justify-between">
               <span className="text-slate-500">Total Outstanding Balance:</span>

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowRightLeft,
+  CreditCard,
   PiggyBank,
+  Zap,
 } from 'lucide-react';
 import {
   api,
@@ -49,6 +51,7 @@ export interface MoneyCardsViewProps {
   systemLanguage?: AppLanguage;
   onNotify: (text: string, kind?: 'ok' | 'err') => void;
   onRefresh: () => void;
+  onNavigateToCards?: () => void;
 }
 
 export function MoneyCardsView({
@@ -57,6 +60,7 @@ export function MoneyCardsView({
   recurringBills,
   onNotify,
   onRefresh,
+  onNavigateToCards,
 }: MoneyCardsViewProps) {
   // Selected Account Filter (null = show all)
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
@@ -64,7 +68,7 @@ export function MoneyCardsView({
   // Scalable Account Hub Controls (Engineered for 15+ accounts)
   const [accountTab, setAccountTab] = useState<AccountGroupTab>('all');
   const [accountSearch, setAccountSearch] = useState('');
-  const [accountSort, setAccountSort] = useState<AccountSortOption>('due_date');
+  const [accountSort, setAccountSort] = useState<AccountSortOption>('balance_desc');
   const [triageFilter, setTriageFilter] = useState<TriageFilter>('all');
   const [workstationLayout, setWorkstationLayout] = useState<WorkstationLayout>('split');
 
@@ -138,67 +142,29 @@ export function MoneyCardsView({
   const creditCards = useMemo(() => accounts.filter((a) => a.accountGroup === 'credit_card'), [accounts]);
   const bankAccounts = useMemo(() => accounts.filter((a) => a.accountGroup === 'bank'), [accounts]);
   const walletAccounts = useMemo(() => accounts.filter((a) => a.accountGroup === 'cash' || a.accountGroup === 'wallet'), [accounts]);
+  const liquidAccounts = useMemo(() => accounts.filter((a) => a.accountGroup !== 'credit_card'), [accounts]);
+  const liquidAccountIds = useMemo(() => new Set(liquidAccounts.map((a) => a.id)), [liquidAccounts]);
 
   const totalLiquidMinor = useMemo(() => {
-    return accounts
-      .filter((a) => a.accountGroup !== 'credit_card')
-      .reduce((sum, a) => sum + (a.currentBalanceMinor || 0), 0);
-  }, [accounts]);
+    return liquidAccounts.reduce((sum, a) => sum + (a.currentBalanceMinor || 0), 0);
+  }, [liquidAccounts]);
 
   const totalCreditDebtMinor = useMemo(() => {
     return creditCards.reduce((sum, c) => sum + Math.abs(c.currentBalanceMinor || 0), 0);
   }, [creditCards]);
 
-  const totalCreditLimitMinor = useMemo(() => {
-    return creditCards.reduce((sum, c) => sum + (c.creditLimitMinor || 0), 0);
-  }, [creditCards]);
-
-  const creditUtilizationPct = totalCreditLimitMinor > 0 ? (totalCreditDebtMinor / totalCreditLimitMinor) * 100 : 0;
-
-  // Urgent Due Cards (Cards with due date in next 7 days)
-  const currentDayOfMonth = new Date().getDate();
-  const urgentDueCards = useMemo(() => {
-    return creditCards.filter((card) => {
-      const due = card.dueDay || 5;
-      const diff = due - currentDayOfMonth;
-      const outstanding = Math.abs(card.currentBalanceMinor || 0);
-      return outstanding > 0 && ((diff >= 0 && diff <= 7) || (diff < 0 && diff >= -2));
-    });
-  }, [creditCards, currentDayOfMonth]);
-
-  // High Utilization Cards (>30%)
-  const highUtilCards = useMemo(() => {
-    return creditCards.filter((card) => {
-      const limit = card.creditLimitMinor || 0;
-      if (limit <= 0) return false;
-      const outstanding = Math.abs(card.currentBalanceMinor || 0);
-      return (outstanding / limit) >= 0.3;
-    });
-  }, [creditCards]);
-
-  // Scalable Account List Filtering & Sorting (Handles 15-50+ accounts)
+  // Scalable Liquid Account List Filtering & Sorting (Only Banks & Cash)
   const filteredAccounts = useMemo(() => {
-    let list = accounts.filter((acc) => {
+    let list = liquidAccounts.filter((acc) => {
       // Tab filter
-      if (accountTab === 'credit_card' && acc.accountGroup !== 'credit_card') return false;
       if (accountTab === 'bank' && acc.accountGroup !== 'bank') return false;
       if (accountTab === 'wallet' && acc.accountGroup !== 'cash' && acc.accountGroup !== 'wallet') return false;
 
       // Triage Filter
-      if (triageFilter === 'due_soon') {
-        if (acc.accountGroup !== 'credit_card') return false;
-        const due = acc.dueDay || 5;
-        const diff = due - currentDayOfMonth;
-        const outstanding = Math.abs(acc.currentBalanceMinor || 0);
-        if (outstanding <= 0 || !((diff >= 0 && diff <= 7) || (diff < 0 && diff >= -2))) return false;
-      } else if (triageFilter === 'high_utilization') {
-        if (acc.accountGroup !== 'credit_card') return false;
-        const limit = acc.creditLimitMinor || 0;
-        if (limit <= 0 || (Math.abs(acc.currentBalanceMinor || 0) / limit) < 0.3) return false;
-      } else if (triageFilter === 'unreconciled') {
-        if (acc.accountGroup === 'credit_card') {
-          if (Math.abs(acc.currentBalanceMinor || 0) <= 0) return false;
-        }
+      if (triageFilter === 'unreconciled') {
+        if (acc.accountGroup !== 'bank') return false;
+      } else if (triageFilter === 'low_balance') {
+        if ((acc.currentBalanceMinor || 0) >= 500000) return false;
       }
 
       // Search filter
@@ -214,11 +180,6 @@ export function MoneyCardsView({
 
     // Sorting
     return list.sort((a, b) => {
-      if (accountSort === 'due_date') {
-        const dueA = a.accountGroup === 'credit_card' ? a.dueDay || 5 : 999;
-        const dueB = b.accountGroup === 'credit_card' ? b.dueDay || 5 : 999;
-        return dueA - dueB;
-      }
       if (accountSort === 'balance_desc') {
         const balA = Math.abs(a.currentBalanceMinor || 0);
         const balB = Math.abs(b.currentBalanceMinor || 0);
@@ -229,14 +190,9 @@ export function MoneyCardsView({
         const balB = Math.abs(b.currentBalanceMinor || 0);
         return balA - balB;
       }
-      if (accountSort === 'utilization') {
-        const utilA = (a.creditLimitMinor || 0) > 0 ? (Math.abs(a.currentBalanceMinor || 0) / a.creditLimitMinor!) : 0;
-        const utilB = (b.creditLimitMinor || 0) > 0 ? (Math.abs(b.currentBalanceMinor || 0) / b.creditLimitMinor!) : 0;
-        return utilB - utilA;
-      }
       return a.name.localeCompare(b.name);
     });
-  }, [accounts, accountTab, accountSearch, accountSort, triageFilter, currentDayOfMonth]);
+  }, [liquidAccounts, accountTab, accountSearch, accountSort, triageFilter]);
 
   // Load Unmatched Transfers
   const checkUnmatchedTransfers = async () => {
@@ -268,13 +224,16 @@ export function MoneyCardsView({
     })();
   }, [cardPayModalAccount, accounts, onNotify]);
 
-  // Filtered Transactions
+  // Filtered Transactions (Only transactions touching Liquid Accounts)
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
       if (selectedAccountId) {
         if (tx.accountId !== selectedAccountId && tx.toAccountId !== selectedAccountId) {
           return false;
         }
+      } else {
+        const touchesLiquid = liquidAccountIds.has(tx.accountId) || (tx.toAccountId && liquidAccountIds.has(tx.toAccountId));
+        if (!touchesLiquid) return false;
       }
       if (kindFilter !== 'all' && tx.kind !== kindFilter) return false;
       if (scopeFilter !== 'all' && tx.scope !== scopeFilter) return false;
@@ -288,7 +247,7 @@ export function MoneyCardsView({
       }
       return true;
     });
-  }, [transactions, selectedAccountId, kindFilter, scopeFilter, searchQuery]);
+  }, [transactions, selectedAccountId, liquidAccountIds, kindFilter, scopeFilter, searchQuery]);
 
   // Stream Metrics
   const streamTotalInflowMinor = useMemo(() => {
@@ -638,22 +597,24 @@ export function MoneyCardsView({
     <div className="space-y-6">
       {/* 1. TOP EXECUTIVE FINANCIAL KPI STRIP (Daylight Studio Cards) */}
       <MoneyKpiStrip
-        accounts={accounts}
+        accounts={liquidAccounts}
+        creditCards={creditCards}
         totalLiquidMinor={totalLiquidMinor}
         totalCreditDebtMinor={totalCreditDebtMinor}
-        totalCreditLimitMinor={totalCreditLimitMinor}
-        creditUtilizationPct={creditUtilizationPct}
-        urgentDueCards={urgentDueCards}
         unmatchedTransfersCount={unmatchedTransfers.length}
         onOpenRecordTx={() => handleOpenAddTx('expense')}
         onOpenNewAccount={handleOpenAddAccount}
         onOpenTransferMatch={() => setTransferMatchModalOpen(true)}
+        onOpenPayCard={(card) => setCardPayModalAccount(card)}
+        onNavigateToCards={onNavigateToCards}
       />
 
       {/* 2. MAIN WORKSTATION: BENTO PORTFOLIO OR SPLIT DUAL-PANE VIEW */}
       {workstationLayout === 'bento' ? (
         <BentoPortfolioGrid
           accounts={filteredAccounts}
+          creditCards={creditCards}
+          totalCreditDebtMinor={totalCreditDebtMinor}
           onSelectAccountAndSplit={(id) => {
             setSelectedAccountId(id);
             setWorkstationLayout('split');
@@ -666,26 +627,26 @@ export function MoneyCardsView({
           onOpenEditAccount={handleOpenEditAccount}
           onOpenNewAccount={handleOpenAddAccount}
           onSwitchToSplit={() => setWorkstationLayout('split')}
+          onNavigateToCards={onNavigateToCards}
         />
       ) : (
         <div className="flex flex-col lg:flex-row gap-6 items-start">
           {/* ================= LEFT COLUMN: SCALABLE ACCOUNTS HUB ================= */}
           <AccountsHub
-            accounts={accounts}
+            accounts={liquidAccounts}
             filteredAccounts={filteredAccounts}
             creditCards={creditCards}
             bankAccounts={bankAccounts}
             walletAccounts={walletAccounts}
             recurringBills={recurringBills}
             totalLiquidMinor={totalLiquidMinor}
+            totalCreditDebtMinor={totalCreditDebtMinor}
             selectedAccountId={selectedAccountId}
             accountSearch={accountSearch}
             accountTab={accountTab}
             accountSort={accountSort}
             triageFilter={triageFilter}
             workstationLayout={workstationLayout}
-            urgentDueCards={urgentDueCards}
-            highUtilCards={highUtilCards}
             onSelectAccount={(id) => setSelectedAccountId(id)}
             onSearchChange={(val) => setAccountSearch(val)}
             onTabChange={(tab) => setAccountTab(tab)}
@@ -700,6 +661,7 @@ export function MoneyCardsView({
             onOpenEditAccount={handleOpenEditAccount}
             onOpenRecurringModal={() => setRecurringModalOpen(true)}
             onOpenInvestmentsModal={() => setInvestmentsModalOpen(true)}
+            onNavigateToCards={onNavigateToCards}
           />
 
           {/* ================= RIGHT COLUMN: LEDGER STREAM & ACCOUNT HUD ================= */}
@@ -931,8 +893,7 @@ export function MoneyCardsView({
                 disabled={Boolean(editingAccount)}
               >
                 <option value="bank">Bank Savings / Current</option>
-                <option value="credit_card">Credit Card</option>
-                <option value="wallet">Digital Wallet</option>
+                <option value="wallet">Digital Wallet / UPI</option>
                 <option value="cash">Physical Cash</option>
               </Select>
             </div>
@@ -968,53 +929,38 @@ export function MoneyCardsView({
             </div>
           </div>
 
-          {accGroup === 'credit_card' ? (
-            <div className="space-y-3 p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <span className="text-xs font-bold text-slate-700 block">Credit Card Billing Parameters</span>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <FieldLabel>Credit Limit (₹)</FieldLabel>
-                  <Input
-                    type="number"
-                    value={accCreditLimitStr}
-                    onChange={(e) => setAccCreditLimitStr(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Statement Day (1-31)</FieldLabel>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={31}
-                    value={accStatementDay}
-                    onChange={(e) => setAccStatementDay(Number(e.target.value))}
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Due Day (1-31)</FieldLabel>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={31}
-                    value={accDueDay}
-                    onChange={(e) => setAccDueDay(Number(e.target.value))}
-                  />
-                </div>
-              </div>
+          {!editingAccount && (
+            <div>
+              <FieldLabel>Opening Balance (₹)</FieldLabel>
+              <Input
+                type="number"
+                step="0.01"
+                value={accOpeningBalStr}
+                onChange={(e) => setAccOpeningBalStr(e.target.value)}
+              />
             </div>
-          ) : (
-            !editingAccount && (
-              <div>
-                <FieldLabel>Opening Balance (₹)</FieldLabel>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={accOpeningBalStr}
-                  onChange={(e) => setAccOpeningBalStr(e.target.value)}
-                />
-              </div>
-            )
           )}
+
+          {/* Helpful callout: Credit Cards belong in Credit Cards Command Center */}
+          <div className="rounded-xl border border-blue-200/80 bg-blue-50/50 p-3 flex items-start gap-2.5 text-xs">
+            <CreditCard className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+            <div className="text-slate-700">
+              <span className="font-bold text-slate-900 block">Looking to add a Credit Card?</span>
+              Credit cards with billing cycles, limits, and swipe loggers are in the dedicated <strong>Credit Cards Command Center</strong>.{' '}
+              {onNavigateToCards && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAccountModalOpen(false);
+                    onNavigateToCards();
+                  }}
+                  className="text-blue-600 font-bold hover:underline inline-flex items-center gap-0.5 cursor-pointer ml-1"
+                >
+                  Go to Credit Cards →
+                </button>
+              )}
+            </div>
+          </div>
 
           <div className="flex items-center justify-between pt-2 border-t border-slate-100">
             {editingAccount ? (
@@ -1048,19 +994,47 @@ export function MoneyCardsView({
       <Dialog
         open={Boolean(cardPayModalAccount)}
         onClose={() => setCardPayModalAccount(null)}
-        title={`Reconcile & Pay Bill: ${cardPayModalAccount?.name || ''}`}
+        title={`Pay Credit Card from Bank · ${cardPayModalAccount?.name || ''}`}
       >
         <form onSubmit={handlePayCard} className="space-y-4">
+          <div className="rounded-xl border border-blue-200/80 bg-blue-50/50 p-3 text-xs space-y-1">
+            <div className="font-bold text-blue-900 flex items-center gap-1.5">
+              <Zap className="h-3.5 w-3.5 text-blue-600" />
+              <span>Double-Entry Settlement Bridge</span>
+            </div>
+            <p className="text-slate-600 text-[11px]">
+              Transfers funds from your bank deposit account to clear this credit card debt, updating both account balances simultaneously.
+            </p>
+          </div>
+
+          {creditCards.length > 1 && (
+            <div>
+              <FieldLabel>Target Credit Card</FieldLabel>
+              <Select
+                value={cardPayModalAccount?.id || ''}
+                onChange={(e) => {
+                  const c = creditCards.find((card) => card.id === e.target.value);
+                  if (c) setCardPayModalAccount(c);
+                }}
+              >
+                {creditCards.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} (Outstanding: {formatINR(Math.abs(c.currentBalanceMinor || 0))})
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
+
           {cardReconData && (() => {
             const latest = cardReconData.cycles?.[0];
             const netDue = latest?.netDueMinor ?? 0;
-            const unbilled = Math.max(0, cardReconData.totalOutstandingMinor - (latest?.billedAmountMinor ?? 0));
             return (
               <>
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/90 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-slate-500">Statement Cycle Status:</span>
-                    <span className="font-bold text-xs px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    <span className="font-bold text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
                       {latest?.dueDate ? `Bill Due on ${latest.dueDate}` : 'Cycle Active'}
                     </span>
                   </div>
@@ -1072,9 +1046,9 @@ export function MoneyCardsView({
                       </div>
                     </div>
                     <div>
-                      <div className="text-[10px] text-slate-500 uppercase font-bold">Unbilled Spend</div>
+                      <div className="text-[10px] text-slate-500 uppercase font-bold">Total Outstanding</div>
                       <div className="text-xl font-bold font-mono text-slate-800">
-                        {formatINR(unbilled)}
+                        {formatINR(cardReconData.totalOutstandingMinor)}
                       </div>
                     </div>
                   </div>
@@ -1085,7 +1059,7 @@ export function MoneyCardsView({
                     <button
                       type="button"
                       onClick={() => setCardPayAmountStr((netDue / 100).toFixed(2))}
-                      className="flex-1 py-1.5 px-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-lg border border-indigo-200 transition-colors cursor-pointer"
+                      className="flex-1 py-1.5 px-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg border border-blue-200 transition-colors cursor-pointer"
                     >
                       Pay Full Statement ({formatINR(netDue)})
                     </button>
@@ -1117,14 +1091,12 @@ export function MoneyCardsView({
           <div>
             <FieldLabel>Pay From Bank Account</FieldLabel>
             <Select value={cardPayFromAccId} onChange={(e) => setCardPayFromAccId(e.target.value)} required>
-              <option value="">Select Bank Account</option>
-              {accounts
-                .filter((a) => a.accountGroup === 'bank' && a.id !== cardPayModalAccount?.id)
-                .map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.name} ({formatINR(acc.currentBalanceMinor || 0)})
-                  </option>
-                ))}
+              <option value="">Select Paying Bank Account</option>
+              {bankAccounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.name} (Balance: {formatINR(acc.currentBalanceMinor || 0)})
+                </option>
+              ))}
             </Select>
           </div>
 
@@ -1133,7 +1105,7 @@ export function MoneyCardsView({
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={isPayingCard}>
-              {isPayingCard ? 'Processing...' : 'Confirm Bill Payment'}
+              {isPayingCard ? 'Processing Settlement...' : 'Confirm Bill Payment'}
             </Button>
           </div>
         </form>

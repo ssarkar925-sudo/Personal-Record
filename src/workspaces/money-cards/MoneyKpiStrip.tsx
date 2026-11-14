@@ -1,31 +1,40 @@
-import { ArrowRightLeft, CheckCircle2, Clock, CreditCard as CreditCardIcon, Plus, Wallet } from 'lucide-react';
+import {
+  ArrowRight,
+  ArrowRightLeft,
+  Building2,
+  CheckCircle2,
+  CreditCard as CreditCardIcon,
+  Plus,
+  Wallet,
+  Zap,
+} from 'lucide-react';
 import { formatINR } from '../../lib/format.ts';
 import type { AccountRecord } from '../../lib/api.ts';
 
 export interface MoneyKpiStripProps {
   accounts: AccountRecord[];
+  creditCards: AccountRecord[];
   totalLiquidMinor: number;
   totalCreditDebtMinor: number;
-  totalCreditLimitMinor: number;
-  creditUtilizationPct: number;
-  urgentDueCards: AccountRecord[];
   unmatchedTransfersCount: number;
   onOpenRecordTx: () => void;
   onOpenNewAccount: () => void;
   onOpenTransferMatch: () => void;
+  onOpenPayCard: (card: AccountRecord) => void;
+  onNavigateToCards?: () => void;
 }
 
 export function MoneyKpiStrip({
   accounts,
+  creditCards,
   totalLiquidMinor,
   totalCreditDebtMinor,
-  totalCreditLimitMinor,
-  creditUtilizationPct,
-  urgentDueCards,
   unmatchedTransfersCount,
   onOpenRecordTx,
   onOpenNewAccount,
   onOpenTransferMatch,
+  onOpenPayCard,
+  onNavigateToCards,
 }: MoneyKpiStripProps) {
   const bankAndWalletCount = accounts.filter((a) => a.accountGroup !== 'credit_card').length;
 
@@ -51,41 +60,68 @@ export function MoneyKpiStrip({
         </div>
       </div>
 
-      {/* 2. Credit Card Utilization & Debt */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs relative overflow-hidden flex items-center justify-between">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-600" />
-        <div className="flex-1 mr-3">
+      {/* 2. Connected Credit Cards Debt & Liquidity Bridge */}
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs relative overflow-hidden flex flex-col justify-between">
+        <div className="absolute top-0 left-0 right-0 h-1 bg-blue-600" />
+        <div>
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
             <span className="flex items-center gap-1.5">
-              <CreditCardIcon className="w-3.5 h-3.5 text-indigo-600" />
-              Credit Cards Balance
+              <CreditCardIcon className="w-3.5 h-3.5 text-blue-600" />
+              Connected Card Liabilities
             </span>
-            <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/80">
-              {creditUtilizationPct.toFixed(1)}% Used
+            <span
+              className={`font-mono text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                totalCreditDebtMinor === 0
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : totalLiquidMinor >= totalCreditDebtMinor
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-amber-50 text-amber-800 border-amber-200'
+              }`}
+            >
+              {totalCreditDebtMinor === 0
+                ? 'Zero Debt ✅'
+                : totalLiquidMinor >= totalCreditDebtMinor
+                  ? `${Math.round((totalLiquidMinor / (totalCreditDebtMinor || 1)) * 100)}% Covered ✅`
+                  : 'Cash Shortfall'}
             </span>
           </div>
+
           <div className="text-2xl font-bold font-mono tracking-tight text-slate-900 mt-1">
             {formatINR(totalCreditDebtMinor)}
           </div>
-          {/* Progress bar */}
-          <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2 overflow-hidden">
-            <div
-              className={`h-full transition-all duration-500 ${
-                creditUtilizationPct > 50
-                  ? 'bg-rose-500'
-                  : creditUtilizationPct > 30
-                    ? 'bg-amber-500'
-                    : 'bg-indigo-600'
-              }`}
-              style={{ width: `${Math.min(100, Math.max(2, creditUtilizationPct))}%` }}
-            />
-          </div>
-          <div className="text-[11px] text-slate-500 mt-1">
-            Combined limit: {formatINR(totalCreditLimitMinor)}
+
+          <div className="text-[11px] text-slate-500 mt-0.5">
+            {creditCards.length > 0
+              ? `Across ${creditCards.length} credit card${creditCards.length > 1 ? 's' : ''} · Settle from bank`
+              : 'No credit cards added'}
           </div>
         </div>
-        <div className="w-11 h-11 rounded-xl bg-indigo-50 border border-indigo-200/80 text-indigo-700 flex items-center justify-center shrink-0">
-          <CreditCardIcon className="w-5 h-5" />
+
+        {/* 1-Click Connected Actions */}
+        <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-100">
+          {creditCards.length > 0 && totalCreditDebtMinor > 0 ? (
+            <button
+              type="button"
+              onClick={() => onOpenPayCard(creditCards[0])}
+              className="flex-1 flex items-center justify-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/80 font-semibold text-xs py-1.5 rounded-xl transition-colors cursor-pointer"
+              title="Pay credit card bill using bank balance"
+            >
+              <Zap className="w-3.5 h-3.5 text-blue-600" />
+              <span>Settle Card Bill</span>
+            </button>
+          ) : null}
+
+          {onNavigateToCards && (
+            <button
+              type="button"
+              onClick={onNavigateToCards}
+              className="flex-1 flex items-center justify-center gap-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-semibold text-xs py-1.5 rounded-xl transition-colors cursor-pointer"
+              title="Open Credit Cards Command Center"
+            >
+              <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+              <span>Cards Hub</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -93,24 +129,19 @@ export function MoneyKpiStrip({
       <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs relative overflow-hidden flex flex-col justify-between">
         <div className="absolute top-0 left-0 right-0 h-1 bg-amber-500" />
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-500">Financial Command Radar</span>
-          {urgentDueCards.length > 0 ? (
-            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full animate-pulse">
-              <Clock className="w-3 h-3 text-amber-600" />
-              {urgentDueCards.length} Card{urgentDueCards.length > 1 ? 's' : ''} Due Soon
-            </span>
-          ) : unmatchedTransfersCount > 0 ? (
+          <span className="text-xs font-semibold text-slate-500">Banking Actions & Reconcile</span>
+          {unmatchedTransfersCount > 0 ? (
             <button
               onClick={onOpenTransferMatch}
               className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full hover:bg-amber-100 transition-colors animate-pulse cursor-pointer"
             >
               <ArrowRightLeft className="w-3 h-3 text-amber-600" />
-              {unmatchedTransfersCount} Transfers to Match
+              {unmatchedTransfersCount} Transfers
             </button>
           ) : (
             <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
               <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-              All Bills Current
+              Passbooks Current
             </span>
           )}
         </div>
@@ -127,8 +158,8 @@ export function MoneyKpiStrip({
             onClick={onOpenNewAccount}
             className="flex-1 flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs py-2 rounded-xl border border-slate-200 shadow-2xs transition-colors cursor-pointer"
           >
-            <Plus className="w-4 h-4 text-slate-500" />
-            <span>New Account</span>
+            <Building2 className="w-4 h-4 text-slate-500" />
+            <span>New Bank</span>
           </button>
         </div>
       </div>

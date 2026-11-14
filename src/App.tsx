@@ -3,6 +3,7 @@ import {
   BarChart3,
   Bell,
   Bot,
+  Building2,
   Cloud,
   Command,
   CreditCard,
@@ -15,7 +16,6 @@ import {
   NotebookPen,
   Plus,
   Search,
-  WalletCards,
 } from 'lucide-react';
 import {
   api,
@@ -275,7 +275,7 @@ export function App() {
       id: 'money',
       label: dict.tabs.money,
       accentHex: '#059669',
-      icon: <WalletCards className="h-3.5 w-3.5" />,
+      icon: <Building2 className="h-3.5 w-3.5" />,
     },
     {
       id: 'loans_dues',
@@ -487,6 +487,7 @@ export function App() {
             systemLanguage={preferences.systemLanguage}
             onNotify={notify}
             onRefresh={() => void loadAll()}
+            onNavigateToCards={() => setActiveTab('cards')}
           />
         )}
 

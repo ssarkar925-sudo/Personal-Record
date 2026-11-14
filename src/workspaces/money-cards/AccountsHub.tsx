@@ -1,7 +1,6 @@
 import {
-  AlertTriangle,
+  ArrowRight,
   Building2,
-  Clock,
   CreditCard as CreditCardIcon,
   Edit2,
   Layers,
@@ -13,6 +12,7 @@ import {
   Split,
   Wallet,
   X,
+  Zap,
 } from 'lucide-react';
 import { formatINR } from '../../lib/format.ts';
 import type { AccountRecord, RecurringBillRecord } from '../../lib/api.ts';
@@ -24,21 +24,20 @@ import type {
 } from './types.ts';
 
 export interface AccountsHubProps {
-  accounts: AccountRecord[];
+  accounts: AccountRecord[]; // Liquid accounts only (banks + wallets)
   filteredAccounts: AccountRecord[];
   creditCards: AccountRecord[];
   bankAccounts: AccountRecord[];
   walletAccounts: AccountRecord[];
   recurringBills: RecurringBillRecord[];
   totalLiquidMinor: number;
+  totalCreditDebtMinor: number;
   selectedAccountId: string | null;
   accountSearch: string;
   accountTab: AccountGroupTab;
   accountSort: AccountSortOption;
   triageFilter: TriageFilter;
   workstationLayout: WorkstationLayout;
-  urgentDueCards: AccountRecord[];
-  highUtilCards: AccountRecord[];
   onSelectAccount: (id: string | null) => void;
   onSearchChange: (val: string) => void;
   onTabChange: (tab: AccountGroupTab) => void;
@@ -50,6 +49,7 @@ export interface AccountsHubProps {
   onOpenEditAccount: (acc: AccountRecord) => void;
   onOpenRecurringModal: () => void;
   onOpenInvestmentsModal: () => void;
+  onNavigateToCards?: () => void;
 }
 
 export function AccountsHub({
@@ -60,14 +60,13 @@ export function AccountsHub({
   walletAccounts,
   recurringBills,
   totalLiquidMinor,
+  totalCreditDebtMinor,
   selectedAccountId,
   accountSearch,
   accountTab,
   accountSort,
   triageFilter,
   workstationLayout,
-  urgentDueCards,
-  highUtilCards,
   onSelectAccount,
   onSearchChange,
   onTabChange,
@@ -79,22 +78,21 @@ export function AccountsHub({
   onOpenEditAccount,
   onOpenRecurringModal,
   onOpenInvestmentsModal,
+  onNavigateToCards,
 }: AccountsHubProps) {
-  const currentDayOfMonth = new Date().getDate();
-
   return (
     <div className="w-full lg:w-[410px] xl:w-[450px] shrink-0 space-y-3.5">
       {/* 1. Accounts Header & Workstation Layout Toggle */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
-            <Layers className="w-4 h-4" />
+            <Building2 className="w-4 h-4" />
           </div>
           <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-            Accounts Hub
+            Bank & Cash Hub
           </h3>
           <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-            {accounts.length} Total
+            {accounts.length} Liquid
           </span>
         </div>
 
@@ -138,8 +136,8 @@ export function AccountsHub({
             type="text"
             value={accountSearch}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder={`Search ${accounts.length} accounts by name, bank, last4...`}
-            className="w-full h-8 pl-8 pr-7 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white"
+            placeholder={`Search ${accounts.length} bank & cash accounts...`}
+            className="w-full h-8 pl-8 pr-7 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white"
           />
           {accountSearch && (
             <button
@@ -162,38 +160,8 @@ export function AccountsHub({
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            All ({accounts.length})
+            All Liquid ({accounts.length})
           </button>
-
-          {urgentDueCards.length > 0 && (
-            <button
-              type="button"
-              onClick={() => onTriageChange('due_soon')}
-              className={`px-2 py-1 rounded-lg shrink-0 font-medium flex items-center gap-1 transition-all cursor-pointer ${
-                triageFilter === 'due_soon'
-                  ? 'bg-amber-600 text-white shadow-2xs font-bold'
-                  : 'bg-amber-50 text-amber-800 border border-amber-200/80 hover:bg-amber-100'
-              }`}
-            >
-              <Clock className="w-3 h-3" />
-              Due in 7d ({urgentDueCards.length})
-            </button>
-          )}
-
-          {highUtilCards.length > 0 && (
-            <button
-              type="button"
-              onClick={() => onTriageChange('high_utilization')}
-              className={`px-2 py-1 rounded-lg shrink-0 font-medium flex items-center gap-1 transition-all cursor-pointer ${
-                triageFilter === 'high_utilization'
-                  ? 'bg-rose-600 text-white shadow-2xs font-bold'
-                  : 'bg-rose-50 text-rose-800 border border-rose-200/80 hover:bg-rose-100'
-              }`}
-            >
-              <AlertTriangle className="w-3 h-3" />
-              Util &gt;30% ({highUtilCards.length})
-            </button>
-          )}
 
           <button
             type="button"
@@ -205,15 +173,27 @@ export function AccountsHub({
             }`}
           >
             <RefreshCw className="w-3 h-3" />
-            Banks ({bankAccounts.length})
+            Banks to Recon ({bankAccounts.length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onTriageChange('low_balance')}
+            className={`px-2 py-1 rounded-lg shrink-0 font-medium flex items-center gap-1 transition-all cursor-pointer ${
+              triageFilter === 'low_balance'
+                ? 'bg-amber-600 text-white shadow-2xs font-bold'
+                : 'bg-amber-50 text-amber-800 border border-amber-200/80 hover:bg-amber-100'
+            }`}
+          >
+            Low Bal (&lt;₹5k)
           </button>
         </div>
 
         {/* Group Tabs & Sort Row */}
         <div className="flex items-center justify-between pt-1 border-t border-slate-100">
-          {/* Segmented Group Tabs */}
+          {/* Segmented Group Tabs (Liquid Only) */}
           <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
-            {(['all', 'credit_card', 'bank', 'wallet'] as const).map((tab) => (
+            {(['all', 'bank', 'wallet'] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
@@ -225,12 +205,10 @@ export function AccountsHub({
                 }`}
               >
                 {tab === 'all'
-                  ? 'All'
-                  : tab === 'credit_card'
-                    ? `Cards (${creditCards.length})`
-                    : tab === 'bank'
-                      ? `Banks (${bankAccounts.length})`
-                      : `Cash (${walletAccounts.length})`}
+                  ? 'All Liquid'
+                  : tab === 'bank'
+                    ? `Banks (${bankAccounts.length})`
+                    : `Cash (${walletAccounts.length})`}
               </button>
             ))}
           </div>
@@ -242,17 +220,15 @@ export function AccountsHub({
               onChange={(e) => onSortChange(e.target.value as AccountSortOption)}
               className="bg-transparent font-medium text-slate-700 focus:outline-none cursor-pointer border-b border-dashed border-slate-300 pb-0.5"
             >
-              <option value="due_date">Due Soonest</option>
               <option value="balance_desc">Highest Balance</option>
               <option value="balance_asc">Lowest Balance</option>
-              <option value="utilization">Highest Util %</option>
               <option value="name">Name (A-Z)</option>
             </select>
           </div>
         </div>
       </div>
 
-      {/* 3. Entire Portfolio Item */}
+      {/* 3. Entire Liquid Portfolio Header */}
       <div
         onClick={() => onSelectAccount(null)}
         className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
@@ -270,9 +246,9 @@ export function AccountsHub({
             <Layers className="w-3.5 h-3.5" />
           </div>
           <div>
-            <h4 className="text-xs font-bold leading-tight text-slate-900">Entire Portfolio (All Accounts)</h4>
+            <h4 className="text-xs font-bold leading-tight text-slate-900">Total Liquid Funds (Banks & Cash)</h4>
             <p className="text-[10px] text-slate-500">
-              {accounts.length} Accounts Active
+              {accounts.length} Liquid Accounts Active
             </p>
           </div>
         </div>
@@ -281,21 +257,17 @@ export function AccountsHub({
         </span>
       </div>
 
-      {/* 4. Scrollable Bounded High-Density Account Rows */}
-      <div className="max-h-[540px] overflow-y-auto space-y-1.5 pr-0.5">
+      {/* 4. Scrollable Bounded High-Density Account Rows (Liquid Accounts Only) */}
+      <div className="max-h-[500px] overflow-y-auto space-y-1.5 pr-0.5">
         {filteredAccounts.length === 0 ? (
           <div className="p-6 text-center rounded-xl border border-dashed border-slate-200 bg-white text-xs text-slate-500">
-            No accounts matching your triage or search filters.
+            No bank or cash accounts matching your search or filters.
           </div>
         ) : (
           filteredAccounts.map((acc) => {
             const isSelected = selectedAccountId === acc.id;
-            const isCard = acc.accountGroup === 'credit_card';
+            const isBank = acc.accountGroup === 'bank';
             const balance = acc.currentBalanceMinor || 0;
-            const outstanding = Math.abs(balance);
-            const limit = acc.creditLimitMinor || 1;
-            const utilPct = isCard ? Math.min(100, Math.round((outstanding / limit) * 100)) : 0;
-            const isDueSoon = isCard && outstanding > 0 && Math.abs((acc.dueDay || 5) - currentDayOfMonth) <= 5;
 
             return (
               <div
@@ -303,7 +275,7 @@ export function AccountsHub({
                 onClick={() => onSelectAccount(isSelected ? null : acc.id)}
                 className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between text-xs ${
                   isSelected
-                    ? 'bg-indigo-50/80 border-indigo-600 shadow-xs ring-1 ring-indigo-500/20'
+                    ? 'bg-emerald-50/80 border-emerald-600 shadow-xs ring-1 ring-emerald-500/20'
                     : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/70'
                 }`}
               >
@@ -311,16 +283,12 @@ export function AccountsHub({
                 <div className="flex items-center gap-2.5 min-w-0 pr-2">
                   <div
                     className={`w-8 h-8 rounded-lg shrink-0 flex items-center justify-center ${
-                      isCard
-                        ? 'bg-indigo-100 text-indigo-700'
-                        : acc.accountGroup === 'bank'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-amber-100 text-amber-800'
+                      isBank
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-amber-100 text-amber-800'
                     }`}
                   >
-                    {isCard ? (
-                      <CreditCardIcon className="w-4 h-4" />
-                    ) : acc.accountGroup === 'bank' ? (
+                    {isBank ? (
                       <Building2 className="w-4 h-4" />
                     ) : (
                       <Wallet className="w-4 h-4" />
@@ -341,24 +309,11 @@ export function AccountsHub({
 
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-                        {acc.institution || acc.accountGroup}
+                        {acc.institution || (isBank ? 'Bank' : 'Cash')}
                       </span>
                       <span className="text-[9px] px-1 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200">
                         {acc.scope}
                       </span>
-                      {isCard && (
-                        <span
-                          className={`text-[9px] font-mono px-1 rounded ${
-                            utilPct > 50
-                              ? 'bg-rose-100 text-rose-700'
-                              : utilPct > 30
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-indigo-100 text-indigo-700'
-                          }`}
-                        >
-                          {utilPct}%
-                        </span>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -366,51 +321,25 @@ export function AccountsHub({
                 {/* Right: Balance & Actions */}
                 <div className="text-right shrink-0 flex items-center gap-2">
                   <div>
-                    <div
-                      className={`font-mono font-bold leading-tight ${
-                        isCard ? 'text-slate-900' : 'text-emerald-700'
-                      }`}
-                    >
+                    <div className="font-mono font-bold leading-tight text-emerald-700">
                       {formatINR(balance)}
                     </div>
-
-                    {isCard ? (
-                      <div className="flex items-center justify-end gap-1 mt-0.5">
-                        {isDueSoon && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                        )}
-                        <span
-                          className={`text-[10px] font-medium ${
-                            isDueSoon ? 'text-amber-700 font-bold' : 'text-slate-400'
-                          }`}
-                        >
-                          Due {acc.dueDay || 5}th
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="text-[10px] text-slate-400">Deposit</div>
-                    )}
+                    <div className="text-[10px] text-slate-400">
+                      {isBank ? 'Deposit' : 'Cash'}
+                    </div>
                   </div>
 
                   {/* Inline Actions */}
                   <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                    {isCard ? (
-                      <button
-                        onClick={() => onOpenPayCard(acc)}
-                        className="px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-[10px] transition-colors cursor-pointer"
-                        title="Reconcile & Pay Bill"
-                      >
-                        Pay
-                      </button>
-                    ) : acc.accountGroup === 'bank' ? (
+                    {isBank && (
                       <button
                         onClick={() => onOpenReconcileBank(acc)}
                         className="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[10px] border border-slate-300 transition-colors cursor-pointer"
-                        title="Reconcile balance against passbook"
+                        title="Reconcile balance against bank passbook / statement"
                       >
                         Recon
                       </button>
-                    ) : null}
+                    )}
 
                     <button
                       onClick={() => onOpenEditAccount(acc)}
@@ -427,14 +356,59 @@ export function AccountsHub({
         )}
       </div>
 
-      {/* 5. Quick Drawer Shortcuts */}
-      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200">
+      {/* 5. Connected Credit Cards Liability Bridge */}
+      {creditCards.length > 0 && (
+        <div className="rounded-2xl border border-blue-200/90 bg-blue-50/40 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+              <CreditCardIcon className="w-4 h-4 text-blue-600" />
+              <span>Connected Credit Cards</span>
+            </div>
+            <span className="text-xs font-mono font-bold text-slate-900">
+              {formatINR(totalCreditDebtMinor)}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between text-[11px] text-slate-600">
+            <span>{creditCards.length} Card{creditCards.length > 1 ? 's' : ''} Active</span>
+            <span className="font-semibold text-emerald-700">
+              {totalCreditDebtMinor === 0 ? 'Zero Outstanding' : 'Payable from Bank Balance'}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 pt-1.5 border-t border-blue-200/60">
+            {totalCreditDebtMinor > 0 && (
+              <button
+                type="button"
+                onClick={() => onOpenPayCard(creditCards[0])}
+                className="flex-1 py-1 px-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-2xs"
+              >
+                <Zap className="w-3 h-3" />
+                <span>Settle Card Bill</span>
+              </button>
+            )}
+            {onNavigateToCards && (
+              <button
+                type="button"
+                onClick={onNavigateToCards}
+                className="flex-1 py-1 px-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-2xs"
+              >
+                <ArrowRight className="w-3 h-3 text-slate-400" />
+                <span>Cards Hub</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 6. Quick Drawer Shortcuts */}
+      <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200">
         <button
           onClick={onOpenRecurringModal}
           className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center justify-between shadow-2xs transition-colors cursor-pointer"
         >
           <span className="flex items-center gap-1.5">
-            <Repeat className="w-3.5 h-3.5 text-indigo-600" />
+            <Repeat className="w-3.5 h-3.5 text-blue-600" />
             Recurring
           </span>
           <span className="font-mono text-[11px] text-slate-400">({recurringBills.length})</span>
