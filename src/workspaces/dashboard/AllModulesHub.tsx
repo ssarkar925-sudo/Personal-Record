@@ -3,6 +3,7 @@ import {
   ArrowRight,
   BarChart3,
   Building2,
+  Calendar,
   CheckSquare,
   Clock,
   CreditCard,
@@ -15,7 +16,12 @@ import {
   TrendingDown,
   TrendingUp,
 } from 'lucide-react';
-import { formatINR, buildWhatsAppLink } from '../../lib/format.ts';
+import {
+  formatINR,
+  buildWhatsAppLink,
+  formatDisplayDateShort,
+  formatOrdinalDay,
+} from '../../lib/format.ts';
 import { api, type DashboardSummary } from '../../lib/api.ts';
 import { SortSelect, ViewModeToggle } from '../../components/ui/Primitives.tsx';
 import type { WorkspaceId } from './types.ts';
@@ -70,6 +76,14 @@ export function AllModulesHub({
   const totalDebt = data.totalCardDebtMinor;
   const utilizationPct = Math.round((totalDebt / totalLimit) * 100);
   const availableCredit = Math.max(0, data.totalCardLimitMinor - totalDebt);
+  const totalStatementDue = data.cards.reduce(
+    (sum, c) => sum + (c.cardCycle?.statementDueMinor || 0),
+    0,
+  );
+  const totalUnbilled = data.cards.reduce(
+    (sum, c) => sum + (c.cardCycle?.unbilledMinor || 0),
+    0,
+  );
 
   // Find nearest due card
   const cardsWithCycle = data.cards
@@ -371,35 +385,84 @@ export function AllModulesHub({
               </div>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-slate-100/90">
+            <div className="mt-4 pt-3 border-t border-slate-100/90 space-y-2.5">
               {nextDueCard && nextDueCard.cardCycle ? (
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5 text-blue-600" />
-                    <span className="font-semibold text-slate-800 truncate max-w-[120px]">
-                      {nextDueCard.name}
-                    </span>
-                    <span className="font-mono text-[10px] text-slate-400">
-                      ••{nextDueCard.last4}
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <CreditCard className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      <span className="font-bold text-slate-800 truncate">
+                        {nextDueCard.name}
+                      </span>
+                      <span className="font-mono text-[10px] text-slate-400">
+                        ••{nextDueCard.last4}
+                      </span>
+                    </div>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                        nextDueCard.cardCycle.daysUntilDue <= 3
+                          ? 'bg-rose-100 text-rose-800'
+                          : 'bg-blue-100 text-blue-800'
+                      }`}
+                    >
+                      {nextDueCard.cardCycle.daysUntilDue < 0
+                        ? 'Overdue'
+                        : `Due in ${nextDueCard.cardCycle.daysUntilDue}d`}
                     </span>
                   </div>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                      nextDueCard.cardCycle.daysUntilDue <= 3
-                        ? 'bg-rose-100 text-rose-800'
-                        : 'bg-blue-100 text-blue-800'
-                    }`}
-                  >
-                    {nextDueCard.cardCycle.daysUntilDue < 0
-                      ? 'Overdue'
-                      : `Due in ${nextDueCard.cardCycle.daysUntilDue}d`}
-                  </span>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px] pt-1.5 border-t border-slate-200/50">
+                    <div>
+                      <div className="flex items-center gap-1 text-[10px] text-slate-400 uppercase font-medium">
+                        <Calendar className="w-3 h-3 text-slate-400" />
+                        <span>Bill Date</span>
+                      </div>
+                      <span className="font-bold text-slate-800">
+                        {formatDisplayDateShort(nextDueCard.cardCycle.nextStatementDate) ||
+                          formatOrdinalDay(nextDueCard.statementDay || 15)}
+                      </span>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1 text-[10px] text-slate-400 uppercase font-medium">
+                        <Clock className="w-3 h-3 text-blue-600" />
+                        <span>Payment Due</span>
+                      </div>
+                      <span className="font-bold text-slate-900">
+                        {formatDisplayDateShort(nextDueCard.cardCycle.nextDueDate) ||
+                          formatOrdinalDay(nextDueCard.dueDay || 5)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="p-2.5 rounded-xl bg-slate-50 text-[11px] text-slate-400 text-center">
                   All credit card cycles current.
                 </div>
               )}
+
+              {/* Total Billed vs Unbilled Spends */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-slate-50/80 rounded-lg p-2 border border-slate-100">
+                  <span className="text-[10px] text-slate-400 block uppercase font-medium">
+                    Statement Due
+                  </span>
+                  <span
+                    className={`font-mono font-bold tabular-nums ${
+                      totalStatementDue > 0 ? 'text-amber-700' : 'text-slate-700'
+                    }`}
+                  >
+                    {formatINR(totalStatementDue)}
+                  </span>
+                </div>
+                <div className="bg-slate-50/80 rounded-lg p-2 border border-slate-100">
+                  <span className="text-[10px] text-slate-400 block uppercase font-medium">
+                    Unbilled Spends
+                  </span>
+                  <span className="font-mono font-bold text-slate-700 tabular-nums">
+                    {formatINR(totalUnbilled > 0 ? totalUnbilled : totalDebt)}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -458,10 +521,24 @@ export function AllModulesHub({
               </div>
             </div>
             {nextDueCard && (
-              <div className="text-xs text-slate-600 hidden lg:block border-l border-slate-100 pl-4">
-                <span className="text-[10px] text-slate-400 block">Earliest Due</span>
-                <span className="font-semibold text-slate-800">{nextDueCard.name}</span>{' '}
-                <span className="text-blue-700 font-medium">({nextDueCard.cardCycle?.daysUntilDue ?? 0}d left)</span>
+              <div className="text-xs text-slate-600 hidden lg:block border-l border-slate-100 pl-4 space-y-0.5">
+                <span className="text-[10px] text-slate-400 block uppercase font-medium">
+                  Earliest Due Card
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold text-slate-800">{nextDueCard.name}</span>
+                  <span className="text-blue-700 font-bold">
+                    ({nextDueCard.cardCycle?.daysUntilDue ?? 0}d left)
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-500 font-mono">
+                  Bill:{' '}
+                  {formatDisplayDateShort(nextDueCard.cardCycle?.nextStatementDate) ||
+                    formatOrdinalDay(nextDueCard.statementDay || 15)}{' '}
+                  · Due:{' '}
+                  {formatDisplayDateShort(nextDueCard.cardCycle?.nextDueDate) ||
+                    formatOrdinalDay(nextDueCard.dueDay || 5)}
+                </div>
               </div>
             )}
           </div>

@@ -42,3 +42,38 @@ export const SCOPE_META = {
     hex: '#475569',
   },
 } as const;
+
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+export function formatDisplayDate(iso: string | null | undefined): string {
+  if (!iso || !iso.includes('-')) return '';
+  const parts = iso.split('-');
+  const y = parts[0];
+  const m = Number(parts[1]);
+  const d = Number(parts[2]);
+  if (!m || !d) return iso;
+  return `${d} ${MONTH_NAMES[m - 1]} ${y}`;
+}
+
+export function formatDisplayDateShort(iso: string | null | undefined): string {
+  if (!iso || !iso.includes('-')) return '';
+  const parts = iso.split('-');
+  const m = Number(parts[1]);
+  const d = Number(parts[2]);
+  if (!m || !d) return iso;
+  return `${d} ${MONTH_NAMES[m - 1]}`;
+}
+
+export function formatOrdinalDay(day: number): string {
+  if (day >= 11 && day <= 13) return `${day}th`;
+  switch (day % 10) {
+    case 1:
+      return `${day}st`;
+    case 2:
+      return `${day}nd`;
+    case 3:
+      return `${day}rd`;
+    default:
+      return `${day}th`;
+  }
+}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookmarkPlus,
   Calendar,
+  Clock,
   Copy,
   CreditCard,
   Download,
@@ -28,7 +29,13 @@ import {
   type ScopeBudgetRecord,
   type TransactionRecord,
 } from '../lib/api.ts';
-import { formatINR, rupeesToPaise, todayISO } from '../lib/format.ts';
+import {
+  formatINR,
+  formatDisplayDateShort,
+  formatOrdinalDay,
+  rupeesToPaise,
+  todayISO,
+} from '../lib/format.ts';
 import {
   Button,
   CategorySelect,
@@ -90,6 +97,159 @@ const DEFAULT_QUICK_MERCHANTS: QuickFillMerchant[] = [
   { id: 'm-11', name: 'Google Cloud / AWS', category: 'Software & SaaS', scope: 'business' },
   { id: 'm-12', name: 'Flipkart', category: 'Shopping', scope: 'personal' },
 ];
+
+interface CardVisualTheme {
+  gradientTop: string;
+  borderClass: string;
+  hoverBorderClass: string;
+  badgeClass: string;
+  chipGradient: string;
+  chipBorder: string;
+  accentText: string;
+}
+
+function getCardVisualTheme(card: AccountRecord): CardVisualTheme {
+  const name = (card.name + ' ' + (card.institution || '')).toLowerCase();
+
+  // 1. HDFC (Deep Royal Blue)
+  if (name.includes('hdfc') || name.includes('regalia') || name.includes('millennia') || name.includes('diners') || name.includes('infinia')) {
+    return {
+      gradientTop: 'bg-gradient-to-r from-blue-700 via-blue-600 to-sky-500',
+      borderClass: 'border-blue-200/90',
+      hoverBorderClass: 'hover:border-blue-400',
+      badgeClass: 'bg-blue-50 text-blue-800 border-blue-200',
+      chipGradient: 'from-amber-300 via-amber-200 to-yellow-100',
+      chipBorder: 'border-amber-400/90',
+      accentText: 'text-blue-700',
+    };
+  }
+
+  // 2. Amazon Pay / ICICI (Warm Amber / Gold)
+  if (name.includes('amazon') || (name.includes('icici') && !name.includes('coral') && !name.includes('sapphiro'))) {
+    return {
+      gradientTop: 'bg-gradient-to-r from-amber-600 via-orange-500 to-yellow-500',
+      borderClass: 'border-amber-200/90',
+      hoverBorderClass: 'hover:border-amber-400',
+      badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
+      chipGradient: 'from-amber-400 via-yellow-200 to-amber-100',
+      chipBorder: 'border-amber-500/90',
+      accentText: 'text-amber-700',
+    };
+  }
+
+  // 3. Coral / Rubyx / Axis / Crimson (Coral / Rose / Ruby)
+  if (name.includes('coral') || name.includes('ruby') || name.includes('axis') || name.includes('flipkart') || name.includes('magnus') || name.includes('myzone')) {
+    return {
+      gradientTop: 'bg-gradient-to-r from-rose-600 via-rose-500 to-orange-500',
+      borderClass: 'border-rose-200/90',
+      hoverBorderClass: 'hover:border-rose-400',
+      badgeClass: 'bg-rose-50 text-rose-800 border-rose-200',
+      chipGradient: 'from-rose-300 via-amber-100 to-yellow-100',
+      chipBorder: 'border-rose-300',
+      accentText: 'text-rose-700',
+    };
+  }
+
+  // 4. IndusInd / Amex (Teal / Cyan)
+  if (name.includes('indus') || name.includes('legend') || name.includes('amex') || name.includes('american')) {
+    return {
+      gradientTop: 'bg-gradient-to-r from-teal-700 via-teal-600 to-emerald-500',
+      borderClass: 'border-teal-200/90',
+      hoverBorderClass: 'hover:border-teal-400',
+      badgeClass: 'bg-teal-50 text-teal-800 border-teal-200',
+      chipGradient: 'from-teal-200 via-amber-100 to-emerald-100',
+      chipBorder: 'border-teal-300',
+      accentText: 'text-teal-700',
+    };
+  }
+
+  // 5. Kotak / Platinum (Slate / Steel)
+  if (name.includes('kotak') || name.includes('koyak') || name.includes('white') || name.includes('platinum') || name.includes('zen')) {
+    return {
+      gradientTop: 'bg-gradient-to-r from-slate-700 via-slate-600 to-zinc-600',
+      borderClass: 'border-slate-300',
+      hoverBorderClass: 'hover:border-slate-500',
+      badgeClass: 'bg-slate-100 text-slate-800 border-slate-300',
+      chipGradient: 'from-slate-300 via-slate-100 to-zinc-200',
+      chipBorder: 'border-slate-400',
+      accentText: 'text-slate-800',
+    };
+  }
+
+  // 6. SBI / Standard / Cashback (Emerald / Mint)
+  if (name.includes('sbi') || name.includes('cashback') || name.includes('simply') || name.includes('aurum')) {
+    return {
+      gradientTop: 'bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-500',
+      borderClass: 'border-emerald-200/90',
+      hoverBorderClass: 'hover:border-emerald-400',
+      badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+      chipGradient: 'from-amber-300 to-yellow-100',
+      chipBorder: 'border-amber-400',
+      accentText: 'text-emerald-700',
+    };
+  }
+
+  // Deterministic hash fallback among curated palettes
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) & 0xffffffff;
+  const palettes: CardVisualTheme[] = [
+    {
+      gradientTop: 'bg-gradient-to-r from-blue-700 via-blue-600 to-sky-500',
+      borderClass: 'border-blue-200/90',
+      hoverBorderClass: 'hover:border-blue-400',
+      badgeClass: 'bg-blue-50 text-blue-800 border-blue-200',
+      chipGradient: 'from-amber-300 via-amber-200 to-yellow-100',
+      chipBorder: 'border-amber-400/90',
+      accentText: 'text-blue-700',
+    },
+    {
+      gradientTop: 'bg-gradient-to-r from-amber-600 via-orange-500 to-yellow-500',
+      borderClass: 'border-amber-200/90',
+      hoverBorderClass: 'hover:border-amber-400',
+      badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
+      chipGradient: 'from-amber-400 via-yellow-200 to-amber-100',
+      chipBorder: 'border-amber-500/90',
+      accentText: 'text-amber-700',
+    },
+    {
+      gradientTop: 'bg-gradient-to-r from-rose-600 via-rose-500 to-orange-500',
+      borderClass: 'border-rose-200/90',
+      hoverBorderClass: 'hover:border-rose-400',
+      badgeClass: 'bg-rose-50 text-rose-800 border-rose-200',
+      chipGradient: 'from-rose-300 via-amber-100 to-yellow-100',
+      chipBorder: 'border-rose-300',
+      accentText: 'text-rose-700',
+    },
+    {
+      gradientTop: 'bg-gradient-to-r from-teal-700 via-teal-600 to-emerald-500',
+      borderClass: 'border-teal-200/90',
+      hoverBorderClass: 'hover:border-teal-400',
+      badgeClass: 'bg-teal-50 text-teal-800 border-teal-200',
+      chipGradient: 'from-teal-200 via-amber-100 to-emerald-100',
+      chipBorder: 'border-teal-300',
+      accentText: 'text-teal-700',
+    },
+    {
+      gradientTop: 'bg-gradient-to-r from-slate-700 via-slate-600 to-zinc-600',
+      borderClass: 'border-slate-300',
+      hoverBorderClass: 'hover:border-slate-500',
+      badgeClass: 'bg-slate-100 text-slate-800 border-slate-300',
+      chipGradient: 'from-slate-300 via-slate-100 to-zinc-200',
+      chipBorder: 'border-slate-400',
+      accentText: 'text-slate-800',
+    },
+    {
+      gradientTop: 'bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-500',
+      borderClass: 'border-emerald-200/90',
+      hoverBorderClass: 'hover:border-emerald-400',
+      badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+      chipGradient: 'from-amber-300 to-yellow-100',
+      chipBorder: 'border-amber-400',
+      accentText: 'text-emerald-700',
+    },
+  ];
+  return palettes[Math.abs(hash) % palettes.length];
+}
 
 export function CardsView({
   accounts,
@@ -1098,32 +1258,56 @@ export function CardsView({
               const limit = card.creditLimitMinor || 0;
               const utilPct = limit > 0 ? (outstanding / limit) * 100 : 0;
               const isSelected = selectedCardId === card.id;
+              const theme = getCardVisualTheme(card);
+              const cycle = card.cardCycle;
+              const statementDateStr = cycle?.nextStatementDate
+                ? formatDisplayDateShort(cycle.nextStatementDate)
+                : formatOrdinalDay(card.statementDay || 15);
+              const dueDateStr = cycle?.nextDueDate
+                ? formatDisplayDateShort(cycle.nextDueDate)
+                : formatOrdinalDay(card.dueDay || 5);
+              const statementDue = cycle?.statementDueMinor || 0;
+              const unbilled =
+                cycle?.unbilledMinor ??
+                (outstanding > statementDue ? outstanding - statementDue : outstanding);
+              const availableLimit = Math.max(0, limit - outstanding);
 
               return (
                 <div
                   key={card.id}
-                  className={`rounded-xl border transition-all duration-200 p-4 relative flex flex-col justify-between cursor-pointer ${
+                  className={`rounded-2xl border transition-all duration-300 p-4.5 relative flex flex-col justify-between cursor-pointer credit-card-interactive group overflow-hidden ${
                     isSelected
-                      ? 'border-blue-600 bg-blue-50/30 ring-2 ring-blue-500/20 shadow-xs'
-                      : 'border-slate-200/90 bg-white hover:border-slate-300 hover:shadow-xs'
+                      ? 'border-blue-600 bg-blue-50/30 ring-2 ring-blue-500/20 shadow-md'
+                      : `${theme.borderClass} bg-white/95 ${theme.hoverBorderClass} shadow-2xs`
                   }`}
                   onClick={() => setSelectedCardId(isSelected ? null : card.id)}
                 >
-                  {/* Top Bar: EMV Chip & Details */}
+                  {/* Distinct Bank Brand Accent Top Bar with Hover Animation */}
+                  <div
+                    className={`absolute top-0 left-0 right-0 h-1.5 ${theme.gradientTop} group-hover:h-2.5 transition-all duration-300`}
+                  />
+
                   <div>
-                    <div className="flex items-center justify-between mb-3">
+                    {/* Top Bar: EMV Chip & Institution & Utilization Pill */}
+                    <div className="flex items-center justify-between mb-3 pt-1">
                       <div className="flex items-center gap-2">
-                        {/* EMV Chip Visual */}
-                        <div className="w-7 h-5 rounded bg-gradient-to-tr from-amber-300 to-amber-100 border border-amber-400/80 shadow-2xs flex items-center justify-center shrink-0">
-                          <div className="w-4 h-2.5 border border-amber-600/40 rounded-2xs" />
+                        {/* EMV Chip Visual matching brand tone */}
+                        <div
+                          className={`w-7 h-5 rounded bg-gradient-to-tr ${theme.chipGradient} border ${theme.chipBorder} shadow-2xs flex items-center justify-center shrink-0`}
+                        >
+                          <div className="w-4 h-2.5 border border-slate-700/30 rounded-2xs flex items-center justify-center">
+                            <div className="w-2 h-0.5 border-y border-slate-700/20" />
+                          </div>
                         </div>
-                        <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${theme.badgeClass}`}
+                        >
                           {card.institution || 'Credit Card'}
                         </span>
                       </div>
 
                       <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border tabular-nums ${
                           utilPct > 70
                             ? 'bg-rose-50 text-rose-800 border-rose-200'
                             : utilPct > 30
@@ -1135,31 +1319,102 @@ export function CardsView({
                       </span>
                     </div>
 
+                    {/* Card Title & Masked Number */}
                     <div className="font-bold text-sm text-slate-950 truncate">{card.name}</div>
-                    <div className="text-xs text-slate-400 font-mono mt-0.5">
+                    <div className="text-xs text-slate-400 font-mono mt-0.5 tracking-wider">
                       •••• •••• •••• {card.last4 || '0000'}
                     </div>
 
-                    {/* Balance & Limit */}
-                    <div className="mt-4 pt-3 border-t border-slate-100 space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-500">Current Spend:</span>
-                        <span className="font-bold text-rose-700 font-mono">{formatINR(outstanding)}</span>
+                    {/* Bill Date & Due Date Strip */}
+                    <div className="mt-3.5 pt-2.5 border-t border-slate-100 grid grid-cols-2 gap-2 bg-slate-50/80 rounded-xl p-2.5 border border-slate-200/60">
+                      <div>
+                        <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                          <Calendar className="w-3 h-3 text-slate-400" />
+                          <span>Bill Date</span>
+                        </div>
+                        <div className="text-xs font-bold text-slate-800 mt-0.5">
+                          {statementDateStr}
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-500">Credit Limit:</span>
-                        <span className="font-semibold text-slate-700 font-mono">{formatINR(limit)}</span>
+
+                      <div>
+                        <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                          <Clock className="w-3 h-3 text-blue-600" />
+                          <span>Due Date</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-xs font-bold text-slate-900">{dueDateStr}</span>
+                          {cycle && (
+                            <span
+                              className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded border ${
+                                cycle.daysUntilDue < 0 || cycle.isBillOverdue
+                                  ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                  : cycle.daysUntilDue <= 3
+                                    ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                    : 'bg-blue-100 text-blue-800 border-blue-200'
+                              }`}
+                            >
+                              {cycle.daysUntilDue < 0 ? 'Overdue' : `${cycle.daysUntilDue}d`}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    {/* Progress Bar */}
-                    <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${
-                          utilPct > 70 ? 'bg-rose-500' : utilPct > 30 ? 'bg-amber-500' : 'bg-emerald-500'
-                        }`}
-                        style={{ width: `${Math.min(100, Math.max(3, utilPct))}%` }}
-                      />
+                    {/* Detailed Balance Breakdown */}
+                    <div className="mt-3 space-y-2">
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-xs font-medium text-slate-500">Total Outstanding:</span>
+                        <span className="text-base font-extrabold font-mono text-rose-700 tabular-nums">
+                          {formatINR(outstanding)}
+                        </span>
+                      </div>
+
+                      {/* Statement Due vs Unbilled Spends Sub-Grid */}
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="bg-slate-50/70 rounded-lg p-2 border border-slate-100">
+                          <span className="text-[10px] text-slate-500 block">Statement Due</span>
+                          <span
+                            className={`font-mono font-bold tabular-nums ${
+                              statementDue > 0 ? 'text-amber-700' : 'text-slate-700'
+                            }`}
+                          >
+                            {formatINR(statementDue)}
+                          </span>
+                        </div>
+                        <div className="bg-slate-50/70 rounded-lg p-2 border border-slate-100">
+                          <span className="text-[10px] text-slate-500 block">Unbilled Spends</span>
+                          <span className="font-mono font-bold text-slate-700 tabular-nums">
+                            {formatINR(unbilled)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Available vs Limit */}
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
+                        <span>
+                          Avail:{' '}
+                          <strong className="text-slate-700 font-mono font-semibold">
+                            {formatINR(availableLimit)}
+                          </strong>
+                        </span>
+                        <span>
+                          Limit:{' '}
+                          <strong className="text-slate-700 font-mono font-semibold">
+                            {formatINR(limit)}
+                          </strong>
+                        </span>
+                      </div>
+
+                      {/* Utilization Progress Bar */}
+                      <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            utilPct > 70 ? 'bg-rose-500' : utilPct > 30 ? 'bg-amber-500' : 'bg-emerald-500'
+                          }`}
+                          style={{ width: `${Math.min(100, Math.max(3, utilPct))}%` }}
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -1211,47 +1466,110 @@ export function CardsView({
               const limit = card.creditLimitMinor || 0;
               const utilPct = limit > 0 ? (outstanding / limit) * 100 : 0;
               const isSelected = selectedCardId === card.id;
+              const theme = getCardVisualTheme(card);
+              const cycle = card.cardCycle;
+              const statementDateStr = cycle?.nextStatementDate
+                ? formatDisplayDateShort(cycle.nextStatementDate)
+                : formatOrdinalDay(card.statementDay || 15);
+              const dueDateStr = cycle?.nextDueDate
+                ? formatDisplayDateShort(cycle.nextDueDate)
+                : formatOrdinalDay(card.dueDay || 5);
+              const statementDue = cycle?.statementDueMinor || 0;
+              const unbilled =
+                cycle?.unbilledMinor ??
+                (outstanding > statementDue ? outstanding - statementDue : outstanding);
+              const availableLimit = Math.max(0, limit - outstanding);
 
               return (
                 <div
                   key={card.id}
                   onClick={() => setSelectedCardId(isSelected ? null : card.id)}
-                  className={`rounded-xl border transition-all p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer ${
+                  className={`rounded-xl border transition-all p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 cursor-pointer credit-card-interactive relative overflow-hidden ${
                     isSelected
                       ? 'border-blue-600 bg-blue-50/40 ring-2 ring-blue-500/20 shadow-xs'
-                      : 'border-slate-200/90 bg-white hover:border-slate-300 hover:bg-slate-50/50 shadow-2xs'
+                      : `${theme.borderClass} bg-white hover:bg-slate-50/50 shadow-2xs`
                   }`}
                 >
-                  <div className="flex items-center gap-3 min-w-[200px]">
-                    <div className="w-7 h-5 rounded bg-gradient-to-tr from-amber-300 to-amber-100 border border-amber-400/80 shadow-2xs flex items-center justify-center shrink-0">
-                      <div className="w-4 h-2.5 border border-amber-600/40 rounded-2xs" />
+                  {/* Left Animated Accent Pillar */}
+                  <div className={`absolute top-0 bottom-0 left-0 w-1.5 ${theme.gradientTop}`} />
+
+                  {/* Card Brand & Identification */}
+                  <div className="flex items-center gap-3 pl-1 min-w-[200px]">
+                    <div
+                      className={`w-7 h-5 rounded bg-gradient-to-tr ${theme.chipGradient} border ${theme.chipBorder} shadow-2xs flex items-center justify-center shrink-0`}
+                    >
+                      <div className="w-4 h-2.5 border border-slate-700/30 rounded-2xs" />
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
                         <span className="font-bold text-sm text-slate-900">{card.name}</span>
                         <span className="font-mono text-xs text-slate-400">••{card.last4 || '0000'}</span>
                       </div>
-                      <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">
+                      <span
+                        className={`text-[10px] font-bold px-1.5 py-0.2 rounded border uppercase tracking-wider inline-block mt-0.5 ${theme.badgeClass}`}
+                      >
                         {card.institution || 'Credit Card'}
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-6 px-1">
+                  {/* Metrics & Dates Grid */}
+                  <div className="flex flex-wrap items-center gap-5 px-1">
+                    {/* Bill Date & Due Date */}
+                    <div className="text-xs">
+                      <div className="flex items-center gap-1 text-[10px] uppercase font-semibold text-slate-400">
+                        <Calendar className="w-3 h-3" />
+                        <span>Bill Date</span>
+                      </div>
+                      <span className="text-xs font-bold text-slate-800">{statementDateStr}</span>
+                    </div>
+
+                    <div className="text-xs">
+                      <div className="flex items-center gap-1 text-[10px] uppercase font-semibold text-slate-400">
+                        <Clock className="w-3 h-3 text-blue-600" />
+                        <span>Payment Due</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-slate-900">{dueDateStr}</span>
+                        {cycle && (
+                          <span
+                            className={`text-[10px] font-extrabold px-1.5 py-0.2 rounded border ${
+                              cycle.daysUntilDue < 0 || cycle.isBillOverdue
+                                ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                : cycle.daysUntilDue <= 3
+                                  ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                  : 'bg-blue-100 text-blue-800 border-blue-200'
+                            }`}
+                          >
+                            {cycle.daysUntilDue < 0 ? 'Overdue' : `${cycle.daysUntilDue}d`}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Outstanding & Split Breakdown */}
                     <div>
-                      <span className="text-[10px] uppercase font-medium text-slate-400 block">Current Spend</span>
+                      <span className="text-[10px] uppercase font-semibold text-slate-400 block">Outstanding</span>
                       <span className="text-sm font-bold font-mono text-rose-700 tabular-nums">
                         {formatINR(outstanding)}
                       </span>
-                    </div>
-
-                    <div>
-                      <span className="text-[10px] uppercase font-medium text-slate-400 block">Credit Limit</span>
-                      <span className="text-sm font-medium font-mono text-slate-700 tabular-nums">
-                        {formatINR(limit)}
+                      <span className="text-[10px] text-slate-400 font-mono block">
+                        Stmt: {formatINR(statementDue)} · Unbilled: {formatINR(unbilled)}
                       </span>
                     </div>
 
+                    {/* Credit Limit & Available */}
+                    <div>
+                      <span className="text-[10px] uppercase font-semibold text-slate-400 block">Credit Limit</span>
+                      <span className="text-sm font-medium font-mono text-slate-700 tabular-nums">
+                        {formatINR(limit)}
+                      </span>
+                      <span className="text-[10px] text-emerald-700 font-mono block">
+                        Avail: {formatINR(availableLimit)}
+                      </span>
+                    </div>
+
+                    {/* Utilization Bar */}
                     <div className="w-28 hidden sm:block">
                       <div className="flex justify-between text-[10px] font-mono mb-0.5">
                         <span className="text-slate-500">Utilization</span>
@@ -1266,26 +1584,10 @@ export function CardsView({
                         />
                       </div>
                     </div>
-
-                    {card.cardCycle && (
-                      <div className="text-xs text-slate-600 hidden lg:block border-l border-slate-100 pl-4">
-                        <span className="text-[10px] text-slate-400 block">Cycle Due</span>
-                        <span
-                          className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
-                            card.cardCycle.daysUntilDue <= 3
-                              ? 'bg-rose-50 text-rose-800 border-rose-200'
-                              : 'bg-blue-50 text-blue-800 border-blue-200'
-                          }`}
-                        >
-                          {card.cardCycle.daysUntilDue < 0
-                            ? 'Overdue'
-                            : `Due in ${card.cardCycle.daysUntilDue}d`}
-                        </span>
-                      </div>
-                    )}
                   </div>
 
-                  <div className="flex items-center gap-1.5 self-end md:self-auto shrink-0">
+                  {/* Actions */}
+                  <div className="flex items-center gap-1.5 self-end lg:self-auto shrink-0">
                     <button
                       type="button"
                       onClick={(e) => {
