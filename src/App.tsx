@@ -15,7 +15,6 @@ import {
   Plus,
   Search,
   WalletCards,
-  Wifi,
 } from 'lucide-react';
 import {
   api,
@@ -49,13 +48,7 @@ import { NotesView } from './workspaces/NotesView.tsx';
 import { VaultView } from './workspaces/VaultView.tsx';
 import { AlertsSettingsModal } from './workspaces/AlertsSettingsModal.tsx';
 import type { Scope } from '../shared/ledger-core.ts';
-import { APP_LANGUAGES, UI_STRINGS, type AppLanguage } from '../shared/i18n.ts';
-
-const SHORT_LANG_LABEL: Record<AppLanguage, string> = {
-  en: 'EN',
-  hi: 'हिं',
-  bn: 'বাং',
-};
+import { UI_STRINGS } from '../shared/i18n.ts';
 
 export function App() {
   const [activeTab, setActiveTab] = useState<WorkspaceId>('dashboard');
@@ -249,6 +242,18 @@ export function App() {
     }
   };
 
+  const handleCleanData = async () => {
+    try {
+      notify('Resetting database to clean slate...');
+      const res = await fetch('/api/system/clean', { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to clean data');
+      notify('Database cleared to pristine clean slate!');
+      await loadAll();
+    } catch {
+      notify('Failed to clean data', 'err');
+    }
+  };
+
   const dict = UI_STRINGS[preferences.systemLanguage];
 
   const workspaceTabs: AnimatedTabItem<WorkspaceId>[] = [
@@ -313,34 +318,6 @@ export function App() {
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-2">
-              {/* System Language Switcher */}
-              <div
-                role="group"
-                aria-label={dict.systemLanguage}
-                className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-[11px]"
-              >
-                {APP_LANGUAGES.map((code) => {
-                  const active = preferences.systemLanguage === code;
-                  return (
-                    <button
-                      key={code}
-                      type="button"
-                      onClick={async () => {
-                        const next = await api.updatePreferences({ systemLanguage: code });
-                        setPreferences(next);
-                        const scopeParam = scopeFilter === 'all' ? undefined : scopeFilter;
-                        void api.getAgentBriefing(scopeParam).then(setBriefing).catch(() => {});
-                      }}
-                      className={`rounded-md px-1.5 py-1 font-semibold transition-colors cursor-pointer ${
-                        active ? 'bg-white text-slate-950 shadow-2xs' : 'text-slate-500 hover:text-slate-900'
-                      }`}
-                    >
-                      {SHORT_LANG_LABEL[code]}
-                    </button>
-                  );
-                })}
-              </div>
-
               <button
                 type="button"
                 onClick={() => setPrivacyMasked((v) => !v)}
@@ -387,17 +364,6 @@ export function App() {
                 </kbd>
               </button>
 
-              {/* Local Wi-Fi Encrypted Sync */}
-              <button
-                type="button"
-                onClick={() => setLanSyncOpen(true)}
-                title="Local Wi-Fi Encrypted Sync"
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
-              >
-                <Wifi className="h-3.5 w-3.5 text-emerald-600" />
-                <span className="hidden lg:inline text-xs font-medium">Wi-Fi Sync</span>
-              </button>
-
               {/* Supabase Cloud & Multi-Device Sync */}
               <button
                 type="button"
@@ -421,23 +387,12 @@ export function App() {
               <button
                 type="button"
                 onClick={() => setAlertsOpen(true)}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
+                title="Alerts & Notifications"
+                className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-600 hover:bg-slate-50 cursor-pointer shadow-2xs"
               >
-                <span
-                  className={`h-2 w-2 rounded-full ${
-                    bridgeState.status === 'connected'
-                      ? 'bg-emerald-500'
-                      : bridgeState.status === 'qr_ready'
-                        ? 'bg-amber-500'
-                        : 'bg-slate-400'
-                  }`}
-                />
-                <span className="hidden lg:inline">
-                  {bridgeState.status === 'connected' ? dict.whatsappLinked : dict.whatsappBridge}
-                </span>
                 <Bell className="h-3.5 w-3.5 text-slate-500" />
                 {(dashboard?.unreadInAppCount ?? 0) > 0 && (
-                  <span className="rounded-full bg-red-600 px-1.5 text-[10px] font-semibold text-white tabular-nums">
+                  <span className="rounded-full bg-blue-600 px-1.5 text-[10px] font-semibold text-white tabular-nums">
                     {dashboard?.unreadInAppCount}
                   </span>
                 )}
@@ -671,6 +626,7 @@ export function App() {
         onOpenLanSync={() => setLanSyncOpen(true)}
         onOpenCloudSync={() => setCloudSyncOpen(true)}
         onSeedData={handleSeedDemoData}
+        onCleanData={handleCleanData}
       />
 
       <AgentDrawer

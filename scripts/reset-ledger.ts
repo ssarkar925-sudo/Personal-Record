@@ -32,19 +32,20 @@ withTransaction(db, () => {
 
   // Clear transactional tables
   db.exec(`
-    DELETE FROM receipt_attachments;
+    DELETE FROM transaction_attachments;
     DELETE FROM note_attachments;
-    DELETE FROM savings_contributions;
+    DELETE FROM note_checklist_items;
     DELETE FROM savings_goals;
-    DELETE FROM investment_dividends;
     DELETE FROM investments;
     DELETE FROM category_budgets;
     DELETE FROM scope_budgets;
-    DELETE FROM person_due_settlements;
+    DELETE FROM due_settlements;
     DELETE FROM people_dues;
     DELETE FROM loan_payments;
     DELETE FROM loans;
     DELETE FROM recurring_bills;
+    DELETE FROM alert_deliveries;
+    DELETE FROM agent_history;
     DELETE FROM transactions;
     DELETE FROM notes;
     DELETE FROM category_rules;
@@ -58,10 +59,10 @@ withTransaction(db, () => {
   } else {
     console.log(`[Ledger Reset] Clean slate achieved. Zero transactions, accounts, or dues.`);
   }
-
-  // Vacuum & WAL checkpoint
-  db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
-  db.exec('VACUUM;');
 });
+
+// Vacuum & WAL checkpoint must run outside of transaction in SQLite
+db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+db.exec('VACUUM;');
 
 console.log(`[Ledger Reset] Done! Database is optimized and ready.`);

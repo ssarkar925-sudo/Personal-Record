@@ -303,6 +303,32 @@ export function createAppServer(opts: {
         const summary = seedFinancialData(db);
         return sendJson(res, 200, { ok: true, data: summary });
       }
+      if (method === 'POST' && pathname === '/api/system/clean') {
+        withTransaction(db, () => {
+          db.exec(`
+            DELETE FROM transaction_attachments;
+            DELETE FROM note_attachments;
+            DELETE FROM note_checklist_items;
+            DELETE FROM savings_goals;
+            DELETE FROM investments;
+            DELETE FROM category_budgets;
+            DELETE FROM scope_budgets;
+            DELETE FROM due_settlements;
+            DELETE FROM people_dues;
+            DELETE FROM loan_payments;
+            DELETE FROM loans;
+            DELETE FROM recurring_bills;
+            DELETE FROM alert_deliveries;
+            DELETE FROM agent_history;
+            DELETE FROM transactions;
+            DELETE FROM notes;
+            DELETE FROM category_rules;
+            DELETE FROM accounts;
+          `);
+        });
+        db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+        return sendJson(res, 200, { ok: true, message: 'Clean slate achieved.' });
+      }
 
       // Health
       if (method === 'GET' && pathname === '/api/health') {

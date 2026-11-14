@@ -14,6 +14,7 @@ import {
   Plus,
   Search,
   Sparkles,
+  Trash2,
   WalletCards,
   Wifi,
   X,
@@ -37,6 +38,7 @@ export interface CommandPaletteProps {
   onOpenLanSync?: () => void;
   onOpenCloudSync?: () => void;
   onSeedData?: () => void;
+  onCleanData?: () => void;
 }
 
 interface CommandItem {
@@ -65,6 +67,7 @@ export function CommandPalette({
   onOpenLanSync,
   onOpenCloudSync,
   onSeedData,
+  onCleanData,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -178,6 +181,19 @@ export function CommandPalette({
         keywords: ['seed', 'demo', 'sample', 'example', 'populate', 'test data'],
         action: () => {
           if (onSeedData) onSeedData();
+        },
+      },
+      {
+        id: 'action-clean-data',
+        label: 'Clear All Demo Data (Pristine Clean Slate)',
+        description: 'Wipe all sample/demo records and start fresh with empty personal ledger',
+        category: 'quickActions',
+        icon: <Trash2 className="h-4 w-4 text-red-600" />,
+        keywords: ['clear', 'clean', 'wipe', 'delete', 'reset', 'pristine', 'empty', 'junk', 'remove demo'],
+        action: () => {
+          if (confirm('Are you sure you want to clear all transactions, accounts, and demo records to start fresh?')) {
+            if (onCleanData) onCleanData();
+          }
         },
       },
 

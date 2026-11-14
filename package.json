@@ -11,6 +11,7 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "db:backup": "node --experimental-strip-types scripts/backup-db.ts",
+    "db:test": "node --experimental-strip-types scripts/test-local-db.ts",
     "backup:gdrive": "powershell -ExecutionPolicy Bypass -File scripts/sync-gdrive.ps1",
     "db:reset:clean": "node --experimental-strip-types scripts/reset-ledger.ts clean",
     "db:reset:seed": "node --experimental-strip-types scripts/reset-ledger.ts seed",
