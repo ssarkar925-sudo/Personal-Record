@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BookmarkPlus,
   Calendar,
   Copy,
   CreditCard,
@@ -12,6 +13,7 @@ import {
   Plus,
   Search,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Split,
   Trash2,
@@ -66,19 +68,26 @@ interface RapidSpendRow {
   note: string;
 }
 
-const FREQUENT_MERCHANTS: Array<{ name: string; category: string; scope: Scope }> = [
-  { name: 'Amazon.in', category: 'Shopping', scope: 'personal' },
-  { name: 'Swiggy', category: 'Food & Dining', scope: 'personal' },
-  { name: 'Zomato', category: 'Food & Dining', scope: 'personal' },
-  { name: 'Blinkit', category: 'Groceries', scope: 'family' },
-  { name: 'Zepto', category: 'Groceries', scope: 'family' },
-  { name: 'Uber', category: 'Travel & Fuel', scope: 'personal' },
-  { name: 'Shell Petrol', category: 'Travel & Fuel', scope: 'personal' },
-  { name: 'MakeMyTrip', category: 'Travel & Fuel', scope: 'personal' },
-  { name: 'Apollo Pharmacy', category: 'Medical & Health', scope: 'family' },
-  { name: 'Netflix', category: 'Subscriptions', scope: 'family' },
-  { name: 'Google Cloud / AWS', category: 'Software & SaaS', scope: 'business' },
-  { name: 'Flipkart', category: 'Shopping', scope: 'personal' },
+export interface QuickFillMerchant {
+  id: string;
+  name: string;
+  category: string;
+  scope: Scope;
+}
+
+const DEFAULT_QUICK_MERCHANTS: QuickFillMerchant[] = [
+  { id: 'm-1', name: 'Amazon.in', category: 'Shopping', scope: 'personal' },
+  { id: 'm-2', name: 'Swiggy', category: 'Food & Dining', scope: 'personal' },
+  { id: 'm-3', name: 'Zomato', category: 'Food & Dining', scope: 'personal' },
+  { id: 'm-4', name: 'Blinkit', category: 'Groceries', scope: 'family' },
+  { id: 'm-5', name: 'Zepto', category: 'Groceries', scope: 'family' },
+  { id: 'm-6', name: 'Uber', category: 'Travel & Fuel', scope: 'personal' },
+  { id: 'm-7', name: 'Shell Petrol', category: 'Travel & Fuel', scope: 'personal' },
+  { id: 'm-8', name: 'MakeMyTrip', category: 'Travel & Fuel', scope: 'personal' },
+  { id: 'm-9', name: 'Apollo Pharmacy', category: 'Medical & Health', scope: 'family' },
+  { id: 'm-10', name: 'Netflix', category: 'Subscriptions', scope: 'family' },
+  { id: 'm-11', name: 'Google Cloud / AWS', category: 'Software & SaaS', scope: 'business' },
+  { id: 'm-12', name: 'Flipkart', category: 'Shopping', scope: 'personal' },
 ];
 
 export function CardsView({
@@ -158,6 +167,23 @@ export function CardsView({
   // 3. SMS Alert Parser State
   const [smsText, setSmsText] = useState('');
   const [isParsingSms, setIsParsingSms] = useState(false);
+
+  // 3b. Custom Quick-Fill Merchants State & Persistence
+  const [quickMerchants, setQuickMerchants] = useState<QuickFillMerchant[]>(() => {
+    try {
+      const raw = localStorage.getItem('pl_custom_quick_merchants_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return DEFAULT_QUICK_MERCHANTS;
+  });
+
+  const [manageMerchantsOpen, setManageMerchantsOpen] = useState(false);
+  const [newMName, setNewMName] = useState('');
+  const [newMCat, setNewMCat] = useState('Shopping');
+  const [newMScope, setNewMScope] = useState<Scope>('personal');
 
   // 4. Detailed Spend Modal State
   const [detailedModalOpen, setDetailedModalOpen] = useState(false);
@@ -315,19 +341,98 @@ export function CardsView({
     setRapidRows((prev) => (prev.length > 1 ? prev.filter((r) => r.id !== id) : prev));
   };
 
-  const handleApplyMerchantChip = (rowIndex: number, merchant: (typeof FREQUENT_MERCHANTS)[number]) => {
-    setRapidRows((prev) =>
-      prev.map((r, i) =>
-        i === rowIndex
-          ? {
-              ...r,
-              party: merchant.name,
-              category: merchant.category,
-              scope: merchant.scope,
-            }
-          : r,
-      ),
-    );
+  const saveQuickMerchants = (next: QuickFillMerchant[]) => {
+    setQuickMerchants(next);
+    try {
+      localStorage.setItem('pl_custom_quick_merchants_v1', JSON.stringify(next));
+    } catch {}
+  };
+
+  const handleApplyMerchantChip = (merchant: QuickFillMerchant) => {
+    // If the last row is completely blank (no party and no amount), fill it.
+    // Otherwise, append a new row with this merchant pre-filled!
+    setRapidRows((prev) => {
+      const lastRow = prev[prev.length - 1];
+      if (lastRow && !lastRow.party && !lastRow.amountStr) {
+        return prev.map((r, i) =>
+          i === prev.length - 1
+            ? {
+                ...r,
+                party: merchant.name,
+                category: merchant.category,
+                scope: merchant.scope,
+              }
+            : r,
+        );
+      }
+      return [
+        ...prev,
+        {
+          id: `row-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          occurredAt: todayISO(),
+          cardId: selectedCardId || creditCards[0]?.id || '',
+          amountStr: '',
+          party: merchant.name,
+          category: merchant.category,
+          scope: merchant.scope,
+          note: '',
+        },
+      ];
+    });
+    onNotify(`Applied ${merchant.name} (${merchant.category})!`);
+  };
+
+  const handleAddCustomMerchant = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newMName.trim()) {
+      onNotify('Please enter a merchant name', 'err');
+      return;
+    }
+    const nameTrimmed = newMName.trim();
+    if (quickMerchants.some((m) => m.name.toLowerCase() === nameTrimmed.toLowerCase())) {
+      onNotify('A preset with this merchant name already exists', 'err');
+      return;
+    }
+    const newItem: QuickFillMerchant = {
+      id: `qm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: nameTrimmed,
+      category: newMCat,
+      scope: newMScope,
+    };
+    saveQuickMerchants([newItem, ...quickMerchants]);
+    setNewMName('');
+    onNotify(`Added custom merchant "${nameTrimmed}" to quick-fill!`);
+  };
+
+  const handleDeleteQuickMerchant = (id: string) => {
+    const next = quickMerchants.filter((m) => m.id !== id);
+    saveQuickMerchants(next);
+    onNotify('Preset removed');
+  };
+
+  const handleResetMerchantsToDefault = () => {
+    saveQuickMerchants(DEFAULT_QUICK_MERCHANTS);
+    onNotify('Reset quick-fill merchants to defaults');
+  };
+
+  const handleSaveRowAsMerchantPreset = (row: RapidSpendRow) => {
+    if (!row.party.trim()) {
+      onNotify('Row has no merchant name to save', 'err');
+      return;
+    }
+    const nameTrimmed = row.party.trim();
+    if (quickMerchants.some((m) => m.name.toLowerCase() === nameTrimmed.toLowerCase())) {
+      onNotify(`Preset for "${nameTrimmed}" already exists`, 'ok');
+      return;
+    }
+    const newItem: QuickFillMerchant = {
+      id: `qm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: nameTrimmed,
+      category: row.category || 'Shopping',
+      scope: row.scope || 'personal',
+    };
+    saveQuickMerchants([newItem, ...quickMerchants]);
+    onNotify(`Saved "${nameTrimmed}" as a quick-fill preset! ⭐`);
   };
 
   // Commit All Rapid Rows
@@ -1138,13 +1243,25 @@ export function CardsView({
 
                       {/* Merchant / Party */}
                       <td className="p-2">
-                        <input
-                          type="text"
-                          placeholder="e.g. Swiggy, Amazon, Shell"
-                          value={row.party}
-                          onChange={(e) => handleUpdateRapidRow(row.id, { party: e.target.value })}
-                          className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 focus:border-blue-500 focus:outline-hidden"
-                        />
+                        <div className="relative flex items-center">
+                          <input
+                            type="text"
+                            placeholder="e.g. Swiggy, Amazon, Shell"
+                            value={row.party}
+                            onChange={(e) => handleUpdateRapidRow(row.id, { party: e.target.value })}
+                            className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 pr-7 text-xs text-slate-800 focus:border-blue-500 focus:outline-hidden"
+                          />
+                          {row.party.trim().length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleSaveRowAsMerchantPreset(row)}
+                              title={`Save "${row.party.trim()}" as a Quick-Fill Preset`}
+                              className="absolute right-1 text-slate-400 hover:text-blue-600 p-0.5 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+                            >
+                              <BookmarkPlus className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
 
                       {/* Category */}
@@ -1214,16 +1331,27 @@ export function CardsView({
             {/* Quick Merchant Chips */}
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
               <span className="text-[11px] font-semibold text-slate-500">Quick fill merchant:</span>
-              {FREQUENT_MERCHANTS.slice(0, 8).map((m) => (
+              {quickMerchants.map((m) => (
                 <button
-                  key={m.name}
+                  key={m.id}
                   type="button"
-                  onClick={() => handleApplyMerchantChip(rapidRows.length - 1, m)}
-                  className="px-2 py-0.5 text-[11px] font-medium rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer border border-slate-200/60"
+                  onClick={() => handleApplyMerchantChip(m)}
+                  title={`Click to fill or append row: ${m.name} (${m.category})`}
+                  className="px-2 py-0.5 text-[11px] font-medium rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer border border-slate-200/60 inline-flex items-center gap-1"
                 >
                   +{m.name}
                 </button>
               ))}
+
+              <button
+                type="button"
+                onClick={() => setManageMerchantsOpen(true)}
+                className="px-2 py-0.5 text-[11px] font-semibold rounded-md bg-blue-50 hover:bg-blue-100 text-blue-700 transition-colors cursor-pointer border border-blue-200/80 inline-flex items-center gap-1"
+                title="Customize quick-fill merchants"
+              >
+                <SlidersHorizontal className="h-3 w-3" />
+                <span>Customize ({quickMerchants.length})</span>
+              </button>
             </div>
 
             {/* Footer Action Buttons */}
@@ -1545,7 +1673,17 @@ export function CardsView({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <FieldLabel htmlFor="merchantInput">Merchant / Store / Payee *</FieldLabel>
+              <div className="flex items-center justify-between">
+                <FieldLabel htmlFor="merchantInput">Merchant / Store / Payee *</FieldLabel>
+                <button
+                  type="button"
+                  onClick={() => setManageMerchantsOpen(true)}
+                  className="text-[11px] text-blue-600 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <SlidersHorizontal className="h-2.5 w-2.5" />
+                  <span>Presets</span>
+                </button>
+              </div>
               <Input
                 id="merchantInput"
                 type="text"
@@ -1554,6 +1692,23 @@ export function CardsView({
                 onChange={(e) => setTxParty(e.target.value)}
                 required
               />
+              {/* Quick suggestions */}
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {quickMerchants.slice(0, 8).map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => {
+                      setTxParty(m.name);
+                      setTxCategory(m.category);
+                      setTxScope(m.scope);
+                    }}
+                    className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200/60 cursor-pointer"
+                  >
+                    {m.name}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div>
@@ -1970,6 +2125,132 @@ export function CardsView({
         message="Are you sure you want to delete this credit card? Note: you can only delete cards that have 0 transactions."
         confirmLabel="Delete Card"
       />
+
+      {/* G. Customize Quick-Fill Merchants Modal */}
+      <Dialog
+        open={manageMerchantsOpen}
+        onClose={() => setManageMerchantsOpen(false)}
+        title="Customize Quick-Fill Merchants"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-slate-600">
+            Define your personalized frequent merchants for high-volume daily swipes. Clicking a preset in the rapid logger auto-fills the merchant, category, and scope instantly.
+          </p>
+
+          {/* Add New Preset Form */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleAddCustomMerchant();
+            }}
+            className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-3"
+          >
+            <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+              <Plus className="h-3.5 w-3.5 text-blue-600" />
+              <span>Add Custom Merchant Preset</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div>
+                <FieldLabel htmlFor="newMName">Merchant Name *</FieldLabel>
+                <Input
+                  id="newMName"
+                  type="text"
+                  placeholder="e.g. D-Mart, Zepto, Cult.fit"
+                  value={newMName}
+                  onChange={(e) => setNewMName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <FieldLabel htmlFor="newMCat">Default Category</FieldLabel>
+                <CategorySelect
+                  id="newMCat"
+                  options={getCategoryOptions(newMScope, 'expense')}
+                  value={newMCat}
+                  onChange={setNewMCat}
+                />
+              </div>
+
+              <div>
+                <FieldLabel htmlFor="newMScope">Default Scope</FieldLabel>
+                <Select
+                  id="newMScope"
+                  value={newMScope}
+                  onChange={(e) => setNewMScope(e.target.value as Scope)}
+                >
+                  <option value="personal">Personal</option>
+                  <option value="business">Business</option>
+                  <option value="family">Family</option>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <Button type="submit" variant="primary" size="sm" className="text-xs">
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                <span>Add Preset</span>
+              </Button>
+            </div>
+          </form>
+
+          {/* Current Presets List */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800">
+                Active Presets ({quickMerchants.length})
+              </span>
+              <button
+                type="button"
+                onClick={handleResetMerchantsToDefault}
+                className="text-[11px] text-slate-500 hover:text-rose-600 hover:underline cursor-pointer"
+              >
+                Reset to Standard Defaults
+              </button>
+            </div>
+
+            <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 divide-y divide-slate-100 border border-slate-200 rounded-xl bg-white p-2">
+              {quickMerchants.map((m) => (
+                <div
+                  key={m.id}
+                  className="flex items-center justify-between py-1.5 px-2 hover:bg-slate-50 rounded-md transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900">{m.name}</span>
+                    <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-slate-100 text-slate-600 border border-slate-200/60">
+                      {m.category}
+                    </span>
+                    <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-blue-50 text-blue-700 capitalize border border-blue-200/60">
+                      {m.scope}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteQuickMerchant(m.id)}
+                    className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+                    title={`Delete ${m.name}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2 border-t border-slate-100">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setManageMerchantsOpen(false)}
+            >
+              Done
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }
