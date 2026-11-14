@@ -32,6 +32,7 @@ import { LoanContextHud } from './loans-dues/LoanContextHud.tsx';
 import { BentoLoansGrid } from './loans-dues/BentoLoansGrid.tsx';
 import { SettlementStream } from './loans-dues/SettlementStream.tsx';
 import type {
+  LoansDuesSortOption,
   LoansTab,
   LoansTriageFilter,
   LoansWorkstationLayout,
@@ -60,6 +61,7 @@ export function LoansDuesView({
   const [activeTab, setActiveTab] = useState<LoansTab>('all');
   const [triageFilter, setTriageFilter] = useState<LoansTriageFilter>('all');
   const [workstationLayout, setWorkstationLayout] = useState<LoansWorkstationLayout>('split');
+  const [sortOption, setSortOption] = useState<LoansDuesSortOption>('remaining_desc');
   const [selectedItem, setSelectedItem] = useState<SelectedLoansItem>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [scopeFilter, setScopeFilter] = useState<Scope | 'all'>('all');
@@ -218,7 +220,7 @@ export function LoansDuesView({
 
   // Scalable Filtered & Sorted Lists
   const filteredLoans = useMemo(() => {
-    return loans.filter((l) => {
+    const list = loans.filter((l) => {
       if (scopeFilter !== 'all' && l.scope !== scopeFilter) return false;
       if (triageFilter === 'settled' && l.status !== 'closed') return false;
       if (triageFilter === 'you_owe' && l.direction !== 'borrowed') return false;
@@ -238,10 +240,18 @@ export function LoansDuesView({
       }
       return true;
     });
-  }, [loans, scopeFilter, triageFilter, searchQuery, currentDayOfMonth]);
+
+    return list.sort((a, b) => {
+      if (sortOption === 'remaining_desc') return b.remainingMinor - a.remainingMinor;
+      if (sortOption === 'remaining_asc') return a.remainingMinor - b.remainingMinor;
+      if (sortOption === 'next_due') return (a.nextDueDate || '9999').localeCompare(b.nextDueDate || '9999');
+      if (sortOption === 'name_asc') return a.name.localeCompare(b.name);
+      return 0;
+    });
+  }, [loans, scopeFilter, triageFilter, searchQuery, currentDayOfMonth, sortOption]);
 
   const filteredDues = useMemo(() => {
-    return dues.filter((d) => {
+    const list = dues.filter((d) => {
       if (scopeFilter !== 'all' && d.scope !== scopeFilter) return false;
       if (triageFilter === 'settled' && d.status !== 'settled') return false;
       if (triageFilter === 'bank_loans') return false;
@@ -263,7 +273,15 @@ export function LoansDuesView({
       }
       return true;
     });
-  }, [dues, scopeFilter, triageFilter, searchQuery, currentDayOfMonth]);
+
+    return list.sort((a, b) => {
+      if (sortOption === 'remaining_desc') return b.remainingMinor - a.remainingMinor;
+      if (sortOption === 'remaining_asc') return a.remainingMinor - b.remainingMinor;
+      if (sortOption === 'next_due') return (a.dueDate || '9999').localeCompare(b.dueDate || '9999');
+      if (sortOption === 'name_asc') return a.personName.localeCompare(b.personName);
+      return 0;
+    });
+  }, [dues, scopeFilter, triageFilter, searchQuery, currentDayOfMonth, sortOption]);
 
   const filteredGoals = useMemo(() => {
     const list = goalsSummary?.goals || [];
@@ -644,6 +662,8 @@ export function LoansDuesView({
             activeTab={activeTab}
             triageFilter={triageFilter}
             workstationLayout={workstationLayout}
+            sortOption={sortOption}
+            onSortChange={setSortOption}
             scopeFilter={scopeFilter}
             onScopeChange={(s) => setScopeFilter(s)}
             urgentDueCount={urgentDueCount}

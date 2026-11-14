@@ -20,12 +20,14 @@ import type {
   SavingsGoalRecord,
 } from '../../lib/api.ts';
 import type {
+  LoansDuesSortOption,
   LoansTab,
   LoansTriageFilter,
   LoansWorkstationLayout,
   SelectedLoansItem,
 } from './types.ts';
 import type { Scope } from '../../../shared/ledger-core.ts';
+import { SortSelect } from '../../components/ui/Primitives.tsx';
 
 export interface LoansDuesHubProps {
   loans: LoanRecord[];
@@ -39,6 +41,8 @@ export interface LoansDuesHubProps {
   activeTab: LoansTab;
   triageFilter: LoansTriageFilter;
   workstationLayout: LoansWorkstationLayout;
+  sortOption?: LoansDuesSortOption;
+  onSortChange?: (sort: LoansDuesSortOption) => void;
   urgentDueCount: number;
   totalYouOweCount: number;
   totalOwedToYouCount: number;
@@ -68,6 +72,8 @@ export function LoansDuesHub({
   activeTab,
   triageFilter,
   workstationLayout,
+  sortOption = 'remaining_desc',
+  onSortChange,
   urgentDueCount,
   totalYouOweCount,
   totalOwedToYouCount,
@@ -256,32 +262,48 @@ export function LoansDuesHub({
             ))}
           </div>
 
-          {/* View Mode Toggle: Split Workstation vs Bento Grid */}
-          <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg">
-            <button
-              type="button"
-              onClick={() => onLayoutChange('split')}
-              className={`p-1 rounded transition-colors cursor-pointer ${
-                workstationLayout === 'split'
-                  ? 'bg-white text-slate-900 shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-              title="Split Dual-Pane Workstation"
-            >
-              <Split className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => onLayoutChange('bento')}
-              className={`p-1 rounded transition-colors cursor-pointer ${
-                workstationLayout === 'bento'
-                  ? 'bg-white text-slate-900 shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-              title="Executive Bento Grid"
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-            </button>
+          <div className="flex items-center gap-2">
+            {onSortChange && (
+              <SortSelect
+                label="Sort"
+                value={sortOption}
+                onChange={(v) => onSortChange(v as LoansDuesSortOption)}
+                options={[
+                  { value: 'remaining_desc', label: 'Highest Amount' },
+                  { value: 'remaining_asc', label: 'Lowest Amount' },
+                  { value: 'next_due', label: 'Due Date' },
+                  { value: 'name_asc', label: 'Name (A-Z)' },
+                ]}
+              />
+            )}
+
+            {/* View Mode Toggle: Split Workstation vs Bento Grid */}
+            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg">
+              <button
+                type="button"
+                onClick={() => onLayoutChange('split')}
+                className={`p-1 rounded transition-colors cursor-pointer ${
+                  workstationLayout === 'split'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-900'
+                }`}
+                title="Split Dual-Pane Workstation"
+              >
+                <Split className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onLayoutChange('bento')}
+                className={`p-1 rounded transition-colors cursor-pointer ${
+                  workstationLayout === 'bento'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-900'
+                }`}
+                title="Executive Bento Grid"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       </div>

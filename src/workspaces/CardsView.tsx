@@ -37,6 +37,8 @@ import {
   FieldLabel,
   Input,
   Select,
+  SortSelect,
+  ViewModeToggle,
 } from '../components/ui/Primitives.tsx';
 import {
   getCategoryOptions,
@@ -117,6 +119,34 @@ export function CardsView({
 
   // Active Card Filter (null = all cards)
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [cardViewMode, setCardViewMode] = useState<'grid' | 'list'>('grid');
+  const [cardSort, setCardSort] = useState<
+    'debt_desc' | 'debt_asc' | 'util_desc' | 'due_date' | 'limit_desc' | 'name_asc'
+  >('debt_desc');
+
+  // Sorted Credit Cards according to selected sort option
+  const sortedCreditCards = useMemo(() => {
+    return [...creditCards].sort((a, b) => {
+      const debtA = Math.abs(a.currentBalanceMinor || 0);
+      const debtB = Math.abs(b.currentBalanceMinor || 0);
+      const limitA = a.creditLimitMinor || 0;
+      const limitB = b.creditLimitMinor || 0;
+      const utilA = limitA > 0 ? (debtA / limitA) * 100 : 0;
+      const utilB = limitB > 0 ? (debtB / limitB) * 100 : 0;
+
+      if (cardSort === 'debt_desc') return debtB - debtA;
+      if (cardSort === 'debt_asc') return debtA - debtB;
+      if (cardSort === 'util_desc') return utilB - utilA;
+      if (cardSort === 'limit_desc') return limitB - limitA;
+      if (cardSort === 'name_asc') return a.name.localeCompare(b.name);
+      if (cardSort === 'due_date') {
+        const dueA = a.cardCycle?.daysUntilDue ?? 999;
+        const dueB = b.cardCycle?.daysUntilDue ?? 999;
+        return dueA - dueB;
+      }
+      return 0;
+    });
+  }, [creditCards, cardSort]);
 
   // Filters for Spend Feed
   const [searchQuery, setSearchQuery] = useState('');
@@ -1004,21 +1034,49 @@ export function CardsView({
 
       {/* 3. Cards Carousel & Deck */}
       <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-2xs space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-blue-600" />
             <h2 className="text-sm font-bold text-slate-950 uppercase tracking-wider">Your Credit Cards</h2>
             <span className="text-xs text-slate-400 font-normal">({creditCards.length})</span>
           </div>
 
-          {selectedCardId && (
-            <button
-              onClick={() => setSelectedCardId(null)}
-              className="text-xs font-semibold text-blue-600 hover:text-blue-700 underline cursor-pointer"
-            >
-              Clear Card Filter (Show All)
-            </button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {selectedCardId && (
+              <button
+                type="button"
+                onClick={() => setSelectedCardId(null)}
+                className="text-xs font-semibold text-blue-600 hover:text-blue-700 underline cursor-pointer mr-1"
+              >
+                Clear Card Filter
+              </button>
+            )}
+
+            <SortSelect
+              label="Sort"
+              value={cardSort}
+              onChange={(v) =>
+                setCardSort(
+                  v as 'debt_desc' | 'debt_asc' | 'util_desc' | 'due_date' | 'limit_desc' | 'name_asc',
+                )
+              }
+              options={[
+                { value: 'debt_desc', label: 'Highest Debt' },
+                { value: 'debt_asc', label: 'Lowest Debt' },
+                { value: 'util_desc', label: 'Utilization' },
+                { value: 'due_date', label: 'Next Due Date' },
+                { value: 'limit_desc', label: 'Highest Limit' },
+                { value: 'name_asc', label: 'Name (A-Z)' },
+              ]}
+            />
+
+            <ViewModeToggle
+              value={cardViewMode}
+              onChange={setCardViewMode}
+              gridLabel="Card Grid"
+              listLabel="Card List"
+            />
+          </div>
         </div>
 
         {creditCards.length === 0 ? (
@@ -1033,9 +1091,9 @@ export function CardsView({
               <span>Add Your First Credit Card</span>
             </Button>
           </div>
-        ) : (
+        ) : cardViewMode === 'grid' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {creditCards.map((card) => {
+            {sortedCreditCards.map((card) => {
               const outstanding = Math.abs(card.currentBalanceMinor || 0);
               const limit = card.creditLimitMinor || 0;
               const utilPct = limit > 0 ? (outstanding / limit) * 100 : 0;
@@ -1137,6 +1195,125 @@ export function CardsView({
                         handleOpenEditCard(card);
                       }}
                       className="text-slate-400 hover:text-slate-700 p-1 rounded hover:bg-slate-100 cursor-pointer"
+                      title="Edit Card Details"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {sortedCreditCards.map((card) => {
+              const outstanding = Math.abs(card.currentBalanceMinor || 0);
+              const limit = card.creditLimitMinor || 0;
+              const utilPct = limit > 0 ? (outstanding / limit) * 100 : 0;
+              const isSelected = selectedCardId === card.id;
+
+              return (
+                <div
+                  key={card.id}
+                  onClick={() => setSelectedCardId(isSelected ? null : card.id)}
+                  className={`rounded-xl border transition-all p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer ${
+                    isSelected
+                      ? 'border-blue-600 bg-blue-50/40 ring-2 ring-blue-500/20 shadow-xs'
+                      : 'border-slate-200/90 bg-white hover:border-slate-300 hover:bg-slate-50/50 shadow-2xs'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-[200px]">
+                    <div className="w-7 h-5 rounded bg-gradient-to-tr from-amber-300 to-amber-100 border border-amber-400/80 shadow-2xs flex items-center justify-center shrink-0">
+                      <div className="w-4 h-2.5 border border-amber-600/40 rounded-2xs" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-sm text-slate-900">{card.name}</span>
+                        <span className="font-mono text-xs text-slate-400">••{card.last4 || '0000'}</span>
+                      </div>
+                      <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">
+                        {card.institution || 'Credit Card'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-6 px-1">
+                    <div>
+                      <span className="text-[10px] uppercase font-medium text-slate-400 block">Current Spend</span>
+                      <span className="text-sm font-bold font-mono text-rose-700 tabular-nums">
+                        {formatINR(outstanding)}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] uppercase font-medium text-slate-400 block">Credit Limit</span>
+                      <span className="text-sm font-medium font-mono text-slate-700 tabular-nums">
+                        {formatINR(limit)}
+                      </span>
+                    </div>
+
+                    <div className="w-28 hidden sm:block">
+                      <div className="flex justify-between text-[10px] font-mono mb-0.5">
+                        <span className="text-slate-500">Utilization</span>
+                        <span className="font-bold text-slate-800">{utilPct.toFixed(0)}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            utilPct > 70 ? 'bg-rose-500' : utilPct > 30 ? 'bg-amber-500' : 'bg-emerald-500'
+                          }`}
+                          style={{ width: `${Math.min(100, Math.max(3, utilPct))}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {card.cardCycle && (
+                      <div className="text-xs text-slate-600 hidden lg:block border-l border-slate-100 pl-4">
+                        <span className="text-[10px] text-slate-400 block">Cycle Due</span>
+                        <span
+                          className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                            card.cardCycle.daysUntilDue <= 3
+                              ? 'bg-rose-50 text-rose-800 border-rose-200'
+                              : 'bg-blue-50 text-blue-800 border-blue-200'
+                          }`}
+                        >
+                          {card.cardCycle.daysUntilDue < 0
+                            ? 'Overdue'
+                            : `Due in ${card.cardCycle.daysUntilDue}d`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 self-end md:self-auto shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenDetailedAdd(card.id);
+                      }}
+                      className="font-semibold text-blue-600 hover:text-blue-800 px-2.5 py-1 rounded-lg hover:bg-blue-50 cursor-pointer flex items-center gap-1 text-xs border border-transparent hover:border-blue-200"
+                    >
+                      <Plus className="h-3 w-3" />
+                      <span>Swipe</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenPayBill(card);
+                      }}
+                      className="font-semibold text-emerald-600 hover:text-emerald-800 px-2.5 py-1 rounded-lg hover:bg-emerald-50 cursor-pointer text-xs border border-transparent hover:border-emerald-200"
+                    >
+                      Pay Bill
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenEditCard(card);
+                      }}
+                      className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
                       title="Edit Card Details"
                     >
                       <Edit3 className="h-3.5 w-3.5" />

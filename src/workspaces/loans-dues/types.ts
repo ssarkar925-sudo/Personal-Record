@@ -19,6 +19,7 @@ export type LoansWorkstationLayout = 'split' | 'bento';
 export type LoansTab = 'all' | 'loans' | 'dues' | 'goals';
 export type LoanSortOption = 'next_due' | 'remaining_desc' | 'emi_desc' | 'name_asc';
 export type DueSortOption = 'remaining_desc' | 'due_date' | 'open_first' | 'person_asc';
+export type LoansDuesSortOption = 'remaining_desc' | 'remaining_asc' | 'next_due' | 'name_asc';
 
 export type SelectedLoansItem =
   | { kind: 'loan'; data: LoanRecord }
