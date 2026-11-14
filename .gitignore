@@ -31,3 +31,9 @@ server/db/*.db-shm
 # Inbox statement processing temp
 inbox/processed/
 inbox/failed/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+

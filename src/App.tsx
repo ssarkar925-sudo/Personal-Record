@@ -3,6 +3,7 @@ import {
   BarChart3,
   Bell,
   Bot,
+  Cloud,
   Command,
   Eye,
   EyeOff,
@@ -37,6 +38,8 @@ import { GlobalSearchModal } from './components/GlobalSearchModal.tsx';
 import { CommandPalette } from './components/ui/CommandPalette.tsx';
 import { InstallPwaPrompt } from './components/ui/InstallPwaPrompt.tsx';
 import { LanSyncModal } from './components/ui/LanSyncModal.tsx';
+import { CloudSyncModal } from './components/ui/CloudSyncModal.tsx';
+import { subscribeToSupabaseRealtime } from './lib/supabase-sync.ts';
 import { AgentDrawer } from './components/AgentDrawer.tsx';
 import { DashboardView, type WorkspaceId } from './workspaces/DashboardView.tsx';
 import { MoneyCardsView } from './workspaces/MoneyCardsView.tsx';
@@ -61,6 +64,7 @@ export function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [lanSyncOpen, setLanSyncOpen] = useState(false);
+  const [cloudSyncOpen, setCloudSyncOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
   const [queuedAgentCommand, setQueuedAgentCommand] = useState<{ id: number; commandText: string } | null>(null);
@@ -169,6 +173,14 @@ export function App() {
 
   useEffect(() => {
     void loadAll();
+  }, [loadAll]);
+
+  // Real-time multi-device cloud synchronization listener
+  useEffect(() => {
+    const sub = subscribeToSupabaseRealtime(() => {
+      void loadAll();
+    });
+    return () => sub.unsubscribe();
   }, [loadAll]);
 
   useEffect(() => {
@@ -384,6 +396,17 @@ export function App() {
               >
                 <Wifi className="h-3.5 w-3.5 text-emerald-600" />
                 <span className="hidden lg:inline text-xs font-medium">Wi-Fi Sync</span>
+              </button>
+
+              {/* Supabase Cloud & Multi-Device Sync */}
+              <button
+                type="button"
+                onClick={() => setCloudSyncOpen(true)}
+                title="Supabase Cloud & Multi-Device Sync"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer shadow-2xs"
+              >
+                <Cloud className="h-3.5 w-3.5 text-blue-600" />
+                <span className="hidden lg:inline text-xs font-medium">Cloud Sync</span>
               </button>
 
               <button
@@ -646,6 +669,7 @@ export function App() {
           }, 100);
         }}
         onOpenLanSync={() => setLanSyncOpen(true)}
+        onOpenCloudSync={() => setCloudSyncOpen(true)}
         onSeedData={handleSeedDemoData}
       />
 
@@ -671,6 +695,12 @@ export function App() {
         open={lanSyncOpen}
         onClose={() => setLanSyncOpen(false)}
         onSyncComplete={loadAll}
+      />
+      <CloudSyncModal
+        open={cloudSyncOpen}
+        onClose={() => setCloudSyncOpen(false)}
+        onDataRefreshed={loadAll}
+        notify={notify}
       />
     </div>
   );

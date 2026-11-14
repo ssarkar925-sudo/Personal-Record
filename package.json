@@ -20,6 +20,7 @@
     "test:all": "node --experimental-strip-types --test server/*.test.ts server/db/*.test.ts server/watcher/*.test.ts server/sync/*.test.ts shared/*.test.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
     "@tesseract.js-data/eng": "^1.0.0",
     "@whiskeysockets/baileys": "^7.0.0-rc14",
     "clsx": "^2.1.1",

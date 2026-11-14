@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   BarChart3,
   Building2,
+  Cloud,
   CornerDownLeft,
   FileSpreadsheet,
   KeyRound,
@@ -34,6 +35,7 @@ export interface CommandPaletteProps {
   onExportCaPack?: () => void;
   onNavigateBillboard?: () => void;
   onOpenLanSync?: () => void;
+  onOpenCloudSync?: () => void;
   onSeedData?: () => void;
 }
 
@@ -61,6 +63,7 @@ export function CommandPalette({
   onExportCaPack,
   onNavigateBillboard,
   onOpenLanSync,
+  onOpenCloudSync,
   onSeedData,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
@@ -153,6 +156,17 @@ export function CommandPalette({
         keywords: ['sync', 'wifi', 'lan', 'phone', 'pair', 'connect', 'device', 'network'],
         action: () => {
           if (onOpenLanSync) onOpenLanSync();
+        },
+      },
+      {
+        id: 'action-supabase-sync',
+        label: 'Supabase Cloud & Multi-Device Sync',
+        description: 'Configure cloud PostgreSQL database, sign in, or sync financial data',
+        category: 'quickActions',
+        icon: <Cloud className="h-4 w-4 text-blue-600" />,
+        keywords: ['supabase', 'cloud', 'sync', 'database', 'multi device', 'backup', 'postgres', 'cloudflare'],
+        action: () => {
+          if (onOpenCloudSync) onOpenCloudSync();
         },
       },
       {
