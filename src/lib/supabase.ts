@@ -172,7 +172,7 @@ export async function testSupabaseConnection(): Promise<{ ok: boolean; message: 
 
     if (error) {
       // If table doesn't exist yet, explain
-      if (error.code === '42P01') {
+      if (error.code === '42P01' || error.code === 'PGRST205') {
         return {
           ok: false,
           message: 'Connected to Supabase, but schema tables are missing. Please run supabase_schema.sql in the Supabase SQL Editor.',
