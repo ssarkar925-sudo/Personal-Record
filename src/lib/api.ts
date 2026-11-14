@@ -674,7 +674,7 @@ export interface AgentExecutionResult {
   toolCalls: unknown[];
   actions: Array<{ tool: string; summary: string; ok: boolean }>;
   uiEffects: {
-    navigateTab?: 'dashboard' | 'money' | 'loans_dues' | 'reports' | 'notes' | 'vault';
+    navigateTab?: 'dashboard' | 'cards' | 'money' | 'loans_dues' | 'reports' | 'notes' | 'vault';
     scopeFilter?: Scope | 'all';
     setLanguage?: AppLanguage;
     mutatedData?: boolean;

@@ -7,6 +7,7 @@ import type { AppLanguage } from '../../../shared/i18n.ts';
 
 export type WorkspaceId =
   | 'dashboard'
+  | 'cards'
   | 'money'
   | 'loans_dues'
   | 'reports'

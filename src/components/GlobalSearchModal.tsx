@@ -4,6 +4,7 @@ import {
   X,
   ArrowRight,
   WalletCards,
+  CreditCard,
   NotebookPen,
   Landmark,
   Lock,
@@ -136,11 +137,19 @@ export function GlobalSearchModal({ open, onClose, onNavigate, onOpenQuickAdd }:
                 </button>
                 <button
                   type="button"
+                  onClick={() => handleSelectNav('cards')}
+                  className="flex items-center gap-2 rounded-lg border border-slate-200/80 bg-slate-50/70 p-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-100/80 transition-colors cursor-pointer"
+                >
+                  <CreditCard className="h-4 w-4 text-blue-600" />
+                  <span>Credit Cards</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => handleSelectNav('money')}
                   className="flex items-center gap-2 rounded-lg border border-slate-200/80 bg-slate-50/70 p-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-100/80 transition-colors cursor-pointer"
                 >
                   <WalletCards className="h-4 w-4 text-emerald-600" />
-                  <span>Money &amp; Cards</span>
+                  <span>Bank &amp; Cash</span>
                 </button>
                 <button
                   type="button"

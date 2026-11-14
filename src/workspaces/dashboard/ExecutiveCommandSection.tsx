@@ -61,11 +61,13 @@ export function ExecutiveCommandSection({
             ) : (
               queue.map((item) => {
                 const targetTab: WorkspaceId =
-                  item.module === 'credit_cards' || item.module === 'banks' || item.module === 'recurring'
-                    ? 'money'
-                    : item.module === 'loans' || item.module === 'people_dues'
-                      ? 'loans_dues'
-                      : 'notes';
+                  item.module === 'credit_cards'
+                    ? 'cards'
+                    : item.module === 'banks' || item.module === 'recurring'
+                      ? 'money'
+                      : item.module === 'loans' || item.module === 'people_dues'
+                        ? 'loans_dues'
+                        : 'notes';
 
                 const isUrgent = item.severity === 'urgent';
                 const isWarning = item.severity === 'warning';
@@ -169,7 +171,7 @@ export function ExecutiveCommandSection({
             </button>
 
             <button
-              onClick={() => onNavigate('money')}
+              onClick={() => onNavigate('cards')}
               className="p-3 rounded-xl border border-slate-200/80 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 transition-all text-left flex items-start gap-2.5 cursor-pointer shadow-2xs"
             >
               <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-800 flex items-center justify-center shrink-0">

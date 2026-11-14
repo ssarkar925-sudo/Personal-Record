@@ -5,6 +5,7 @@ import {
   Bot,
   Cloud,
   Command,
+  CreditCard,
   Eye,
   EyeOff,
   KeyRound,
@@ -41,6 +42,7 @@ import { CloudSyncModal } from './components/ui/CloudSyncModal.tsx';
 import { subscribeToSupabaseRealtime } from './lib/supabase-sync.ts';
 import { AgentDrawer } from './components/AgentDrawer.tsx';
 import { DashboardView, type WorkspaceId } from './workspaces/DashboardView.tsx';
+import { CardsView } from './workspaces/CardsView.tsx';
 import { MoneyCardsView } from './workspaces/MoneyCardsView.tsx';
 import { LoansDuesView } from './workspaces/LoansDuesView.tsx';
 import { ReportsView } from './workspaces/ReportsView.tsx';
@@ -264,6 +266,12 @@ export function App() {
       icon: <LayoutDashboard className="h-3.5 w-3.5" />,
     },
     {
+      id: 'cards',
+      label: dict.tabs.cards,
+      accentHex: '#2563eb',
+      icon: <CreditCard className="h-3.5 w-3.5" />,
+    },
+    {
       id: 'money',
       label: dict.tabs.money,
       accentHex: '#059669',
@@ -452,6 +460,20 @@ export function App() {
             onOpenQuickAdd={() => setQuickAddOpen(true)}
             onOpenAgent={handleOpenAgent}
             onRefresh={() => void loadAll()}
+          />
+        )}
+
+        {activeTab === 'cards' && (
+          <CardsView
+            accounts={accounts}
+            transactions={transactions}
+            recurringBills={recurringBills}
+            budgets={budgets}
+            monthSpentByScope={monthSpentByScope}
+            systemLanguage={preferences.systemLanguage}
+            onNotify={notify}
+            onRefresh={() => void loadAll()}
+            onNavigateToMoney={() => setActiveTab('money')}
           />
         )}
 

@@ -20,6 +20,7 @@ export interface UiDictionary {
   systemLanguage: string;
   tabs: {
     dashboard: string;
+    cards: string;
     money: string;
     loans_dues: string;
     reports: string;
@@ -231,7 +232,8 @@ export const UI_STRINGS: Record<AppLanguage, UiDictionary> = {
     systemLanguage: 'System Language',
     tabs: {
       dashboard: 'Dashboard',
-      money: 'Money & Cards',
+      cards: 'Credit Cards',
+      money: 'Bank & Cash',
       loans_dues: 'Loans & Dues',
       reports: 'Reports',
       notes: 'Notes',
@@ -448,7 +450,8 @@ export const UI_STRINGS: Record<AppLanguage, UiDictionary> = {
     systemLanguage: 'सिस्टम भाषा',
     tabs: {
       dashboard: 'डैशबोर्ड',
-      money: 'पैसे और कार्ड',
+      cards: 'क्रेडिट कार्ड',
+      money: 'बैंक और नकद',
       loans_dues: 'लोन और उधार',
       reports: 'रिपोर्ट्स',
       notes: 'नोट्स',
@@ -665,7 +668,8 @@ export const UI_STRINGS: Record<AppLanguage, UiDictionary> = {
     systemLanguage: 'সিস্টেম ভাষা',
     tabs: {
       dashboard: 'ড্যাশবোর্ড',
-      money: 'টাকা ও কার্ড',
+      cards: 'ক্রেডিট কার্ড',
+      money: 'ব্যাংক ও ক্যাশ',
       loans_dues: 'ঋণ ও বকেয়া',
       reports: 'রিপোর্ট',
       notes: 'নোটস',

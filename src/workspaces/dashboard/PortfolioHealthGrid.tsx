@@ -38,7 +38,7 @@ export function PortfolioHealthGrid({
             </div>
 
             <button
-              onClick={() => onNavigate('money')}
+              onClick={() => onNavigate('cards')}
               className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 cursor-pointer"
             >
               <span>Manage</span>
@@ -60,7 +60,7 @@ export function PortfolioHealthGrid({
                 return (
                   <div
                     key={c.id}
-                    onClick={() => onNavigate('money')}
+                    onClick={() => onNavigate('cards')}
                     className="p-3.5 rounded-xl border border-slate-200/90 bg-slate-50/60 hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer shadow-2xs space-y-2.5 relative overflow-hidden"
                   >
                     <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-600" />
@@ -137,10 +137,10 @@ export function PortfolioHealthGrid({
 
         <div className="mt-3 pt-2.5 border-t border-slate-100 text-center">
           <button
-            onClick={() => onNavigate('money')}
+            onClick={() => onNavigate('cards')}
             className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 cursor-pointer"
           >
-            View all {data.cards.length} cards in Money & Cards →
+            Open Credit Cards Command Center ({data.cards.length} cards) →
           </button>
         </div>
       </div>
