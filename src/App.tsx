@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import {
   BarChart3,
   Bell,
@@ -34,6 +34,7 @@ import {
   type WhatsAppBridgeState,
 } from './lib/api.ts';
 import { Button, Card, Input } from './components/ui/Primitives.tsx';
+import { ErrorBoundary } from './components/ui/ErrorBoundary.tsx';
 import {
   FloatingCommandDock,
   type DockWorkspaceItem,
@@ -47,17 +48,24 @@ import { CloudSyncModal } from './components/ui/CloudSyncModal.tsx';
 import { subscribeToSupabaseRealtime } from './lib/supabase-sync.ts';
 import { AgentDrawer } from './components/AgentDrawer.tsx';
 import { DashboardView, type WorkspaceId } from './workspaces/DashboardView.tsx';
-import { CardsView } from './workspaces/CardsView.tsx';
-import { MoneyCardsView } from './workspaces/MoneyCardsView.tsx';
-import { LoansDuesView } from './workspaces/LoansDuesView.tsx';
-import { ReportsView } from './workspaces/ReportsView.tsx';
-import { NotesView } from './workspaces/NotesView.tsx';
-import { JobSheetsView } from './workspaces/JobSheetsView.tsx';
-import { VaultView } from './workspaces/VaultView.tsx';
 import { AlertsSettingsModal } from './workspaces/AlertsSettingsModal.tsx';
 import { SCOPE_META } from './lib/format.ts';
 import type { Scope } from '../shared/ledger-core.ts';
 import { UI_STRINGS } from '../shared/i18n.ts';
+
+const CardsView = lazy(() => import('./workspaces/CardsView.tsx').then((m) => ({ default: m.CardsView })));
+const MoneyCardsView = lazy(() =>
+  import('./workspaces/MoneyCardsView.tsx').then((m) => ({ default: m.MoneyCardsView })),
+);
+const LoansDuesView = lazy(() =>
+  import('./workspaces/LoansDuesView.tsx').then((m) => ({ default: m.LoansDuesView })),
+);
+const ReportsView = lazy(() => import('./workspaces/ReportsView.tsx').then((m) => ({ default: m.ReportsView })));
+const NotesView = lazy(() => import('./workspaces/NotesView.tsx').then((m) => ({ default: m.NotesView })));
+const JobSheetsView = lazy(() =>
+  import('./workspaces/JobSheetsView.tsx').then((m) => ({ default: m.JobSheetsView })),
+);
+const VaultView = lazy(() => import('./workspaces/VaultView.tsx').then((m) => ({ default: m.VaultView })));
 
 export function App() {
   const [activeTab, setActiveTab] = useState<WorkspaceId>('dashboard');
@@ -106,7 +114,6 @@ export function App() {
   const [appLocked, setAppLocked] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
-  const bootLockCheckedRef = useRef(false);
 
   useEffect(() => {
     document.documentElement.dataset.privacy = privacyMasked ? 'masked' : 'visible';
@@ -139,8 +146,16 @@ export function App() {
   const loadAll = useCallback(async () => {
     try {
       setLoadError('');
+      const [lockStatus, prefs] = await Promise.all([api.getAppLockStatus(), api.getPreferences()]);
+      setPreferences(prefs);
+      if (lockStatus.hasAppPin && !lockStatus.unlocked) {
+        setAppLocked(true);
+        return;
+      }
+      setAppLocked(false);
+
       const scopeParam = scopeFilter === 'all' ? undefined : scopeFilter;
-      const [dash, brf, accs, txs, recs, bgs, lns, duesRes, nts, wa, prefs] = await Promise.all([
+      const [dash, brf, accs, txs, recs, bgs, lns, duesRes, nts, wa] = await Promise.all([
         api.getDashboard(scopeParam),
         api.getAgentBriefing(scopeParam),
         api.getAccounts(),
@@ -151,7 +166,6 @@ export function App() {
         api.getDues(),
         api.getNotes(),
         api.getWhatsAppStatus(),
-        api.getPreferences(),
       ]);
       setDashboard(dash);
       setBriefing(brf);
@@ -164,11 +178,6 @@ export function App() {
       setDueSummaries(duesRes.summaries);
       setNotes(nts);
       setBridgeState(wa);
-      setPreferences(prefs);
-      if (!bootLockCheckedRef.current) {
-        bootLockCheckedRef.current = true;
-        if (prefs.hasAppPin) setAppLocked(true);
-      }
     } catch (err) {
       setLoadError((err as Error).message);
     }
@@ -186,12 +195,17 @@ export function App() {
     return () => sub.unsubscribe();
   }, [loadAll]);
 
+  const triggerServerLock = useCallback(() => {
+    void api.lockApp().catch(() => {});
+    setAppLocked(true);
+  }, []);
+
   useEffect(() => {
     if (!preferences.hasAppPin || preferences.autoLockMinutes <= 0 || appLocked) return;
-    let timer = window.setTimeout(() => setAppLocked(true), preferences.autoLockMinutes * 60_000);
+    let timer = window.setTimeout(triggerServerLock, preferences.autoLockMinutes * 60_000);
     const reset = () => {
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => setAppLocked(true), preferences.autoLockMinutes * 60_000);
+      timer = window.setTimeout(triggerServerLock, preferences.autoLockMinutes * 60_000);
     };
     window.addEventListener('pointerdown', reset);
     window.addEventListener('keydown', reset);
@@ -200,7 +214,7 @@ export function App() {
       window.removeEventListener('pointerdown', reset);
       window.removeEventListener('keydown', reset);
     };
-  }, [preferences.hasAppPin, preferences.autoLockMinutes, appLocked]);
+  }, [preferences.hasAppPin, preferences.autoLockMinutes, appLocked, triggerServerLock]);
 
   const handleUnlockApp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -209,6 +223,7 @@ export function App() {
       await api.verifyAppPin(pinInput.trim());
       setPinInput('');
       setAppLocked(false);
+      void loadAll();
     } catch (err) {
       setPinError((err as Error).message);
     }
@@ -359,11 +374,11 @@ export function App() {
                 </div>
               </div>
 
-              {/* Center Recessed Stone Scope Segmented Control (Desktop) */}
+              {/* Center Recessed Stone Scope Segmented Control (Wide Desktop) */}
               <div
                 role="group"
                 aria-label="Global Scope Filter"
-                className="hidden lg:inline-flex items-center rounded-xl bg-[#F3EFEA] p-1 border border-[#EAE5DC]"
+                className="hidden xl:inline-flex items-center rounded-xl bg-[#F3EFEA] p-1 border border-[#EAE5DC]"
               >
                 {scopePillOptions.map(([id, label]) => {
                   const active = scopeFilter === id;
@@ -392,13 +407,13 @@ export function App() {
               </div>
 
               {/* Right Utility & Action Controls */}
-              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setPrivacyMasked((v) => !v)}
                   aria-label={privacyMasked ? 'Show INR amounts' : 'Mask INR amounts'}
                   title={privacyMasked ? 'Show amounts' : 'Mask amounts (₹••••)'}
-                  className={`inline-flex h-8 items-center gap-1.5 rounded-xl border px-2 sm:px-2.5 text-xs font-medium transition-colors cursor-pointer ${
+                  className={`inline-flex h-9 min-w-9 sm:h-8 sm:min-w-8 items-center justify-center gap-1.5 rounded-xl border px-2 sm:px-2.5 text-xs font-medium transition-colors cursor-pointer ${
                     privacyMasked
                       ? 'border-[#C59B27] bg-[#111318] text-[#E5C158]'
                       : 'border-[#EAE5DC] bg-white text-[#52504C] hover:bg-[#F3EFEA] hover:text-[#111318]'
@@ -414,11 +429,11 @@ export function App() {
                     onClick={() => {
                       setPinError('');
                       setPinInput('');
-                      setAppLocked(true);
+                      triggerServerLock();
                     }}
                     aria-label="Lock app now"
                     title="Lock app with PIN"
-                    className="inline-flex h-8 items-center gap-1 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#52504C] hover:bg-[#F3EFEA] hover:text-[#111318] cursor-pointer"
+                    className="inline-flex h-9 min-w-9 sm:h-8 sm:min-w-8 items-center justify-center gap-1 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#52504C] hover:bg-[#F3EFEA] hover:text-[#111318] cursor-pointer"
                   >
                     <KeyRound className="h-3.5 w-3.5" />
                   </button>
@@ -429,7 +444,8 @@ export function App() {
                   type="button"
                   onClick={() => setCommandPaletteOpen(true)}
                   title="Command Palette (⌘K / Ctrl+K)"
-                  className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#111318] hover:bg-[#F3EFEA] transition-colors cursor-pointer"
+                  aria-label="Command Palette"
+                  className="hidden sm:inline-flex h-8 items-center gap-1.5 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#111318] hover:bg-[#F3EFEA] transition-colors cursor-pointer"
                 >
                   <Command className="h-3.5 w-3.5 text-[#858078]" />
                   <span className="hidden md:inline font-medium">Commands</span>
@@ -438,12 +454,13 @@ export function App() {
                   </kbd>
                 </button>
 
-                {/* Supabase Cloud Sync */}
+                {/* Supabase Cloud Sync — accessible on mobile too */}
                 <button
                   type="button"
                   onClick={() => setCloudSyncOpen(true)}
                   title="Supabase Cloud & Multi-Device Sync"
-                  className="hidden sm:inline-flex h-8 items-center gap-1.5 rounded-xl border border-[#EAE5DC] bg-white px-2.5 text-xs font-medium text-[#111318] hover:bg-[#F3EFEA] transition-colors cursor-pointer"
+                  aria-label="Cloud Sync"
+                  className="inline-flex h-9 min-w-9 sm:h-8 sm:min-w-8 items-center justify-center gap-1.5 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#111318] hover:bg-[#F3EFEA] transition-colors cursor-pointer"
                 >
                   <Cloud className="h-3.5 w-3.5 text-[#059669]" />
                   <span className="hidden xl:inline text-xs font-medium">Sync</span>
@@ -454,7 +471,7 @@ export function App() {
                   onClick={() => setSearchOpen(true)}
                   title="Search records"
                   aria-label="Search records"
-                  className="inline-flex h-8 items-center gap-1 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#52504C] hover:bg-[#F3EFEA] hover:text-[#111318] cursor-pointer"
+                  className="inline-flex h-9 min-w-9 sm:h-8 sm:min-w-8 items-center justify-center gap-1 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#52504C] hover:bg-[#F3EFEA] hover:text-[#111318] cursor-pointer"
                 >
                   <Search className="h-3.5 w-3.5" />
                 </button>
@@ -464,7 +481,7 @@ export function App() {
                   onClick={() => setAlertsOpen(true)}
                   title="Alerts & Notifications"
                   aria-label="Alerts & Notifications"
-                  className="inline-flex h-8 items-center gap-1 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#52504C] hover:bg-[#F3EFEA] hover:text-[#111318] cursor-pointer"
+                  className="inline-flex h-9 min-w-9 sm:h-8 sm:min-w-8 items-center justify-center gap-1 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#52504C] hover:bg-[#F3EFEA] hover:text-[#111318] cursor-pointer"
                 >
                   <Bell className="h-3.5 w-3.5" />
                   {(dashboard?.unreadInAppCount ?? 0) > 0 && (
@@ -477,7 +494,7 @@ export function App() {
                 <Button
                   variant="secondary"
                   size="sm"
-                  className="border-[#D6CFC2] bg-[#F3EFEA] text-[#111318] hover:bg-[#EAE5DC] px-2 sm:px-3"
+                  className="h-9 sm:h-8 border-[#D6CFC2] bg-[#F3EFEA] text-[#111318] hover:bg-[#EAE5DC] px-2.5 sm:px-3"
                   onClick={() => handleOpenAgent()}
                 >
                   <Bot className="h-3.5 w-3.5 text-[#C59B27]" />
@@ -487,20 +504,20 @@ export function App() {
                 <Button
                   variant="primary"
                   size="sm"
-                  className="px-2.5 sm:px-3.5"
+                  className="hidden sm:inline-flex h-8 px-3.5"
                   onClick={() => setQuickAddOpen(true)}
                 >
                   <Plus className="h-3.5 w-3.5 text-[#E5C158]" />
-                  <span className="hidden sm:inline">{dict.quickAdd}</span>
+                  <span>{dict.quickAdd}</span>
                 </Button>
               </div>
             </div>
 
-            {/* Mobile & Tablet Top Bar Scope Strip (Always Visible on < lg) */}
+            {/* Mobile & Tablet Top Bar Scope Strip (Always Visible on < xl) */}
             <div
               role="group"
               aria-label="Mobile Global Scope Filter"
-              className="lg:hidden flex items-center justify-between gap-1 pb-2.5 pt-0.5 overflow-x-auto no-scrollbar"
+              className="xl:hidden flex items-center justify-between gap-1 pb-2.5 pt-0.5 overflow-x-auto no-scrollbar"
             >
               <div className="inline-flex w-full items-center rounded-xl bg-[#F3EFEA] p-1 border border-[#EAE5DC]">
                 {scopePillOptions.map(([id, label]) => {
@@ -541,103 +558,113 @@ export function App() {
               </div>
             )}
 
-            {activeTab === 'dashboard' && (
-              <DashboardView
-                data={dashboard}
-                briefing={briefing}
-                loading={!dashboard}
-                systemLanguage={preferences.systemLanguage}
-                scopeFilter={scopeFilter}
-                onScopeChange={setScopeFilter}
-                onNavigate={setActiveTab}
-                onOpenQuickAdd={() => setQuickAddOpen(true)}
-                onOpenAgent={handleOpenAgent}
-                onRefresh={() => void loadAll()}
-              />
-            )}
+            <ErrorBoundary resetKey={activeTab}>
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-20 text-xs font-medium text-[#858078]">
+                    Loading workspace...
+                  </div>
+                }
+              >
+                {activeTab === 'dashboard' && (
+                  <DashboardView
+                    data={dashboard}
+                    briefing={briefing}
+                    loading={!dashboard}
+                    systemLanguage={preferences.systemLanguage}
+                    scopeFilter={scopeFilter}
+                    onScopeChange={setScopeFilter}
+                    onNavigate={setActiveTab}
+                    onOpenQuickAdd={() => setQuickAddOpen(true)}
+                    onOpenAgent={handleOpenAgent}
+                    onRefresh={() => void loadAll()}
+                  />
+                )}
 
-            {activeTab === 'cards' && (
-              <CardsView
-                accounts={accounts}
-                transactions={transactions}
-                recurringBills={recurringBills}
-                budgets={budgets}
-                monthSpentByScope={monthSpentByScope}
-                systemLanguage={preferences.systemLanguage}
-                globalScopeFilter={scopeFilter}
-                onGlobalScopeChange={setScopeFilter}
-                onNotify={notify}
-                onRefresh={() => void loadAll()}
-                onNavigateToMoney={() => setActiveTab('money')}
-              />
-            )}
+                {activeTab === 'cards' && (
+                  <CardsView
+                    accounts={accounts}
+                    transactions={transactions}
+                    recurringBills={recurringBills}
+                    budgets={budgets}
+                    monthSpentByScope={monthSpentByScope}
+                    systemLanguage={preferences.systemLanguage}
+                    globalScopeFilter={scopeFilter}
+                    onGlobalScopeChange={setScopeFilter}
+                    onNotify={notify}
+                    onRefresh={() => void loadAll()}
+                    onNavigateToMoney={() => setActiveTab('money')}
+                  />
+                )}
 
-            {activeTab === 'money' && (
-              <MoneyCardsView
-                accounts={accounts}
-                transactions={transactions}
-                recurringBills={recurringBills}
-                budgets={budgets}
-                monthSpentByScope={monthSpentByScope}
-                systemLanguage={preferences.systemLanguage}
-                globalScopeFilter={scopeFilter}
-                onGlobalScopeChange={setScopeFilter}
-                onNotify={notify}
-                onRefresh={() => void loadAll()}
-                onNavigateToCards={() => setActiveTab('cards')}
-              />
-            )}
+                {activeTab === 'money' && (
+                  <MoneyCardsView
+                    accounts={accounts}
+                    transactions={transactions}
+                    recurringBills={recurringBills}
+                    budgets={budgets}
+                    monthSpentByScope={monthSpentByScope}
+                    systemLanguage={preferences.systemLanguage}
+                    globalScopeFilter={scopeFilter}
+                    onGlobalScopeChange={setScopeFilter}
+                    onNotify={notify}
+                    onRefresh={() => void loadAll()}
+                    onNavigateToCards={() => setActiveTab('cards')}
+                  />
+                )}
 
-            {activeTab === 'loans_dues' && (
-              <LoansDuesView
-                loans={loans}
-                dues={dues}
-                dueSummaries={dueSummaries}
-                accounts={accounts}
-                globalScopeFilter={scopeFilter}
-                systemLanguage={preferences.systemLanguage}
-                onNotify={notify}
-                onRefresh={() => void loadAll()}
-              />
-            )}
+                {activeTab === 'loans_dues' && (
+                  <LoansDuesView
+                    loans={loans}
+                    dues={dues}
+                    dueSummaries={dueSummaries}
+                    accounts={accounts}
+                    globalScopeFilter={scopeFilter}
+                    systemLanguage={preferences.systemLanguage}
+                    onNotify={notify}
+                    onRefresh={() => void loadAll()}
+                  />
+                )}
 
-            {activeTab === 'reports' && (
-              <ReportsView
-                systemLanguage={preferences.systemLanguage}
-                globalScopeFilter={scopeFilter}
-              />
-            )}
+                {activeTab === 'reports' && (
+                  <ReportsView
+                    systemLanguage={preferences.systemLanguage}
+                    globalScopeFilter={scopeFilter}
+                  />
+                )}
 
-            {activeTab === 'notes' && (
-              <NotesView
-                notes={notes}
-                accounts={accounts}
-                transactions={transactions}
-                loans={loans}
-                dues={dues}
-                globalScopeFilter={scopeFilter}
-                systemLanguage={preferences.systemLanguage}
-                onNotify={notify}
-                onNavigate={setActiveTab}
-                onRefresh={() => void loadAll()}
-              />
-            )}
+                {activeTab === 'notes' && (
+                  <NotesView
+                    notes={notes}
+                    accounts={accounts}
+                    transactions={transactions}
+                    loans={loans}
+                    dues={dues}
+                    globalScopeFilter={scopeFilter}
+                    systemLanguage={preferences.systemLanguage}
+                    onNotify={notify}
+                    onNavigate={setActiveTab}
+                    onRefresh={() => void loadAll()}
+                  />
+                )}
 
-            {activeTab === 'sheets' && (
-              <JobSheetsView
-                globalScopeFilter={scopeFilter}
-                onNotify={notify}
-              />
-            )}
+                {activeTab === 'sheets' && (
+                  <JobSheetsView
+                    globalScopeFilter={scopeFilter}
+                    onNotify={notify}
+                  />
+                )}
 
-            {activeTab === 'vault' && (
-              <VaultView
-                accounts={accounts}
-                systemLanguage={preferences.systemLanguage}
-                onNotify={notify}
-                onNavigate={setActiveTab}
-              />
-            )}
+                {activeTab === 'vault' && (
+                  <VaultView
+                    accounts={accounts}
+                    systemLanguage={preferences.systemLanguage}
+                    onNotify={notify}
+                    onNavigate={setActiveTab}
+                  />
+                )}
+              </Suspense>
+            </ErrorBoundary>
           </main>
         )}
 
@@ -759,7 +786,7 @@ export function App() {
             notify('Switched to Password Vault');
           }}
           onExportCaPack={() => {
-            window.open('/api/reports/tax-pack/export.csv', '_blank');
+            window.open('/api/reports/tax-pack/export.csv', '_blank', 'noopener,noreferrer');
             notify('Exporting CA Tax Pack CSV...');
           }}
           onNavigateBillboard={() => {

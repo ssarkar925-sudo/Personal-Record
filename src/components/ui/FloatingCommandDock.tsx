@@ -28,13 +28,13 @@ export function FloatingCommandDock({
   return (
     <nav
       aria-label="Workspace Command Dock"
-      className="fixed bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 z-40 w-[calc(100vw-0.75rem)] md:w-max max-w-[calc(100vw-0.75rem)] no-print"
+      className="fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] sm:bottom-4 left-1/2 -translate-x-1/2 z-40 w-[calc(100vw-0.75rem)] md:w-max max-w-[calc(100vw-0.75rem)] no-print"
     >
-      <div className="floating-dock rounded-2xl p-1 sm:p-1.5 flex items-center justify-between md:justify-start gap-0.5 sm:gap-1">
+      <div className="floating-dock rounded-2xl p-1 sm:p-1.5 flex items-center justify-between md:justify-start gap-1">
         <div
           role="tablist"
           aria-label="Workspaces"
-          className="flex flex-1 md:flex-initial items-center justify-between md:justify-start gap-0.5 min-w-0"
+          className="flex flex-1 md:flex-initial items-center gap-1 overflow-x-auto md:overflow-visible no-scrollbar snap-x snap-mandatory min-w-0 px-0.5"
         >
           {items.map((item) => {
             const active = item.id === activeTab;
@@ -45,7 +45,7 @@ export function FloatingCommandDock({
                 role="tab"
                 aria-selected={active}
                 onClick={() => onSelectTab(item.id)}
-                className={`group relative flex flex-col md:flex-row flex-1 md:flex-initial items-center justify-center gap-0.5 md:gap-1.5 rounded-xl px-0.5 md:px-2.5 py-1.5 md:py-2 text-xs font-medium transition-all duration-200 cursor-pointer min-w-0 md:shrink-0 whitespace-nowrap ${
+                className={`group relative flex flex-col md:flex-row shrink-0 snap-start items-center justify-center gap-0.5 md:gap-1.5 rounded-xl min-w-[54px] min-h-[44px] md:min-w-0 md:min-h-0 px-2 md:px-2.5 py-1.5 md:py-2 text-xs font-medium transition-all duration-200 cursor-pointer whitespace-nowrap ${
                   active
                     ? 'bg-gradient-to-b from-[#FAF8F5] to-[#EAE5DC] text-[#111318] font-semibold shadow-[0_2px_10px_rgba(0,0,0,0.28)]'
                     : 'text-[#FAF8F5]/75 hover:text-[#FAF8F5] hover:bg-white/8'
@@ -59,7 +59,7 @@ export function FloatingCommandDock({
                   {item.icon}
                   {item.badge !== undefined && item.badge !== 0 && item.badge !== '' && (
                     <span
-                      className={`md:hidden absolute -top-1 -right-2 rounded-full px-1 text-[7.5px] font-mono-data font-bold leading-tight tabular-nums ${
+                      className={`md:hidden absolute -top-1 -right-2 rounded-full px-1 text-[9px] font-mono-data font-bold leading-tight tabular-nums ${
                         active
                           ? 'bg-[#111318] text-[#FAF8F5]'
                           : 'bg-[#C59B27] text-[#111318]'
@@ -70,7 +70,7 @@ export function FloatingCommandDock({
                   )}
                 </span>
                 <span className="hidden md:inline tracking-tight">{item.label}</span>
-                <span className="md:hidden text-[8.5px] leading-tight tracking-tight">
+                <span className="md:hidden text-[10px] leading-tight tracking-tight">
                   {item.shortLabel}
                 </span>
 
@@ -104,10 +104,10 @@ export function FloatingCommandDock({
           onClick={onQuickAdd}
           aria-label={quickAddLabel}
           title={`${quickAddLabel} (Ctrl+Q)`}
-          className="btn-press inline-flex flex-col md:flex-row items-center justify-center gap-0.5 md:gap-1.5 rounded-xl bg-gradient-to-b from-[#D4AF37] to-[#B0871E] px-2 md:px-3 py-1.5 md:py-2 text-xs font-semibold text-[#111318] shadow-[inset_0_1px_0_rgba(255,255,255,0.45),0_2px_8px_rgba(197,155,39,0.35)] hover:from-[#E0BD46] hover:to-[#C09524] cursor-pointer shrink-0"
+          className="btn-press inline-flex flex-col md:flex-row items-center justify-center gap-0.5 md:gap-1.5 rounded-xl bg-gradient-to-b from-[#D4AF37] to-[#B0871E] min-w-[48px] min-h-[44px] md:min-w-0 md:min-h-0 px-2.5 md:px-3 py-1.5 md:py-2 text-xs font-semibold text-[#111318] shadow-[inset_0_1px_0_rgba(255,255,255,0.45),0_2px_8px_rgba(197,155,39,0.35)] hover:from-[#E0BD46] hover:to-[#C09524] cursor-pointer shrink-0"
         >
           <Plus className="h-3.5 w-3.5 stroke-[2.5]" />
-          <span className="md:hidden text-[9.5px] leading-tight font-bold">Add</span>
+          <span className="md:hidden text-[10px] leading-tight font-bold">Add</span>
           <span className="hidden md:inline">{quickAddLabel}</span>
         </button>
       </div>
