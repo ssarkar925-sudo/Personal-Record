@@ -22,6 +22,8 @@ export interface ProcessInboxResult {
   filename: string;
 }
 
+const MAX_INBOX_FILE_BYTES = 15 * 1024 * 1024; // 15 MB
+
 export async function processInboxFile(
   filePath: string,
   options: ProcessInboxOptions
@@ -36,6 +38,14 @@ export async function processInboxFile(
   const targetBase = `${timestamp}_${filename}`;
 
   try {
+    const lstat = fs.lstatSync(filePath);
+    if (lstat.isSymbolicLink() || !lstat.isFile()) {
+      throw new Error('Rejected non-regular or symlinked file in inbox.');
+    }
+    if (lstat.size > MAX_INBOX_FILE_BYTES) {
+      throw new Error(`Statement file exceeds maximum size limit (${Math.round(MAX_INBOX_FILE_BYTES / (1024 * 1024))} MB).`);
+    }
+
     let rawText = '';
 
     if (ext === '.csv' || ext === '.txt') {
@@ -143,12 +153,15 @@ export function startInboxWatcher(options: {
     if (isChecking) return;
     isChecking = true;
     try {
+      const resolvedInboxDir = fs.realpathSync(inboxDir);
       const files = fs.readdirSync(inboxDir);
       for (const file of files) {
         const fullPath = path.join(inboxDir, file);
         if (!fs.existsSync(fullPath)) continue;
-        const stat = fs.statSync(fullPath);
-        if (!stat.isFile()) continue;
+        const stat = fs.lstatSync(fullPath);
+        if (stat.isSymbolicLink() || !stat.isFile()) continue;
+        const realFullPath = fs.realpathSync(fullPath);
+        if (!realFullPath.startsWith(resolvedInboxDir + path.sep)) continue;
 
         // Skip temp / partial write files
         if (file.startsWith('.') || file.endsWith('.tmp') || file.endsWith('.crdownload')) continue;

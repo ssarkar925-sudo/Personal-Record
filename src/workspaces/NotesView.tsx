@@ -239,10 +239,23 @@ function parseInlineMarkdown(text: string): React.ReactNode[] {
     }
     const linkMatch = part.match(/^\[(.*?)\]\((.*?)\)$/);
     if (linkMatch) {
+      const rawUrl = linkMatch[2].trim();
+      let safeHref: string | null = null;
+      try {
+        const parsed = new URL(rawUrl, window.location.origin);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'mailto:') {
+          safeHref = rawUrl.startsWith('/') ? rawUrl : parsed.toString();
+        }
+      } catch {
+        safeHref = null;
+      }
+      if (!safeHref) {
+        return <span key={index}>{linkMatch[1]}</span>;
+      }
       return (
         <a
           key={index}
-          href={linkMatch[2]}
+          href={safeHref}
           target="_blank"
           rel="noopener noreferrer"
           className="text-blue-600 underline hover:text-blue-800"
@@ -620,7 +633,7 @@ export function NotesView({
         ? '\n\n*Checklist:*\n' + n.checklist.map((c) => `${c.done ? '☑' : '☐'} ${c.text}`).join('\n')
         : '';
     const text = `*${n.title}*\n\n${n.body}${checklistPart}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(text.trim())}`, '_blank');
+    window.open(`https://wa.me/?text=${encodeURIComponent(text.trim())}`, '_blank', 'noopener,noreferrer');
   };
 
   const handleFileUpload = async (noteId: string, file: File) => {

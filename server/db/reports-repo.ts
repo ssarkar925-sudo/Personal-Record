@@ -22,7 +22,7 @@ import {
   summarizeDuesByPerson,
 } from './ledger-repo.ts';
 import { listNotes } from './notes-repo.ts';
-import { getVaultMeta, listVaultEntries } from './vault-repo.ts';
+import { getVaultMeta, listVaultEntries, toPublicVaultMeta } from './vault-repo.ts';
 import { listAlertDeliveries } from './alerts-repo.ts';
 import { withTransaction } from './schema.ts';
 
@@ -443,24 +443,30 @@ export function getDetailedReports(
   };
 }
 
+function escapeCsvCell(val: unknown): string {
+  const str = String(val ?? '');
+  // Prevent CSV formula injection (Excel/Sheets evaluating leading =, +, -, @, \t, \r)
+  const neutralized = /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+  return `"${neutralized.replace(/"/g, '""')}"`;
+}
+
 export function exportTransactionsCSV(
   db: DatabaseSync,
   filters: { fromDate?: string; toDate?: string; scope?: Scope },
 ): string {
   const rows = listTransactions(db, { ...filters, limit: 10000 });
-  const escape = (val: string) => `"${String(val).replace(/"/g, '""')}"`;
   const header = ['Date', 'Kind', 'Scope', 'Account', 'To Account', 'Category', 'Amount (INR)', 'Party', 'Note'].join(',');
   const lines = rows.map((r) =>
     [
       r.occurredAt,
       r.kind,
       r.scope,
-      escape(r.accountName),
-      escape(r.toAccountName ?? ''),
-      escape(r.category),
+      escapeCsvCell(r.accountName),
+      escapeCsvCell(r.toAccountName ?? ''),
+      escapeCsvCell(r.category),
       (r.amountMinor / 100).toFixed(2),
-      escape(r.party),
-      escape(r.note),
+      escapeCsvCell(r.party),
+      escapeCsvCell(r.note),
     ].join(','),
   );
   return [header, ...lines].join('\n');
@@ -601,7 +607,7 @@ export function exportTaxPackCSV(db: DatabaseSync, fyStartYear?: number, refDate
   rows.push(`"--- SECTION 3: BUSINESS DEDUCTIBLE EXPENSE SCHEDULE ---"`);
   rows.push(`"Category","Transaction Count","Total Spend (INR)"`);
   for (const c of pack.businessExpenseCategories) {
-    rows.push(`"${c.category}","${c.count}","${(c.totalMinor / 100).toFixed(2)}"`);
+    rows.push(`${escapeCsvCell(c.category)},"${c.count}","${(c.totalMinor / 100).toFixed(2)}"`);
   }
   rows.push('');
 
@@ -617,14 +623,14 @@ export function exportTaxPackCSV(db: DatabaseSync, fyStartYear?: number, refDate
   rows.push(`"--- SECTION 5: SCHEDULE OF BANK ACCOUNTS (ITR DISCLOSURE) ---"`);
   rows.push(`"Account Name","Bank / Institution","Last 4 Digits","Scope","Current Balance (INR)"`);
   for (const b of pack.bankAccounts) {
-    rows.push(`"${b.name}","${b.institution || '-'}","${b.last4 || '-'}","${b.scope}","${(b.currentBalanceMinor / 100).toFixed(2)}"`);
+    rows.push(`${escapeCsvCell(b.name)},${escapeCsvCell(b.institution || '-')},${escapeCsvCell(b.last4 || '-')},${escapeCsvCell(b.scope)},"${(b.currentBalanceMinor / 100).toFixed(2)}"`);
   }
   rows.push('');
 
   rows.push(`"--- SECTION 6: SCHEDULE OF LOANS & LIABILITIES ---"`);
   rows.push(`"Loan Name","Direction","Original Principal (INR)","Remaining Balance (INR)","Principal Paid (INR)","Interest Paid (INR)"`);
   for (const l of pack.loans) {
-    rows.push(`"${l.name}","${l.direction}","${(l.principalMinor / 100).toFixed(2)}","${(l.remainingMinor / 100).toFixed(2)}","${(l.totalPrincipalPaidMinor / 100).toFixed(2)}","${(l.totalInterestPaidMinor / 100).toFixed(2)}"`);
+    rows.push(`${escapeCsvCell(l.name)},${escapeCsvCell(l.direction)},"${(l.principalMinor / 100).toFixed(2)}","${(l.remainingMinor / 100).toFixed(2)}","${(l.totalPrincipalPaidMinor / 100).toFixed(2)}","${(l.totalInterestPaidMinor / 100).toFixed(2)}"`);
   }
 
   return rows.join('\n');
@@ -644,8 +650,8 @@ export function exportFullSnapshotJSON(db: DatabaseSync) {
     investments: listInvestments(db),
     categoryRules: listCategoryRules(db),
     notes: listNotes(db),
-    // Vault entries exported strictly as encrypted ciphertext blobs + PBKDF2 metadata for recovery
-    vaultMeta: getVaultMeta(db),
+    // Vault entries exported strictly as encrypted ciphertext blobs + public PBKDF2 metadata (never plaintext recovery keys)
+    vaultMeta: toPublicVaultMeta(getVaultMeta(db)),
     vaultEntriesCiphertextOnly: listVaultEntries(db),
   };
 }

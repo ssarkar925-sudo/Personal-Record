@@ -13,11 +13,17 @@ export async function handleSystemRoute(
   const pathname = url.split('?')[0];
 
   if (pathname === '/healthz' && method === 'GET') {
-    const health = checkDatabaseHealth(db);
-    sendJson(res, 200, {
-      ok: health.ok,
-      status: health.ok ? 'healthy' : 'degraded',
-      database: health.integrity,
+    let dbOk = false;
+    try {
+      const row = db.prepare('SELECT 1 as ok').get() as { ok: number } | undefined;
+      dbOk = row?.ok === 1;
+    } catch {
+      dbOk = false;
+    }
+    sendJson(res, dbOk ? 200 : 503, {
+      ok: dbOk,
+      status: dbOk ? 'healthy' : 'degraded',
+      database: dbOk ? 'ok' : 'error',
       memory: process.memoryUsage(),
       uptime: process.uptime(),
     });
@@ -40,7 +46,7 @@ export async function handleSystemRoute(
     return true;
   }
 
-  if (pathname === '/api/system/maintenance' && (method === 'POST' || method === 'GET')) {
+  if (pathname === '/api/system/maintenance' && method === 'POST') {
     const optResult = checkpointAndOptimize(db);
     const health = checkDatabaseHealth(db);
     sendJson(res, 200, {

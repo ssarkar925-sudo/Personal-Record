@@ -437,7 +437,8 @@ function authorizeWhatsAppSender(
   const allowedTargets = [settings.recipientPhone, transport.getState().connectedPhone]
     .map(last10Digits)
     .filter(Boolean);
-  if (allowedTargets.length > 0 && !allowedTargets.includes(senderKey)) {
+  // Fail closed when no owner/connected phone number is configured
+  if (allowedTargets.length === 0 || !allowedTargets.includes(senderKey)) {
     return null;
   }
   return senderKey;
@@ -454,6 +455,13 @@ interface PendingWhatsAppReceipt {
 }
 
 const pendingWhatsAppReceipts = new Map<string, PendingWhatsAppReceipt>();
+
+function prunePendingWhatsAppReceipts(): void {
+  const now = Date.now();
+  for (const [k, v] of pendingWhatsAppReceipts.entries()) {
+    if (now > v.expiresAt) pendingWhatsAppReceipts.delete(k);
+  }
+}
 
 function commitReceiptWithProof(db: DatabaseSync, draft: Omit<PendingWhatsAppReceipt, 'expiresAt'>): { txId: string; attached: boolean } {
   return withTransaction(db, () => {
@@ -612,6 +620,7 @@ export async function handleIncomingWhatsAppImage(
   const prefs = getAppPreferences(db);
 
   if (!prefs.agentAutoExecute) {
+    prunePendingWhatsAppReceipts();
     pendingWhatsAppReceipts.set(senderKey, {
       fields,
       scope: finalScope,

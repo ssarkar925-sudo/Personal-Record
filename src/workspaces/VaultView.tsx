@@ -214,7 +214,6 @@ export function VaultView({
       .getVaultMeta()
       .then((m) => {
         setMeta(m);
-        if (m?.waRecoveryKey) setActiveRecoveryKey(m.waRecoveryKey);
       })
       .finally(() => setLoadingMeta(false));
     return () => {
@@ -365,7 +364,7 @@ export function VaultView({
       setMasterPass('');
 
       // If existing vault lacked emergency escrow, generate and save it now
-      if (!meta.recoveryCt || !meta.waRecoveryKey) {
+      if (!meta.recoveryCt || !meta.hasWaRecoveryKey) {
         const recoveryKey = generateRecoveryKey();
         const escrow = await encryptMasterKeyWithRecovery(key, recoveryKey);
         const updatedMeta = await api.saveVaultRecovery({
@@ -376,8 +375,6 @@ export function VaultView({
         });
         setMeta(updatedMeta);
         setActiveRecoveryKey(recoveryKey);
-      } else {
-        setActiveRecoveryKey(meta.waRecoveryKey);
       }
 
       touchActivity();
@@ -1933,19 +1930,35 @@ export function VaultView({
                               strength?.label,
                             )}
 
-                          {entry.payload.url && (
-                            <div className="text-[11px] text-slate-600 truncate">
-                              <span className="text-slate-400">URL: </span>
-                              <a
-                                href={entry.payload.url.startsWith('http') ? entry.payload.url : `https://${entry.payload.url}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-600 underline hover:text-blue-800"
-                              >
-                                {entry.payload.url}
-                              </a>
-                            </div>
-                          )}
+                          {entry.payload.url && (() => {
+                            const rawUrl = entry.payload.url.trim();
+                            let safeHref: string | null = null;
+                            try {
+                              const parsed = new URL(/^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`);
+                              if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+                                safeHref = parsed.toString();
+                              }
+                            } catch {
+                              safeHref = null;
+                            }
+                            return (
+                              <div className="text-[11px] text-slate-600 truncate">
+                                <span className="text-slate-400">URL: </span>
+                                {safeHref ? (
+                                  <a
+                                    href={safeHref}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 underline hover:text-blue-800"
+                                  >
+                                    {entry.payload.url}
+                                  </a>
+                                ) : (
+                                  <span>{entry.payload.url}</span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </>
                       )}
 

@@ -24,20 +24,54 @@ export function getLocalNetworkIps(): string[] {
 }
 
 export function generatePairingToken(ttlMs = 10 * 60 * 1000): PairingTokenInfo {
+  const now = Date.now();
+  for (const [k, exp] of activeTokens.entries()) {
+    if (now > exp) activeTokens.delete(k);
+  }
   const token = crypto.randomBytes(6).toString('hex').toUpperCase(); // 12-char token
-  const expiresAt = Date.now() + ttlMs;
+  const expiresAt = now + ttlMs;
   activeTokens.set(token, expiresAt);
   return { token, expiresAt };
 }
 
 export function validatePairingToken(token: string): boolean {
-  const exp = activeTokens.get(token);
-  if (!exp) return false;
-  if (Date.now() > exp) {
-    activeTokens.delete(token);
-    return false;
+  if (typeof token !== 'string' || token.length === 0 || token.length > 64) return false;
+  const now = Date.now();
+  const normalized = token.trim().toUpperCase();
+  const inputBuf = Buffer.from(normalized, 'utf-8');
+  let matchedKey: string | null = null;
+
+  for (const [stored, exp] of activeTokens.entries()) {
+    if (now > exp) {
+      activeTokens.delete(stored);
+      continue;
+    }
+    const storedBuf = Buffer.from(stored, 'utf-8');
+    if (storedBuf.length === inputBuf.length && crypto.timingSafeEqual(storedBuf, inputBuf)) {
+      matchedKey = stored;
+    }
   }
-  return true;
+  return matchedKey !== null;
+}
+
+const ALLOWED_SYNC_TABLES = new Set<string>([
+  'accounts',
+  'transactions',
+  'recurring_bills',
+  'loans',
+  'people_dues',
+  'notes',
+  'note_checklist_items',
+  'savings_goals',
+  'investments',
+]);
+
+const MAX_SYNC_ROWS_PER_TABLE = 10_000;
+
+function getAllowedTableColumns(db: DatabaseSync, table: string): Set<string> {
+  if (!ALLOWED_SYNC_TABLES.has(table)) return new Set();
+  const rows = db.prepare(`PRAGMA table_info("${table}")`).all() as unknown as Array<{ name: string }>;
+  return new Set(rows.map((r) => r.name));
 }
 
 export interface DifferentialSyncPayload {
@@ -90,21 +124,40 @@ export function ingestDifferentialSync(
   db: DatabaseSync,
   payload: DifferentialSyncPayload
 ): { ok: boolean; importedCounts: Record<string, number> } {
+  if (!payload || typeof payload !== 'object' || !payload.tables || typeof payload.tables !== 'object') {
+    throw new Error('Invalid sync payload format');
+  }
+
   const importedCounts: Record<string, number> = {};
 
   withTransaction(db, () => {
     for (const [table, rows] of Object.entries(payload.tables)) {
+      if (!ALLOWED_SYNC_TABLES.has(table)) {
+        throw new Error(`Sync rejected: disallowed table "${table}"`);
+      }
       if (!Array.isArray(rows) || rows.length === 0) continue;
+      if (rows.length > MAX_SYNC_ROWS_PER_TABLE) {
+        throw new Error(`Sync rejected: table "${table}" exceeds row limit`);
+      }
+
+      const validColumns = getAllowedTableColumns(db, table);
       let count = 0;
 
       for (const row of rows) {
-        const columns = Object.keys(row);
-        const placeholders = columns.map(() => '?').join(', ');
-        const values = columns.map((col) => row[col]);
+        if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+        const columns = Object.keys(row).filter((col) => validColumns.has(col));
+        if (columns.length === 0) continue;
 
-        const sql = `INSERT OR REPLACE INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`;
+        const quotedCols = columns.map((col) => `"${col}"`).join(', ');
+        const placeholders = columns.map(() => '?').join(', ');
+        const values = columns.map((col) => {
+          const val = (row as Record<string, unknown>)[col];
+          return val === undefined ? null : val;
+        });
+
+        const sql = `INSERT OR REPLACE INTO "${table}" (${quotedCols}) VALUES (${placeholders})`;
         try {
-          db.prepare(sql).run(...values);
+          db.prepare(sql).run(...(values as Array<string | number | null | Uint8Array>));
           count++;
         } catch (err) {
           console.error(`[LAN Sync Ingest Error in ${table}]`, err);

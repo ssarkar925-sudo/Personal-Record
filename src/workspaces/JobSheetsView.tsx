@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import * as XLSX from 'xlsx';
+import readXlsxFile from 'read-excel-file/browser';
+import writeXlsxFile from 'write-excel-file/browser';
 import {
   Calculator,
   Check,
@@ -425,6 +426,10 @@ export function JobSheetsView({
   // Flush any pending debounced save on page unload / unmount
   useEffect(() => {
     const flushPending = () => {
+      if (autoSaveTimerRef.current) {
+        window.clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
       if (pendingSheetRef.current) {
         const toFlush = pendingSheetRef.current;
         pendingSheetRef.current = null;
@@ -941,36 +946,99 @@ export function JobSheetsView({
     }
   };
 
-  // Excel (.xlsx, .xls, .csv) File Upload Parser — IMMEDIATELY AUTO-SAVES UPON UPLOAD!
+  // Bounded RFC-4180 CSV / TSV parser for safe offline spreadsheet imports
+  const parseDelimitedMatrix = (text: string, delimiter: string): string[][] => {
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let field = '';
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') {
+            field += '"';
+            i++;
+          } else {
+            inQuotes = false;
+          }
+        } else {
+          field += ch;
+        }
+      } else if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === delimiter) {
+        row.push(field);
+        field = '';
+      } else if (ch === '\r' || ch === '\n') {
+        if (ch === '\r' && text[i + 1] === '\n') i++;
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+        if (rows.length >= 5000) break;
+      } else {
+        field += ch;
+      }
+    }
+    if (field.length > 0 || row.length > 0) {
+      row.push(field);
+      rows.push(row);
+    }
+    return rows;
+  };
+
+  // Excel (.xlsx) & CSV/TSV File Upload Parser — bounded & CVE-free, auto-saves upon upload
   const processUploadedExcelFile = async (file: File) => {
+    const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
+    if (file.size > MAX_IMPORT_BYTES) {
+      onNotify?.('File exceeds 10 MB safety limit. Please split or compress the workbook.', 'err');
+      return;
+    }
     setImportedFileName(file.name);
     setImportSavedMessage('');
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+      const lower = file.name.toLowerCase();
       const previews: ParsedExcelSheetPreview[] = [];
 
-      for (const sheetName of workbook.SheetNames) {
-        const ws = workbook.Sheets[sheetName];
-        if (!ws) continue;
-        const matrix = XLSX.utils.sheet_to_json<unknown[]>(ws, {
-          header: 1,
-          defval: '',
-          raw: false,
-          dateNF: 'yyyy-mm-dd',
-        });
-        const nonEmpty = matrix.filter(
-          (r) => Array.isArray(r) && r.some((c) => String(c ?? '').trim() !== ''),
-        );
-        if (nonEmpty.length === 0) continue;
-        const colCount = Math.max(...nonEmpty.map((r) => (Array.isArray(r) ? r.length : 0)));
-        previews.push({
-          sheetName,
-          matrix: nonEmpty,
-          rowCount: Math.max(1, nonEmpty.length - 1),
-          colCount,
-          selected: true,
-        });
+      if (lower.endsWith('.csv') || lower.endsWith('.tsv')) {
+        const text = await file.text();
+        const matrix = parseDelimitedMatrix(text, lower.endsWith('.tsv') ? '\t' : ',');
+        const nonEmpty = matrix
+          .slice(0, 5000)
+          .map((r) => r.slice(0, 60))
+          .filter((r) => r.some((c) => String(c ?? '').trim() !== ''));
+        if (nonEmpty.length > 0) {
+          const colCount = Math.max(...nonEmpty.map((r) => r.length));
+          previews.push({
+            sheetName: file.name.replace(/\.(csv|tsv)$/i, '').slice(0, 31) || 'Sheet 1',
+            matrix: nonEmpty,
+            rowCount: Math.max(1, nonEmpty.length - 1),
+            colCount,
+            selected: true,
+          });
+        }
+      } else {
+        const parsedSheets = await readXlsxFile(file);
+        for (const s of parsedSheets) {
+          const matrix = (s.data ?? []).slice(0, 5000).map((r) =>
+            r.slice(0, 60).map((cell) => {
+              if (cell === null || cell === undefined) return '';
+              if (cell instanceof Date) return cell.toISOString().slice(0, 10);
+              return String(cell);
+            }),
+          );
+          const nonEmpty = matrix.filter((r) => r.some((c) => c.trim() !== ''));
+          if (nonEmpty.length === 0) continue;
+          const colCount = Math.max(...nonEmpty.map((r) => r.length));
+          previews.push({
+            sheetName: s.sheet || 'Sheet',
+            matrix: nonEmpty,
+            rowCount: Math.max(1, nonEmpty.length - 1),
+            colCount,
+            selected: true,
+          });
+        }
       }
 
       if (previews.length === 0) {
@@ -988,7 +1056,7 @@ export function JobSheetsView({
         true,
       );
     } catch {
-      onNotify?.('Could not parse file. Please upload a valid .xlsx, .xls, or .csv file.', 'err');
+      onNotify?.('Could not parse file. Please upload a valid .xlsx, .csv, or .tsv file.', 'err');
     }
   };
 
@@ -1011,29 +1079,41 @@ export function JobSheetsView({
   };
 
   // Export Workbook / Active Sheet to Excel (.xlsx)
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (!activeSheet) return;
-    const wb = XLSX.utils.book_new();
-    for (const s of sheets) {
-      const header = s.columns.map((c) => c.label);
-      const dataRows = s.rows.map((row) =>
-        s.columns.map((col) => {
-          const raw = row.cells[col.id] ?? '';
-          return raw.trim().startsWith('=') ? evaluateCellFormula(raw, s.columns, s.rows) : raw;
-        }),
-      );
-      const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
-      const safeTabName = s.name.replace(/[\\/?*[\]:]/g, ' ').slice(0, 31) || 'Sheet';
-      XLSX.utils.book_append_sheet(wb, ws, safeTabName);
+    try {
+      const sheetConfigs = sheets.map((s, idx) => {
+        const headerRow = s.columns.map((c) => ({ value: c.label, fontWeight: 'bold' as const }));
+        const dataRows = s.rows.map((row) =>
+          s.columns.map((col) => {
+            const raw = row.cells[col.id] ?? '';
+            const val = raw.trim().startsWith('=') ? evaluateCellFormula(raw, s.columns, s.rows) : raw;
+            return { value: String(val ?? '') };
+          }),
+        );
+        const safeTabName =
+          s.name.replace(/[\\/?*[\]:]/g, ' ').trim().slice(0, 31) || `Sheet ${idx + 1}`;
+        return {
+          sheet: safeTabName,
+          data: [headerRow, ...dataRows],
+        };
+      });
+      await writeXlsxFile(sheetConfigs).toFile(`job-sheets-workbook-${todayISO()}.xlsx`);
+      onNotify?.('Exported multi-tab Excel workbook (.xlsx) ✓');
+    } catch {
+      onNotify?.('Failed to export Excel workbook', 'err');
     }
-    XLSX.writeFile(wb, `job-sheets-workbook-${todayISO()}.xlsx`);
-    onNotify?.('Exported multi-tab Excel workbook (.xlsx) ✓');
   };
 
-  // Export Active Tab as CSV
+  // Export Active Tab as CSV (with CSV formula-injection neutralization)
   const handleExportCsv = () => {
     if (!activeSheet) return;
-    const headers = activeSheet.columns.map((c) => `"${c.label.replace(/"/g, '""')}"`).join(',');
+    const safeCsv = (val: unknown) => {
+      const s = String(val ?? '');
+      const neutralized = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+      return `"${neutralized.replace(/"/g, '""')}"`;
+    };
+    const headers = activeSheet.columns.map((c) => safeCsv(c.label)).join(',');
     const lines = activeSheet.rows.map((row) =>
       activeSheet.columns
         .map((col) => {
@@ -1041,7 +1121,7 @@ export function JobSheetsView({
           const val = raw.trim().startsWith('=')
             ? evaluateCellFormula(raw, activeSheet.columns, activeSheet.rows)
             : raw;
-          return `"${String(val).replace(/"/g, '""')}"`;
+          return safeCsv(val);
         })
         .join(','),
     );

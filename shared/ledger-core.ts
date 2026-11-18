@@ -489,11 +489,22 @@ export const settleDueSchema = z.object({
   note: z.string().trim().max(200).default(''),
 });
 
+export const SAFE_NOTE_ATTACHMENT_MIMES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+  'application/pdf',
+  'text/plain',
+  'text/csv',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+] as const;
+
 export const noteAttachmentInputSchema = z.object({
   filename: z.string().trim().min(1).max(255),
-  mimeType: z.string().trim().min(1).max(100),
-  dataBase64: z.string().min(1),
-  byteSize: z.number().int().min(0).optional(),
+  mimeType: z.enum(SAFE_NOTE_ATTACHMENT_MIMES),
+  dataBase64: z.string().min(1).max(10_000_000),
+  byteSize: z.number().int().min(0).max(8_000_000).optional(),
 });
 
 export const upsertNoteSchema = z.object({

@@ -1,4 +1,5 @@
 import http from 'node:http';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -121,6 +122,7 @@ import {
   rekeyVaultEntries,
   saveVaultRecoveryMeta,
   setVaultMeta,
+  toPublicVaultMeta,
   upsertVaultEntry,
 } from './db/vault-repo.ts';
 import {
@@ -180,6 +182,7 @@ import {
   getLocalNetworkIps,
   exportDifferentialSync,
   ingestDifferentialSync,
+  validatePairingToken,
 } from './sync/lan-sync.ts';
 import { seedFinancialData } from './db/seed.ts';
 
@@ -200,7 +203,10 @@ function setSecurityHeaders(res: http.ServerResponse): void {
 
 function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
   setSecurityHeaders(res);
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+  });
   res.end(JSON.stringify(body));
 }
 
@@ -255,7 +261,140 @@ export function resolveSafeChildPath(allowedBaseDir: string, userPath: string): 
   if (!resolvedPath.startsWith(resolvedBase) || (resolvedPath !== resolvedBase && !resolvedPath.startsWith(allowedPrefix))) {
     return null;
   }
+  // Guard against symlinks escaping allowedBaseDir
+  if (fs.existsSync(resolvedPath) && fs.existsSync(resolvedBase)) {
+    try {
+      const realBase = fs.realpathSync(resolvedBase);
+      const realTarget = fs.realpathSync(resolvedPath);
+      const realPrefix = realBase.endsWith(path.sep) ? realBase : realBase + path.sep;
+      if (realTarget !== realBase && !realTarget.startsWith(realPrefix)) {
+        return null;
+      }
+    } catch {
+      return null;
+    }
+  }
   return resolvedPath;
+}
+
+const DEFAULT_BACKUP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'data', 'backups');
+
+function resolveSafeBackupDir(configuredDir?: string | null): string {
+  const trimmed = (configuredDir ?? '').trim();
+  if (!trimmed) return DEFAULT_BACKUP_DIR;
+  // Only permit relative subdirectory names strictly inside data/backups
+  const safeSub = resolveSafeChildPath(DEFAULT_BACKUP_DIR, trimmed);
+  return safeSub ?? DEFAULT_BACKUP_DIR;
+}
+
+function buildMinimalPdf(lines: string[]): Buffer {
+  const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  const textOps = lines
+    .map((line, i) => `BT /F1 12 Tf 50 ${760 - i * 18} Td (${esc(line)}) Tj ET`)
+    .join('\n');
+  const objects = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n',
+    `4 0 obj\n<< /Length ${Buffer.byteLength(textOps, 'utf-8')} >>\nstream\n${textOps}\nendstream\nendobj\n`,
+    '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+  ];
+  let pdf = '%PDF-1.4\n';
+  const offsets: number[] = [0];
+  for (const obj of objects) {
+    offsets.push(Buffer.byteLength(pdf, 'utf-8'));
+    pdf += obj;
+  }
+  const xrefPos = Buffer.byteLength(pdf, 'utf-8');
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (let i = 1; i <= objects.length; i++) {
+    pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF\n`;
+  return Buffer.from(pdf, 'utf-8');
+}
+
+const sheetColumnSchema = z.object({
+  id: z.string().min(1).max(80),
+  key: z.string().min(1).max(16),
+  label: z.string().max(120),
+  type: z.enum(['text', 'number', 'currency', 'date', 'status', 'scope']),
+  width: z.number().int().min(40).max(800).optional(),
+});
+
+const sheetRowSchema = z.object({
+  id: z.string().min(1).max(80),
+  cells: z.record(z.string().max(80), z.string().max(4000)),
+});
+
+const sheetSettingsSchema = z
+  .object({
+    showTotals: z.boolean().optional(),
+    customStatuses: z
+      .array(
+        z.object({
+          label: z.string().min(1).max(60),
+          color: z.enum(['gold', 'emerald', 'obsidian', 'rose', 'slate']),
+        }),
+      )
+      .max(40)
+      .optional(),
+  })
+  .optional();
+
+const createJobSheetSchema = z.object({
+  name: z.string().trim().min(1).max(120).default('New Job Sheet'),
+  scope: z.enum(SCOPES).default('business'),
+  color: z.enum(['gold', 'emerald', 'obsidian', 'rose', 'slate']).default('gold'),
+  columns: z.array(sheetColumnSchema).max(60).default([]),
+  rows: z.array(sheetRowSchema).max(5000).default([]),
+  settings: sheetSettingsSchema,
+  orderIndex: z.number().int().min(0).max(1000).optional(),
+});
+
+const updateJobSheetSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  scope: z.enum(SCOPES).optional(),
+  color: z.enum(['gold', 'emerald', 'obsidian', 'rose', 'slate']).optional(),
+  columns: z.array(sheetColumnSchema).max(60).optional(),
+  rows: z.array(sheetRowSchema).max(5000).optional(),
+  settings: sheetSettingsSchema,
+  orderIndex: z.number().int().min(0).max(1000).optional(),
+});
+
+const pendingAgentCallSchema = z.object({
+  tool: z.string().trim().min(1).max(60),
+  args: z.record(z.string(), z.unknown()).default({}),
+});
+
+function isAllowedHostHeader(hostHeader: string | undefined): boolean {
+  if (!hostHeader) return true;
+  const hostOnly = hostHeader.replace(/:\d+$/, '').toLowerCase();
+  if (hostOnly === 'localhost' || hostOnly === '127.0.0.1' || hostOnly === '[::1]') return true;
+  // Allow private LAN IPv4 addresses when explicitly listening on LAN
+  if (/^(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})$/.test(hostOnly)) {
+    return true;
+  }
+  return false;
+}
+
+function isSameOriginAllowed(req: http.IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  const host = req.headers.host;
+  if (!host) return false;
+  try {
+    const parsedOrigin = new URL(origin);
+    // Allow matching host or loopback dev proxy (localhost <-> 127.0.0.1)
+    if (parsedOrigin.host === host) return true;
+    const origHost = parsedOrigin.hostname.toLowerCase();
+    const reqHost = host.replace(/:\d+$/, '').toLowerCase();
+    const isLoopback = (h: string) => h === 'localhost' || h === '127.0.0.1' || h === '[::1]';
+    if (isLoopback(origHost) && isLoopback(reqHost)) return true;
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 export function createAppServer(opts: {
@@ -277,18 +416,102 @@ export function createAppServer(opts: {
 
   const vaultRecoveryOtps = new Map<string, { code: string; expiresAt: number; attempts: number }>();
   const pinLimiter = new SimpleRateLimiter({ windowMs: 60_000, maxRequests: 5 });
+  const heavyLimiter = new SimpleRateLimiter({ windowMs: 60_000, maxRequests: 20 });
+  const activeSessions = new Map<string, number>();
+
+  const issueSessionCookie = (res: http.ServerResponse, ttlMs = 12 * 60 * 60 * 1000) => {
+    const now = Date.now();
+    for (const [k, exp] of activeSessions.entries()) {
+      if (now > exp) activeSessions.delete(k);
+    }
+    const token = crypto.randomBytes(24).toString('hex');
+    activeSessions.set(token, now + ttlMs);
+    res.setHeader('Set-Cookie', `pl_session=${token}; HttpOnly; SameSite=Strict; Path=/`);
+  };
+
+  const clearSessionCookie = (req: http.IncomingMessage, res: http.ServerResponse) => {
+    const cookieHeader = req.headers.cookie || '';
+    const match = cookieHeader.match(/(?:^|;\s*)pl_session=([a-f0-9]+)/);
+    if (match) activeSessions.delete(match[1]);
+    res.setHeader('Set-Cookie', 'pl_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+  };
+
+  const hasValidSession = (req: http.IncomingMessage): boolean => {
+    const cookieHeader = req.headers.cookie || '';
+    const match = cookieHeader.match(/(?:^|;\s*)pl_session=([a-f0-9]+)/);
+    if (!match) return false;
+    const exp = activeSessions.get(match[1]);
+    if (!exp || Date.now() > exp) {
+      if (exp) activeSessions.delete(match[1]);
+      return false;
+    }
+    return true;
+  };
 
   return http.createServer(async (req, res) => {
     const method = req.method ?? 'GET';
     const reqUrl = new URL(req.url ?? '/', 'http://127.0.0.1');
     const pathname = reqUrl.pathname;
+    const clientIp = req.socket.remoteAddress || '127.0.0.1';
 
     try {
+      // 1. DNS Rebinding & Host Header guard
+      if (!isAllowedHostHeader(req.headers.host)) {
+        return sendError(res, 403, 'FORBIDDEN_HOST', 'Disallowed Host header');
+      }
+
+      // 2. Same-Origin CSRF guard on state-changing API routes
+      const isMutating = method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
+      if (pathname.startsWith('/api/') && isMutating) {
+        if (!isSameOriginAllowed(req)) {
+          return sendError(res, 403, 'FORBIDDEN_ORIGIN', 'Cross-origin state-changing request blocked');
+        }
+        const ct = (req.headers['content-type'] || '').toLowerCase();
+        // Reject text/plain / form-urlencoded simple CSRF requests when a body is sent
+        if (ct && !ct.includes('application/json') && !ct.includes('multipart/form-data')) {
+          return sendError(res, 415, 'UNSUPPORTED_MEDIA_TYPE', 'JSON Content-Type required');
+        }
+      }
+
+      // 3. Server-side App PIN session enforcement when PIN lock is enabled
+      if (pathname.startsWith('/api/')) {
+        const isPublicLockRoute =
+          pathname === '/api/app-lock/verify' ||
+          pathname === '/api/app-lock/clear' ||
+          pathname === '/api/app-lock/lock' ||
+          pathname === '/api/app-lock/status' ||
+          (method === 'GET' && pathname === '/api/preferences') ||
+          pathname === '/api/sync/export' ||
+          pathname === '/api/sync/import';
+
+        if (!isPublicLockRoute) {
+          const prefs = getAppPreferences(db);
+          if (prefs.hasAppPin && !hasValidSession(req)) {
+            return sendError(res, 401, 'APP_LOCKED', 'App is locked. Verify PIN to unlock session.');
+          }
+        }
+      }
+
       if (await handleSystemRoute(req, res, db)) {
         return;
       }
 
-      // Multi-Device Local LAN Encrypted Sync
+      if (method === 'GET' && pathname === '/api/app-lock/status') {
+        const prefs = getAppPreferences(db);
+        return sendJson(res, 200, {
+          data: {
+            hasAppPin: prefs.hasAppPin,
+            unlocked: !prefs.hasAppPin || hasValidSession(req),
+            autoLockMinutes: prefs.autoLockMinutes,
+          },
+        });
+      }
+      if (method === 'POST' && pathname === '/api/app-lock/lock') {
+        clearSessionCookie(req, res);
+        return sendJson(res, 200, { ok: true });
+      }
+
+      // Multi-Device Local LAN Sync (Pairing Token Authenticated + Allowlisted Tables/Columns)
       if (method === 'GET' && pathname === '/api/sync/pairing-qr') {
         return sendJson(res, 200, {
           data: {
@@ -298,10 +521,18 @@ export function createAppServer(opts: {
         });
       }
       if (method === 'GET' && pathname === '/api/sync/export') {
+        const token = String(req.headers['x-sync-token'] || reqUrl.searchParams.get('token') || '');
+        if (!validatePairingToken(token)) {
+          return sendError(res, 401, 'UNAUTHORIZED', 'Valid LAN pairing token required');
+        }
         const since = reqUrl.searchParams.get('since') || undefined;
         return sendJson(res, 200, exportDifferentialSync(db, since));
       }
       if (method === 'POST' && pathname === '/api/sync/import') {
+        const token = String(req.headers['x-sync-token'] || reqUrl.searchParams.get('token') || '');
+        if (!validatePairingToken(token)) {
+          return sendError(res, 401, 'UNAUTHORIZED', 'Valid LAN pairing token required');
+        }
         const body = (await readJsonBody(req, 10_000_000)) as any;
         return sendJson(res, 200, ingestDifferentialSync(db, body));
       }
@@ -432,31 +663,40 @@ export function createAppServer(opts: {
         const taxData = getTaxSummaryPack(db, fy);
         const totalIncome = Object.values(taxData.scopePnl).reduce((s, p) => s + p.incomeMinor, 0);
         const totalExpense = Object.values(taxData.scopePnl).reduce((s, p) => s + p.expenseMinor, 0);
-        const fallbackPdf = `%PDF-1.4\n% CA Tax Summary ${taxData.fiscalYearLabel}\nTotal Income: ${totalIncome}\nTotal Expenses: ${totalExpense}\n`;
+        const pdfBuf = buildMinimalPdf([
+          `Personal Ledger — CA Tax Summary (${taxData.fiscalYearLabel})`,
+          `Period: ${taxData.fromDate} to ${taxData.toDate}`,
+          `Total Income: INR ${(totalIncome / 100).toFixed(2)}`,
+          `Total Expenses: INR ${(totalExpense / 100).toFixed(2)}`,
+          `Net Savings: INR ${((totalIncome - totalExpense) / 100).toFixed(2)}`,
+        ]);
         setSecurityHeaders(res);
         res.writeHead(200, {
           'Content-Type': 'application/pdf',
+          'Cache-Control': 'no-store',
           'Content-Disposition': `attachment; filename="tax-summary-${fy ?? todayISO().slice(0, 4)}.pdf"`,
         });
-        return res.end(Buffer.from(fallbackPdf, 'utf-8'));
+        return res.end(pdfBuf);
       }
 
       const backupsMatch = pathname.match(/^\/api\/backups(?:\/(.*))?$/);
       if (backupsMatch && method === 'GET') {
         const prefs = getAppPreferences(db);
-        const defaultBackupDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'data', 'backups');
-        const allowedBaseDir = prefs.autoBackupDir ? path.resolve(prefs.autoBackupDir) : defaultBackupDir;
+        const allowedBaseDir = resolveSafeBackupDir(prefs.autoBackupDir);
         fs.mkdirSync(allowedBaseDir, { recursive: true });
 
         const filename = backupsMatch[1] || reqUrl.searchParams.get('file') || reqUrl.searchParams.get('filename');
         if (!filename) {
-          const files = fs.readdirSync(allowedBaseDir).filter((f) => f.endsWith('.json'));
+          const files = fs.readdirSync(allowedBaseDir).filter((f) => /^[a-zA-Z0-9._-]+\.json$/.test(f));
           return sendJson(res, 200, { data: files });
         }
 
         const resolvedPath = resolveSafeChildPath(allowedBaseDir, filename);
         if (!resolvedPath || !resolvedPath.startsWith(allowedBaseDir)) {
           return sendError(res, 403, 'FORBIDDEN', 'Directory traversal detected');
+        }
+        if (!/^[a-zA-Z0-9._-]+\.json$/.test(path.basename(resolvedPath))) {
+          return sendError(res, 403, 'FORBIDDEN', 'Only JSON backup files may be downloaded');
         }
 
         if (!fs.existsSync(resolvedPath) || !fs.statSync(resolvedPath).isFile()) {
@@ -466,6 +706,7 @@ export function createAppServer(opts: {
         setSecurityHeaders(res);
         res.writeHead(200, {
           'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
           'Content-Disposition': `attachment; filename="${path.basename(resolvedPath)}"`,
         });
         return fs.createReadStream(resolvedPath).pipe(res);
@@ -538,8 +779,7 @@ export function createAppServer(opts: {
 
       if (method === 'POST' && pathname === '/api/backup/run-now') {
         const prefs = getAppPreferences(db);
-        const defaultBackupDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'data', 'backups');
-        const allowedBaseDir = prefs.autoBackupDir ? path.resolve(prefs.autoBackupDir) : defaultBackupDir;
+        const allowedBaseDir = resolveSafeBackupDir(prefs.autoBackupDir);
         const today = todayISO();
         const outPath = writeAutoBackupFile(allowedBaseDir, today, exportFullSnapshotJSON(db));
         updateAppPreferences(db, { lastAutoBackupDate: today });
@@ -733,8 +973,11 @@ export function createAppServer(opts: {
       }
       const recConfirmMatch = pathname.match(/^\/api\/recurring-bills\/([^/]+)\/confirm$/);
       if (method === 'POST' && recConfirmMatch) {
-        const body = (await readJsonBody(req)) as { paidAt?: string };
-        return sendJson(res, 200, { data: confirmRecurringBill(db, recConfirmMatch[1], body.paidAt || todayISO()) });
+        const parsed = z
+          .object({ paidAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() })
+          .safeParse(await readJsonBody(req));
+        if (!parsed.success) return sendError(res, 422, 'VALIDATION_ERROR', 'Invalid paidAt date');
+        return sendJson(res, 200, { data: confirmRecurringBill(db, recConfirmMatch[1], parsed.data.paidAt || todayISO()) });
       }
       if (method === 'POST' && pathname === '/api/recurring-bills/auto-post') {
         return sendJson(res, 200, { data: autoPostDueRecurringBills(db) });
@@ -912,23 +1155,18 @@ export function createAppServer(opts: {
         return sendJson(res, 200, { data: listJobSheets(db) });
       }
       if (method === 'POST' && pathname === '/api/job-sheets') {
-        const body = (await readJsonBody(req, 25_000_000)) as {
-          name?: string;
-          scope?: Scope;
-          color?: 'gold' | 'emerald' | 'obsidian' | 'rose' | 'slate';
-          columns?: any[];
-          rows?: any[];
-          settings?: any;
-          orderIndex?: number;
-        };
+        const parsed = createJobSheetSchema.safeParse(await readJsonBody(req, 5_000_000));
+        if (!parsed.success) {
+          return sendError(res, 422, 'VALIDATION_ERROR', 'Invalid job sheet payload', parsed.error.flatten());
+        }
         const created = createJobSheet(db, {
-          name: body.name || 'New Job Sheet',
-          scope: body.scope && (SCOPES as readonly string[]).includes(body.scope) ? body.scope : 'business',
-          color: body.color || 'gold',
-          columns: Array.isArray(body.columns) ? body.columns : [],
-          rows: Array.isArray(body.rows) ? body.rows : [],
-          settings: body.settings,
-          orderIndex: typeof body.orderIndex === 'number' ? body.orderIndex : undefined,
+          name: parsed.data.name,
+          scope: parsed.data.scope,
+          color: parsed.data.color,
+          columns: parsed.data.columns,
+          rows: parsed.data.rows,
+          settings: parsed.data.settings as any,
+          orderIndex: parsed.data.orderIndex,
         });
         return sendJson(res, 201, { data: created });
       }
@@ -936,16 +1174,11 @@ export function createAppServer(opts: {
       if (sheetIdMatch) {
         const sheetId = sheetIdMatch[1];
         if (method === 'PUT' || method === 'PATCH') {
-          const body = (await readJsonBody(req, 25_000_000)) as {
-            name?: string;
-            scope?: Scope;
-            color?: 'gold' | 'emerald' | 'obsidian' | 'rose' | 'slate';
-            columns?: any[];
-            rows?: any[];
-            settings?: any;
-            orderIndex?: number;
-          };
-          const updated = updateJobSheet(db, sheetId, body);
+          const parsed = updateJobSheetSchema.safeParse(await readJsonBody(req, 5_000_000));
+          if (!parsed.success) {
+            return sendError(res, 422, 'VALIDATION_ERROR', 'Invalid job sheet update', parsed.error.flatten());
+          }
+          const updated = updateJobSheet(db, sheetId, parsed.data as any);
           if (!updated) return sendError(res, 404, 'NOT_FOUND', 'Job sheet not found');
           return sendJson(res, 200, { data: updated });
         }
@@ -955,9 +1188,9 @@ export function createAppServer(opts: {
         }
       }
 
-      // Vault (Ciphertext + Security Metadata ONLY)
+      // Vault (Ciphertext + Public Security Metadata ONLY — never exposes waRecoveryKey)
       if (method === 'GET' && pathname === '/api/vault/meta') {
-        return sendJson(res, 200, { data: getVaultMeta(db) });
+        return sendJson(res, 200, { data: toPublicVaultMeta(getVaultMeta(db)) });
       }
       if (method === 'POST' && pathname === '/api/vault/meta') {
         if (getVaultMeta(db)) {
@@ -977,7 +1210,7 @@ export function createAppServer(opts: {
         if (!parsed.success) return sendError(res, 422, 'VALIDATION_ERROR', 'Invalid vault metadata');
         const meta = setVaultMeta(db, parsed.data);
         recordVaultSecurityEvent(db, 'vault_initialized', 'Vault master key initialized');
-        return sendJson(res, 200, { data: meta });
+        return sendJson(res, 200, { data: toPublicVaultMeta(meta) });
       }
       if (method === 'POST' && pathname === '/api/vault/recovery') {
         const parsed = z
@@ -991,9 +1224,13 @@ export function createAppServer(opts: {
         if (!parsed.success) return sendError(res, 422, 'VALIDATION_ERROR', 'Invalid recovery metadata', parsed.error.flatten());
         const meta = saveVaultRecoveryMeta(db, parsed.data);
         recordVaultSecurityEvent(db, 'vault_unlocked', 'Recovery escrow updated');
-        return sendJson(res, 200, { data: meta });
+        return sendJson(res, 200, { data: toPublicVaultMeta(meta) });
       }
       if (method === 'POST' && pathname === '/api/vault/recovery/whatsapp-request') {
+        const rateCheck = pinLimiter.check(`wa-otp-req:${clientIp}`);
+        if (!rateCheck.allowed) {
+          return sendError(res, 429, 'RATE_LIMITED', `Too many OTP requests. Try again in ${rateCheck.retryAfterSec} seconds.`);
+        }
         const meta = getVaultMeta(db);
         if (!meta) return sendError(res, 404, 'NOT_FOUND', 'Vault is not configured yet');
         if (!meta.waRecoveryKey) {
@@ -1021,7 +1258,7 @@ export function createAppServer(opts: {
             'No phone number configured in Alert Settings. Please use your Emergency Recovery Key.',
           );
         }
-        const code = String(Math.floor(100000 + Math.random() * 900000));
+        const code = String(crypto.randomInt(100000, 1000000));
         vaultRecoveryOtps.set('active', { code, expiresAt: Date.now() + 10 * 60 * 1000, attempts: 0 });
 
         const phone = settings.recipientPhone.trim();
@@ -1037,6 +1274,10 @@ export function createAppServer(opts: {
         return sendJson(res, 200, { ok: true, phoneMasked: masked, expiresMinutes: 10 });
       }
       if (method === 'POST' && pathname === '/api/vault/recovery/whatsapp-verify') {
+        const rateCheck = pinLimiter.check(`wa-otp-verify:${clientIp}`);
+        if (!rateCheck.allowed) {
+          return sendError(res, 429, 'RATE_LIMITED', `Too many attempts. Try again in ${rateCheck.retryAfterSec} seconds.`);
+        }
         const parsed = z
           .object({ code: z.string().trim().min(4).max(10) })
           .safeParse(await readJsonBody(req));
@@ -1049,7 +1290,10 @@ export function createAppServer(opts: {
           vaultRecoveryOtps.delete('active');
           return sendError(res, 429, 'TOO_MANY_ATTEMPTS', 'Too many incorrect attempts. Please request a new recovery code.');
         }
-        if (parsed.data.code !== active.code) {
+        const givenBuf = Buffer.from(parsed.data.code, 'utf-8');
+        const expectedBuf = Buffer.from(active.code, 'utf-8');
+        const codeMatches = givenBuf.length === expectedBuf.length && crypto.timingSafeEqual(givenBuf, expectedBuf);
+        if (!codeMatches) {
           active.attempts += 1;
           return sendError(res, 400, 'INVALID_OTP', `Incorrect recovery code. ${3 - active.attempts} attempt(s) remaining.`);
         }
@@ -1095,7 +1339,7 @@ export function createAppServer(opts: {
           .safeParse(await readJsonBody(req));
         if (!parsed.success) return sendError(res, 422, 'VALIDATION_ERROR', 'Invalid vault rekey payload', parsed.error.flatten());
         const meta = rekeyVaultEntries(db, parsed.data);
-        return sendJson(res, 200, { data: meta });
+        return sendJson(res, 200, { data: toPublicVaultMeta(meta) });
       }
       if (method === 'POST' && pathname === '/api/vault/events') {
         const parsed = z
@@ -1150,9 +1394,10 @@ export function createAppServer(opts: {
       }
       if (method === 'POST' && pathname === '/api/whatsapp/test') {
         const settings = getAlertSettings(db);
-        const body = (await readJsonBody(req)) as { phone?: string };
+        const parsed = z.object({ phone: z.string().trim().max(30).optional() }).safeParse(await readJsonBody(req));
+        if (!parsed.success) return sendError(res, 422, 'VALIDATION_ERROR', 'Invalid phone format');
         const result = await transport.sendText(
-          body.phone || settings.recipientPhone,
+          parsed.data.phone || settings.recipientPhone,
           '✅ Personal Ledger WhatsApp Bridge is connected and ready for module alerts.',
         );
         if (!result.ok) return sendError(res, 400, 'WHATSAPP_SEND_FAILED', result.error ?? 'Failed to send test alert');
@@ -1174,15 +1419,28 @@ export function createAppServer(opts: {
             llmModel: z.string().max(80).optional(),
             autoLockMinutes: z.number().int().min(0).max(240).optional(),
             autoBackupEnabled: z.boolean().optional(),
-            autoBackupDir: z.string().max(260).optional(),
+            autoBackupDir: z.string().max(120).optional(),
           })
           .safeParse(await readJsonBody(req));
         if (!parsed.success) return sendError(res, 422, 'VALIDATION_ERROR', 'Invalid preferences', parsed.error.flatten());
-        return sendJson(res, 200, { data: updateAppPreferences(db, parsed.data) });
+        const nextPrefs = { ...parsed.data };
+        if (nextPrefs.autoBackupDir !== undefined && nextPrefs.autoBackupDir.trim() !== '') {
+          // Only allow clean relative subfolder names strictly inside data/backups
+          const safe = resolveSafeChildPath(DEFAULT_BACKUP_DIR, nextPrefs.autoBackupDir.trim());
+          if (!safe) {
+            return sendError(res, 422, 'VALIDATION_ERROR', 'autoBackupDir must be a relative subfolder inside backups');
+          }
+          nextPrefs.autoBackupDir = path.relative(DEFAULT_BACKUP_DIR, safe);
+        }
+        return sendJson(res, 200, { data: updateAppPreferences(db, nextPrefs) });
       }
 
-      // App Lock PIN
+      // App Lock PIN (rate-limited + server-side HttpOnly session cookie)
       if (method === 'POST' && pathname === '/api/app-lock/set') {
+        const rateCheck = pinLimiter.check(`pin-set:${clientIp}`);
+        if (!rateCheck.allowed) {
+          return sendError(res, 429, 'RATE_LIMITED', `Too many attempts. Try again in ${rateCheck.retryAfterSec} seconds.`);
+        }
         const parsed = z
           .object({
             pin: z.string().regex(/^\d{4,8}$/, 'PIN must be 4-8 digits'),
@@ -1196,6 +1454,7 @@ export function createAppServer(opts: {
           return sendError(res, 403, 'INVALID_PIN', 'Current PIN is incorrect');
         }
         setAppPin(db, parsed.data.pin);
+        issueSessionCookie(res);
         const updated =
           parsed.data.autoLockMinutes !== undefined
             ? updateAppPreferences(db, { autoLockMinutes: parsed.data.autoLockMinutes })
@@ -1203,8 +1462,7 @@ export function createAppServer(opts: {
         return sendJson(res, 200, { data: updated });
       }
       if (method === 'POST' && pathname === '/api/app-lock/verify') {
-        const ip = req.socket.remoteAddress || '127.0.0.1';
-        const rateCheck = pinLimiter.check(ip);
+        const rateCheck = pinLimiter.check(`pin-verify:${clientIp}`);
         if (!rateCheck.allowed) {
           return sendError(res, 429, 'RATE_LIMITED', `Too many attempts. Try again in ${rateCheck.retryAfterSec} seconds.`);
         }
@@ -1212,14 +1470,20 @@ export function createAppServer(opts: {
         if (!parsed.success) return sendError(res, 422, 'VALIDATION_ERROR', 'PIN is required');
         const ok = verifyAppPin(db, parsed.data.pin);
         if (!ok) return sendError(res, 403, 'INVALID_PIN', 'Incorrect PIN');
+        issueSessionCookie(res);
         return sendJson(res, 200, { ok: true });
       }
       if (method === 'POST' && pathname === '/api/app-lock/clear') {
+        const rateCheck = pinLimiter.check(`pin-clear:${clientIp}`);
+        if (!rateCheck.allowed) {
+          return sendError(res, 429, 'RATE_LIMITED', `Too many attempts. Try again in ${rateCheck.retryAfterSec} seconds.`);
+        }
         const parsed = z.object({ currentPin: z.string().min(1).max(20) }).safeParse(await readJsonBody(req));
         if (!parsed.success) return sendError(res, 422, 'VALIDATION_ERROR', 'Current PIN required');
         if (!verifyAppPin(db, parsed.data.currentPin)) {
           return sendError(res, 403, 'INVALID_PIN', 'Current PIN is incorrect');
         }
+        clearSessionCookie(req, res);
         return sendJson(res, 200, { data: clearAppPin(db) });
       }
 
@@ -1334,6 +1598,10 @@ export function createAppServer(opts: {
         return sendJson(res, 200, { data: items });
       }
       if (method === 'POST' && pathname === '/api/import/preview-pdf') {
+        const rateCheck = heavyLimiter.check(`pdf:${clientIp}`);
+        if (!rateCheck.allowed) {
+          return sendError(res, 429, 'RATE_LIMITED', `Too many PDF requests. Try again in ${rateCheck.retryAfterSec} seconds.`);
+        }
         const parsed = z
           .object({
             pdfBase64: z.string().min(20).max(14_000_000),
@@ -1409,6 +1677,10 @@ export function createAppServer(opts: {
 
       // Smart Receipt / Bill Photo & Text Capture
       if (method === 'POST' && pathname === '/api/receipt/parse') {
+        const rateCheck = heavyLimiter.check(`ocr:${clientIp}`);
+        if (!rateCheck.allowed) {
+          return sendError(res, 429, 'RATE_LIMITED', `Too many OCR requests. Try again in ${rateCheck.retryAfterSec} seconds.`);
+        }
         const parsed = z
           .object({
             imageBase64: z.string().max(6_000_000).optional(),
@@ -1463,11 +1735,15 @@ export function createAppServer(opts: {
         return sendJson(res, 200, { ok: true });
       }
       if (method === 'POST' && pathname === '/api/agent/command') {
+        const rateCheck = heavyLimiter.check(`agent:${clientIp}`);
+        if (!rateCheck.allowed) {
+          return sendError(res, 429, 'RATE_LIMITED', `Too many AI requests. Try again in ${rateCheck.retryAfterSec} seconds.`);
+        }
         const parsed = z
           .object({
             commandText: z.string().trim().min(1).max(2000),
             confirmExecution: z.boolean().optional(),
-            pendingCalls: z.array(z.any()).optional(),
+            pendingCalls: z.array(pendingAgentCallSchema).max(5).optional(),
           })
           .safeParse(await readJsonBody(req));
         if (!parsed.success) return sendError(res, 422, 'VALIDATION_ERROR', 'Command text is required', parsed.error.flatten());
@@ -1479,6 +1755,10 @@ export function createAppServer(opts: {
         return sendJson(res, 200, { data: result });
       }
       if (method === 'POST' && pathname === '/api/agent/voice') {
+        const rateCheck = heavyLimiter.check(`voice:${clientIp}`);
+        if (!rateCheck.allowed) {
+          return sendError(res, 429, 'RATE_LIMITED', `Too many voice requests. Try again in ${rateCheck.retryAfterSec} seconds.`);
+        }
         const parsed = z
           .object({
             audioBase64: z.string().trim().min(10).max(5_000_000),
@@ -1507,7 +1787,6 @@ export function createAppServer(opts: {
         if (fs.existsSync(safePath)) {
           const ext = path.extname(safePath);
           setSecurityHeaders(res);
-          res.removeHeader('X-Frame-Options');
           res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] ?? 'application/octet-stream' });
           return fs.createReadStream(safePath).pipe(res);
         }
@@ -1553,7 +1832,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(thisFile))
   const portArgIdx = argv.indexOf('--port');
   const hostArgIdx = argv.indexOf('--host');
   const port = Number((portArgIdx !== -1 && argv[portArgIdx + 1]) || process.env.PORT || 3000);
-  const host = (hostArgIdx !== -1 && argv[hostArgIdx + 1]) || process.env.HOST || '0.0.0.0';
+  const host = (hostArgIdx !== -1 && argv[hostArgIdx + 1]) || process.env.HOST || '127.0.0.1';
   const server = createAppServer({ db, transport: bridge, staticDir: distDir });
 
   // Evaluate alerts immediately on boot/wakeup, then every 60s
@@ -1581,13 +1860,32 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(thisFile))
     console.log(`Personal Ledger running at http://${host}:${port}`);
   });
 
+  let shuttingDown = false;
   const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    const forceTimer = setTimeout(() => process.exit(1), 10_000);
+    forceTimer.unref?.();
+
     inboxWatcher.stop();
     clearInterval(schedulerTimer);
+
+    // Stop accepting new HTTP requests and drain in-flight connections BEFORE closing DB
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+      server.closeIdleConnections?.();
+    });
     await bridge.disconnect();
     db.close();
-    server.close(() => process.exit(0));
+    clearTimeout(forceTimer);
+    process.exit(0);
   };
   process.on('SIGINT', () => void shutdown());
   process.on('SIGTERM', () => void shutdown());
+  process.on('unhandledRejection', (reason) => {
+    console.error('[UnhandledRejection]', reason);
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('[UncaughtException]', err);
+  });
 }

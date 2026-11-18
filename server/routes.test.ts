@@ -86,6 +86,7 @@ describe('Backend Architecture & Security Routes', () => {
     assert.equal(headers['x-content-type-options'], 'nosniff');
     assert.equal(headers['x-frame-options'], 'DENY');
     assert.equal(headers['referrer-policy'], 'strict-origin-when-cross-origin');
+    assert.ok(headers['content-security-policy']?.includes("frame-ancestors 'none'"));
   });
 
   it('verifies path traversal sanitizer strictly restricts files inside allowedBaseDir', () => {
@@ -147,8 +148,37 @@ describe('Backend Architecture & Security Routes', () => {
       assert.equal(validTaxRes.status, 200);
       assert.ok(validTaxRes.headers.get('content-type')?.includes('text/csv'));
 
+      // 4. Unauthenticated LAN sync export/import blocked with 401
+      const syncExportRes = await fetch(`${baseUrl}/api/sync/export`);
+      assert.equal(syncExportRes.status, 401);
+      const syncImportRes = await fetch(`${baseUrl}/api/sync/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: 1, timestamp: '', tables: {} }),
+      });
+      assert.equal(syncImportRes.status, 401);
+
+      // 5. Disallowed autoBackupDir absolute path rejected with 422
+      const badPrefRes = await fetch(`${baseUrl}/api/preferences`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoBackupDir: 'C:\\Windows\\System32' }),
+      });
+      assert.equal(badPrefRes.status, 422);
+
+      // 6. Malformed Job Sheet payload rejected with 422 (no 500 crash)
+      const badSheetRes = await fetch(`${baseUrl}/api/job-sheets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 12345, scope: 'invalid_scope' }),
+      });
+      assert.equal(badSheetRes.status, 422);
+
+      // 7. Valid PDF fallback is a real PDF document
       const validPdfRes = await fetch(`${baseUrl}/api/tax/pdf-download`);
       assert.equal(validPdfRes.status, 200);
+      const pdfText = await validPdfRes.text();
+      assert.ok(pdfText.startsWith('%PDF-1.4') && pdfText.includes('%%EOF'));
       assert.ok(validPdfRes.headers.get('content-type')?.includes('application/pdf'));
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));

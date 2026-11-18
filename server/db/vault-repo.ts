@@ -13,6 +13,24 @@ export interface VaultMetaRecord {
   updatedAt: string;
 }
 
+export interface PublicVaultMetaRecord extends Omit<VaultMetaRecord, 'waRecoveryKey'> {
+  hasWaRecoveryKey: boolean;
+}
+
+export function toPublicVaultMeta(meta: VaultMetaRecord | null): PublicVaultMetaRecord | null {
+  if (!meta) return null;
+  return {
+    saltB64: meta.saltB64,
+    canaryIv: meta.canaryIv,
+    canaryCt: meta.canaryCt,
+    recoverySaltB64: meta.recoverySaltB64 ?? null,
+    recoveryIv: meta.recoveryIv ?? null,
+    recoveryCt: meta.recoveryCt ?? null,
+    hasWaRecoveryKey: Boolean(meta.waRecoveryKey),
+    updatedAt: meta.updatedAt,
+  };
+}
+
 export interface VaultEntryCipherRecord {
   id: string;
   label: string;

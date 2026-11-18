@@ -2358,8 +2358,9 @@ test('Per-category monthly budgets & alerts, global cross-module search, and Wha
       }),
     });
     assert.equal(vaultSetupRes.status, 200);
-    const vMeta = (await vaultSetupRes.json()) as { data: { waRecoveryKey: string } };
-    assert.equal(vMeta.data.waRecoveryKey, 'PLVK-TEST-RECOVERY-KEY');
+    const vMeta = (await vaultSetupRes.json()) as { data: { hasWaRecoveryKey: boolean; waRecoveryKey?: string } };
+    assert.equal(vMeta.data.hasWaRecoveryKey, true);
+    assert.equal(vMeta.data.waRecoveryKey, undefined, 'Vault meta must never leak plaintext waRecoveryKey before OTP');
 
     // Request WhatsApp OTP code
     const waOtpReq = await fetch(`http://127.0.0.1:${port}/api/vault/recovery/whatsapp-request`, {

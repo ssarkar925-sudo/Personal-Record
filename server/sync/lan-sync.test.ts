@@ -63,4 +63,31 @@ describe('Multi-Device Local LAN Encrypted Sync', () => {
     db1.close();
     db2.close();
   });
+
+  it('rejects disallowed tables and SQL injection attempts in differential sync payloads', () => {
+    const db = openDatabase(':memory:');
+    assert.throws(
+      () =>
+        ingestDifferentialSync(db, {
+          version: 1,
+          timestamp: new Date().toISOString(),
+          tables: {
+            vault_meta: [{ id: 1, wa_recovery_key: 'pwned' }],
+          } as any,
+        }),
+      /disallowed table/i,
+    );
+    assert.throws(
+      () =>
+        ingestDifferentialSync(db, {
+          version: 1,
+          timestamp: new Date().toISOString(),
+          tables: {
+            'accounts; DROP TABLE accounts;--': [{ id: '1' }],
+          } as any,
+        }),
+      /disallowed table/i,
+    );
+    db.close();
+  });
 });

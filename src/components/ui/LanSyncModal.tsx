@@ -40,21 +40,31 @@ export function LanSyncModal({ open, onClose, onSyncComplete }: LanSyncModalProp
       setError('Please enter the IP of the other device');
       return;
     }
+    if (!targetToken.trim()) {
+      setError('Please enter the one-time pairing token shown on the other device');
+      return;
+    }
     setIsSyncing(true);
     setStatus('Connecting to peer device...');
     setError('');
 
     try {
       const cleanIp = targetIp.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-      const remoteUrl = `http://${cleanIp}/api/sync/export`;
-      const res = await fetch(remoteUrl);
+      const remoteUrl = `http://${cleanIp}/api/sync/export?token=${encodeURIComponent(targetToken.trim())}`;
+      const res = await fetch(remoteUrl, {
+        headers: { 'X-Sync-Token': targetToken.trim() },
+      });
       if (!res.ok) throw new Error(`Remote device returned HTTP ${res.status}`);
       const payload = await res.json();
 
       setStatus('Applying changes into local database...');
+      const localToken = pairingData?.token || '';
       const importRes = await fetch('/api/sync/import', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Sync-Token': localToken,
+        },
         body: JSON.stringify(payload),
       });
 
@@ -84,12 +94,12 @@ export function LanSyncModal({ open, onClose, onSyncComplete }: LanSyncModalProp
             </div>
             <div>
               <h3 className="font-display text-sm font-bold text-slate-950 flex items-center gap-2">
-                Local Wi-Fi Encrypted Sync
+                Local Wi-Fi Token-Paired Sync
                 <span className="rounded bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">
-                  Zero Cloud
+                  Trusted LAN
                 </span>
               </h3>
-              <p className="text-xs text-slate-500">Sync phone and computer directly over your home network</p>
+              <p className="text-xs text-slate-500">Use only on private home Wi-Fi (token-authenticated HTTP)</p>
             </div>
           </div>
           <button
@@ -118,7 +128,7 @@ export function LanSyncModal({ open, onClose, onSyncComplete }: LanSyncModalProp
             <div className="space-y-1">
               {pairingData?.ips.map((ip) => (
                 <div key={ip} className="flex items-center justify-between font-mono-data text-xs text-slate-800 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200">
-                  <span>http://{ip}:4173</span>
+                  <span>http://{ip}:{window.location.port || '3000'}</span>
                   <span className="text-[10px] text-slate-500 uppercase font-sans">LAN IPv4</span>
                 </div>
               ))}

@@ -147,7 +147,7 @@ export function CommandPalette({
           if (onExportCaPack) {
             onExportCaPack();
           } else {
-            window.open('/api/reports/tax-pack/export.csv', '_blank');
+            window.open('/api/reports/tax-pack/export.csv', '_blank', 'noopener,noreferrer');
           }
         },
       },
