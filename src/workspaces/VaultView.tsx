@@ -68,6 +68,8 @@ import {
   cn,
 } from '../components/ui/Primitives.tsx';
 import { UI_STRINGS, type AppLanguage } from '../../shared/i18n.ts';
+import { computeVaultSecurityTelemetry } from './notes-vault/notesVaultAnalytics.ts';
+import { VaultHeroWorkstation } from './notes-vault/VaultHeroWorkstation.tsx';
 
 interface DecryptedVaultEntry {
   id: string;
@@ -93,7 +95,7 @@ export function VaultView({
   accounts?: AccountRecord[];
   systemLanguage?: AppLanguage;
   onNotify?: (msg: string, kind?: 'ok' | 'err') => void;
-  onNavigate?: (tab: 'dashboard' | 'money' | 'loans_dues' | 'reports' | 'notes' | 'vault') => void;
+  onNavigate?: (tab: 'dashboard' | 'cards' | 'money' | 'loans_dues' | 'reports' | 'notes' | 'sheets' | 'vault') => void;
 }) {
   const dict = UI_STRINGS[systemLanguage];
   const [meta, setMeta] = useState<VaultMetaRecord | null>(null);
@@ -915,114 +917,237 @@ export function VaultView({
 
   // If loading security metadata
   if (loadingMeta) {
-    return <Card className="p-8 text-center text-sm text-slate-500">Checking local vault security status...</Card>;
+    return (
+      <Card className="p-8 text-center text-sm text-[#686E78] border-[#E6E1D6] bg-white">
+        Checking local vault cryptographic metadata...
+      </Card>
+    );
   }
 
-  // 1. Vault Login / Unlock Page
+  // 1. Vault Login / Unlock Page (12-Column Institutional Cryptographic Terminal)
   if (!vaultKey) {
     return (
-      <div className="max-w-md mx-auto py-8 animate-panel-in">
-        <Card className="p-6 border-t-4 border-t-indigo-700 space-y-4 shadow-xl">
-          <div className="flex items-center gap-3">
-            <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-indigo-700 to-slate-900 text-white flex items-center justify-center shadow-sm">
-              <Lock className="h-5 w-5" />
+      <div className="space-y-4 animate-panel-in">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+          {/* Left 5 Columns: 3D Metallic AES-256-GCM Hardware Key Card */}
+          <div className="lg:col-span-5 rounded-2xl border border-[#E6E1D6] bg-white p-4 sm:p-5 flex flex-col justify-between gap-4 shadow-[0_12px_32px_-18px_rgba(17,19,24,0.1)]">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="h-7 w-7 rounded-lg bg-[#111318] text-[#E5C158] flex items-center justify-center">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                </div>
+                <div>
+                  <h2 className="text-xs font-bold uppercase tracking-[0.12em] text-[#111318]">
+                    Zero-Knowledge Vault
+                  </h2>
+                  <p className="text-[11px] text-[#686E78]">
+                    Client-Side AES-256-GCM Cryptographic Enclave
+                  </p>
+                </div>
+              </div>
+              <span className="rounded-md bg-[#FAF8F5] border border-[#E6E1D6] px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider text-[#8C6D1F]">
+                {meta ? 'SEALED ENCLAVE' : 'UNINITIALIZED'}
+              </span>
             </div>
-            <div>
-              <h2 className="text-base font-semibold text-slate-900">
-                {meta ? dict.vault.unlockTitle : dict.vault.setupTitle}
-              </h2>
-              <p className="text-xs text-slate-500">
-                Encrypted locally via AES-256-GCM · PBKDF2 (600,000 rounds)
-              </p>
+
+            <div
+              className="relative rounded-2xl p-5 text-white overflow-hidden select-none shadow-[0_20px_40px_-15px_rgba(17,19,24,0.45)]"
+              style={{
+                background: 'linear-gradient(135deg, #111318 0%, #1E232D 52%, #0B0D11 100%)',
+                border: '1px solid rgba(229, 193, 88, 0.42)',
+              }}
+            >
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background:
+                    'radial-gradient(circle at 25% 20%, rgba(229,193,88,0.18) 0%, rgba(255,255,255,0) 60%)',
+                }}
+              />
+              <div className="relative z-10 flex flex-col justify-between min-h-[205px] gap-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-[0.14em] bg-[#E5C158]/20 text-[#F5D97E]">
+                      <Lock className="h-3 w-3" />
+                      AES-256-GCM · PBKDF2
+                    </div>
+                    <h3
+                      className="mt-2 text-lg font-bold tracking-tight text-white"
+                      style={{ fontFamily: 'var(--font-display)' }}
+                    >
+                      {meta ? 'Encrypted Hardware Keycard' : 'Provision New Vault Keycard'}
+                    </h3>
+                  </div>
+                  <div className="h-9 w-11 rounded-lg border border-amber-300/40 bg-gradient-to-br from-amber-200/30 via-yellow-500/20 to-amber-700/30 flex items-center justify-center shrink-0">
+                    <div className="h-5 w-7 rounded-xs border border-amber-200/50 grid grid-cols-2 gap-0.5 p-0.5">
+                      <span className="bg-amber-300/50 rounded-[1px]" />
+                      <span className="bg-amber-300/30 rounded-[1px]" />
+                      <span className="bg-amber-300/30 rounded-[1px]" />
+                      <span className="bg-amber-300/50 rounded-[1px]" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-xl bg-black/30 border border-white/10 px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wider text-white/60">KDF Rounds</div>
+                    <div className="mt-0.5 text-sm font-mono font-bold text-[#E5C158]">600,000</div>
+                  </div>
+                  <div className="rounded-xl bg-black/30 border border-white/10 px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wider text-white/60">Cipher</div>
+                    <div className="mt-0.5 text-sm font-mono font-bold text-emerald-400">256-Bit</div>
+                  </div>
+                  <div className="rounded-xl bg-black/30 border border-white/10 px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wider text-white/60">Auto-Lock</div>
+                    <div className="mt-0.5 text-sm font-mono font-bold text-white">5 Min</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1 border-t border-white/10 text-[11px] text-white/75 font-mono">
+                  <span>ZERO PLAINTEXT STORAGE</span>
+                  <span className="text-[#E5C158]">PLVK ESCROW READY</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-[11px] text-[#4B5058]">
+              <div className="rounded-xl bg-[#FAF8F5] border border-[#E6E1D6] px-3 py-2">
+                <span className="font-semibold text-[#111318] block">In-Memory Key</span>
+                <span>Master key never leaves browser WebCrypto RAM</span>
+              </div>
+              <div className="rounded-xl bg-[#FAF8F5] border border-[#E6E1D6] px-3 py-2">
+                <span className="font-semibold text-[#111318] block">Zero Data Loss</span>
+                <span>Emergency Recovery Key (PLVK) + WhatsApp OTP</span>
+              </div>
             </div>
           </div>
 
-          {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4 shrink-0" />
-              <span>{error}</span>
+          {/* Right 7 Columns: Master Password Unlock / Setup Form */}
+          <Card className="lg:col-span-7 p-6 sm:p-7 border border-[#E6E1D6] bg-white flex flex-col justify-between space-y-5 shadow-[0_12px_32px_-18px_rgba(17,19,24,0.1)]">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3 border-b border-[#E6E1D6] pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-11 w-11 rounded-xl bg-[#111318] text-[#E5C158] flex items-center justify-center shadow-xs">
+                    <Lock className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2
+                      className="text-lg font-bold text-[#111318]"
+                      style={{ fontFamily: 'var(--font-display)' }}
+                    >
+                      {meta ? dict.vault.unlockTitle : dict.vault.setupTitle}
+                    </h2>
+                    <p className="text-xs text-[#686E78]">
+                      Encrypted locally via AES-256-GCM · PBKDF2-SHA256 (600,000 iterations)
+                    </p>
+                  </div>
+                </div>
+                <span className="hidden sm:inline-flex items-center gap-1 rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                  WebCrypto Verified
+                </span>
+              </div>
+
+              {error && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs text-rose-800 flex items-center gap-2">
+                  <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {!meta ? (
+                <form onSubmit={handleSetupMaster} className="space-y-4">
+                  <p className="text-xs text-[#4B5058] leading-relaxed bg-[#FAF8F5] border border-[#E6E1D6] rounded-xl p-3">
+                    Your Master Password derives a 256-bit AES-GCM key exclusively inside browser memory. An Emergency
+                    Recovery Key (<code className="font-mono text-[#8C6D1F]">PLVK-XXXX</code>) is generated automatically
+                    so you can always recover your credentials with zero data loss.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <FieldLabel htmlFor="vault-setup-pw">New Master Password (min 8 chars)</FieldLabel>
+                      <Input
+                        id="vault-setup-pw"
+                        type="password"
+                        value={masterPass}
+                        onChange={(e) => setMasterPass(e.target.value)}
+                        placeholder="Enter strong master password"
+                        autoFocus
+                        required
+                      />
+                    </div>
+                    <div>
+                      <FieldLabel htmlFor="vault-setup-confirm">Confirm Master Password</FieldLabel>
+                      <Input
+                        id="vault-setup-confirm"
+                        type="password"
+                        value={confirmPass}
+                        onChange={(e) => setConfirmPass(e.target.value)}
+                        placeholder="Re-enter master password"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    variant="primary"
+                    type="submit"
+                    className="w-full bg-[#111318] hover:bg-[#1E232D] text-white border-[#111318] py-2.5"
+                    disabled={unlocking}
+                  >
+                    <ShieldCheck className="h-4 w-4 text-[#E5C158]" />
+                    {unlocking ? 'Deriving 256-bit Key...' : dict.vault.createBtn}
+                  </Button>
+                </form>
+              ) : (
+                <form onSubmit={handleUnlock} className="space-y-4">
+                  <div>
+                    <FieldLabel htmlFor="vault-unlock-pw">Master Password</FieldLabel>
+                    <Input
+                      id="vault-unlock-pw"
+                      type="password"
+                      value={masterPass}
+                      onChange={(e) => setMasterPass(e.target.value)}
+                      placeholder="Enter Master Password to unseal vault..."
+                      autoFocus
+                      required
+                    />
+                  </div>
+                  <Button
+                    variant="primary"
+                    type="submit"
+                    className="w-full bg-[#111318] hover:bg-[#1E232D] text-white border-[#111318] py-2.5"
+                    disabled={unlocking}
+                  >
+                    <Unlock className="h-4 w-4 text-[#E5C158]" />
+                    {unlocking ? 'Verifying Key...' : dict.vault.unlockBtn}
+                  </Button>
+
+                  {/* Forgot Password & Recovery Link */}
+                  <div className="pt-3 text-center border-t border-[#E6E1D6]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRecoveryError('');
+                        setWaOtpSent(false);
+                        setWaRecoveryOtpInput('');
+                        setManualRecoveryKeyInput('');
+                        setRecoveredVaultKey(null);
+                        setRecoveryModalOpen(true);
+                      }}
+                      className="text-xs text-[#8C6D1F] hover:text-[#111318] font-semibold underline cursor-pointer"
+                    >
+                      Forgot Master Password? Recover with Emergency Key or WhatsApp OTP
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
-          )}
 
-          {!meta ? (
-            <form onSubmit={handleSetupMaster} className="space-y-3">
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Your Master Password derives a 256-bit AES-GCM key exclusively inside browser memory. An Emergency
-                Recovery Key is generated automatically so you never lose your data.
-              </p>
-              <div>
-                <FieldLabel htmlFor="vault-setup-pw">New Master Password (min 8 chars)</FieldLabel>
-                <Input
-                  id="vault-setup-pw"
-                  type="password"
-                  value={masterPass}
-                  onChange={(e) => setMasterPass(e.target.value)}
-                  autoFocus
-                  required
-                />
-              </div>
-              <div>
-                <FieldLabel htmlFor="vault-setup-confirm">Confirm Master Password</FieldLabel>
-                <Input
-                  id="vault-setup-confirm"
-                  type="password"
-                  value={confirmPass}
-                  onChange={(e) => setConfirmPass(e.target.value)}
-                  required
-                />
-              </div>
-              <Button
-                variant="primary"
-                type="submit"
-                className="w-full from-indigo-700 to-slate-900 border-indigo-900"
-                disabled={unlocking}
-              >
-                {unlocking ? 'Deriving 256-bit Key...' : dict.vault.createBtn}
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={handleUnlock} className="space-y-3">
-              <div>
-                <FieldLabel htmlFor="vault-unlock-pw">Master Password</FieldLabel>
-                <Input
-                  id="vault-unlock-pw"
-                  type="password"
-                  value={masterPass}
-                  onChange={(e) => setMasterPass(e.target.value)}
-                  autoFocus
-                  required
-                />
-              </div>
-              <Button
-                variant="primary"
-                type="submit"
-                className="w-full from-indigo-700 to-slate-900 border-indigo-900"
-                disabled={unlocking}
-              >
-                <Unlock className="h-4 w-4" />
-                {unlocking ? 'Verifying Key...' : dict.vault.unlockBtn}
-              </Button>
-
-              {/* Forgot Password & Recovery Link */}
-              <div className="pt-2 text-center border-t border-slate-200/80">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRecoveryError('');
-                    setWaOtpSent(false);
-                    setWaRecoveryOtpInput('');
-                    setManualRecoveryKeyInput('');
-                    setRecoveredVaultKey(null);
-                    setRecoveryModalOpen(true);
-                  }}
-                  className="text-xs text-indigo-700 hover:text-indigo-900 font-medium underline cursor-pointer"
-                >
-                  Forgot Master Password? Recover without data loss
-                </button>
-              </div>
-            </form>
-          )}
-        </Card>
+            <div className="pt-3 border-t border-[#E6E1D6] flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#686E78]">
+              <span>Supports Banking Logins · Credit/Debit Cards · UPI MPINs · PAN/Aadhaar IDs · Secret Notes</span>
+              <span className="font-mono text-[#111318] font-semibold">Clipboard Auto-Scrub: 30s</span>
+            </div>
+          </Card>
+        </div>
 
         {/* Forgot Password Recovery Modal */}
         <Dialog
@@ -1216,37 +1341,24 @@ export function VaultView({
   }
 
   // 2. Unlocked Vault View: Health Audit, Categories, Items Grid
+  const vaultTelemetry = computeVaultSecurityTelemetry(
+    entries,
+    reusedHashes,
+    entryHashById,
+    todayISO(),
+  );
+  const {
+    totalItems,
+    starredCount,
+    weakCount,
+    staleCount,
+    reusedCount,
+    healthScore,
+  } = vaultTelemetry;
+
   const categoryCounts = new Map<string, number>();
-  let starredCount = 0;
-  let weakCount = 0;
-  let staleCount = 0;
-  let reusedCount = 0;
-
   for (const e of entries) {
-    if (e.payload.starred) starredCount += 1;
     categoryCounts.set(e.category, (categoryCounts.get(e.category) ?? 0) + 1);
-
-    // Audit checks
-    const pw = e.payload.password || e.payload.upiMpin || e.payload.cardPin || '';
-    if (pw) {
-      const strength = calculatePasswordStrength(pw);
-      if (strength.label === 'Weak') weakCount += 1;
-    }
-    const daysSinceRotated = daysBetweenISO(e.lastRotatedAt, todayISO());
-    if (daysSinceRotated > 90) staleCount += 1;
-
-    const h = entryHashById[e.id];
-    if (h && reusedHashes.has(h)) reusedCount += 1;
-  }
-
-  // Calculate Overall Vault Health Score (0-100)
-  const totalItems = entries.length;
-  let healthScore = 100;
-  if (totalItems > 0) {
-    const weakPenalty = (weakCount / totalItems) * 40;
-    const reusedPenalty = (reusedCount / totalItems) * 35;
-    const stalePenalty = (staleCount / totalItems) * 25;
-    healthScore = Math.max(10, Math.round(100 - weakPenalty - reusedPenalty - stalePenalty));
   }
 
   const categories = Array.from(categoryCounts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
@@ -1321,14 +1433,14 @@ export function VaultView({
     return (
       <div
         key={uniqueId}
-        className="rounded-xl bg-slate-50/90 border border-slate-200/90 px-3 py-2 flex items-center justify-between gap-2"
+        className="rounded-xl bg-[#FAF8F5] border border-[#E6E1D6] px-3 py-2 flex items-center justify-between gap-2"
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-semibold text-slate-700">{secretLabel}</span>
-            {subNote && <span className="text-[10px] text-slate-400">· {subNote}</span>}
+            <span className="text-[11px] font-semibold text-[#111318]">{secretLabel}</span>
+            {subNote && <span className="text-[10px] text-[#686E78]">· {subNote}</span>}
           </div>
-          <div className="font-mono text-xs text-slate-950 truncate mt-0.5 select-all">
+          <div className="font-mono text-xs text-[#111318] truncate mt-0.5 select-all">
             {shown ? secretValue : '••••••••••••'}
           </div>
         </div>
@@ -1337,7 +1449,7 @@ export function VaultView({
             type="button"
             onClick={() => setRevealedKeys((prev) => ({ ...prev, [uniqueId]: !prev[uniqueId] }))}
             aria-label={shown ? `Hide ${secretLabel}` : `Reveal ${secretLabel}`}
-            className="rounded-md p-1.5 text-slate-500 hover:bg-white hover:text-slate-900 cursor-pointer"
+            className="rounded-md p-1.5 text-[#686E78] hover:bg-white hover:text-[#111318] cursor-pointer"
           >
             {shown ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
           </button>
@@ -1345,7 +1457,7 @@ export function VaultView({
             type="button"
             onClick={() => void handleCopySecret(uniqueId, secretValue, secretLabel)}
             aria-label={`Copy ${secretLabel}`}
-            className="rounded-md p-1.5 text-slate-500 hover:bg-white hover:text-indigo-700 cursor-pointer"
+            className="rounded-md p-1.5 text-[#686E78] hover:bg-white hover:text-[#8C6D1F] cursor-pointer"
           >
             {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
           </button>
@@ -1356,30 +1468,40 @@ export function VaultView({
 
   return (
     <div className="space-y-4 animate-panel-in" onClick={touchActivity}>
+      {/* Module 6: 3D-Tilt Metallic AES-256-GCM Security Card + Interactive SVG Health Gauge */}
+      <VaultHeroWorkstation
+        telemetry={vaultTelemetry}
+        auditFilter={auditFilter}
+        onAuditFilterChange={setAuditFilter}
+        onOpenNewItem={() => openEntryModal(null, 'login')}
+        onOpenEmergencyKit={() => setKitModalOpen(true)}
+        onLockVault={lockVault}
+      />
+
       {/* Top Security & Health Audit Bar (Pillar 1) */}
-      <Card className="p-3.5 border-indigo-200/90 bg-gradient-to-r from-indigo-50/70 via-white to-slate-50/60 shadow-xs">
+      <Card className="p-3.5 border-[#E6E1D6] bg-white shadow-[0_12px_32px_-18px_rgba(17,19,24,0.1)]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="h-10 w-10 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+            <div className="h-10 w-10 rounded-xl bg-[#111318] text-[#E5C158] flex items-center justify-center shrink-0">
               <ShieldCheck className="h-5 w-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-slate-900">{dict.vault.unlockedBanner}</span>
+                <span className="text-sm font-bold text-[#111318]">{dict.vault.unlockedBanner}</span>
                 <span
                   className={cn(
-                    'rounded-full px-2 py-0.5 text-[10px] font-bold border',
+                    'rounded-md px-2 py-0.5 text-[10px] font-mono font-bold border',
                     healthScore >= 80
-                      ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                       : healthScore >= 60
-                        ? 'bg-amber-100 text-amber-800 border-amber-200'
-                        : 'bg-rose-100 text-rose-800 border-rose-200',
+                        ? 'bg-amber-50 text-amber-800 border-amber-200'
+                        : 'bg-rose-50 text-rose-800 border-rose-200',
                   )}
                 >
                   Health: {healthScore}/100 · {healthScore >= 80 ? 'Strong' : healthScore >= 60 ? 'Moderate' : 'Needs Review'}
                 </span>
               </div>
-              <div className="text-[11px] text-slate-500 mt-0.5">
+              <div className="text-[11px] text-[#686E78] mt-0.5">
                 1-card reveal mode · Auto-locks in 5 min · Clipboard auto-clears in 30s
               </div>
             </div>
@@ -1415,10 +1537,10 @@ export function VaultView({
               <Button
                 variant="primary"
                 size="sm"
-                className="from-indigo-700 to-slate-900 border-indigo-900"
+                className="bg-[#111318] hover:bg-[#1E232D] text-white border-[#111318]"
                 onClick={() => openEntryModal(null, 'login')}
               >
-                <Plus className="h-3.5 w-3.5" /> + New Item
+                <Plus className="h-3.5 w-3.5 text-[#E5C158]" /> + New Item
               </Button>
             </div>
 
@@ -1440,7 +1562,7 @@ export function VaultView({
               onClick={() => setKitModalOpen(true)}
               title="Emergency Recovery Kit"
             >
-              <FileKey className="h-3.5 w-3.5 text-indigo-700" /> Kit
+              <FileKey className="h-3.5 w-3.5 text-[#8C6D1F]" /> Kit
             </Button>
 
             <Button
@@ -1477,17 +1599,17 @@ export function VaultView({
         </div>
 
         {/* Security Health Audit Filter Pills (Pillar 1) */}
-        <div className="mt-3 pt-2.5 border-t border-indigo-200/60 flex flex-wrap items-center justify-between gap-2">
+        <div className="mt-3 pt-2.5 border-t border-[#E6E1D6] flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mr-1">Audit:</span>
+            <span className="text-[11px] font-semibold text-[#686E78] uppercase tracking-wider mr-1">Audit:</span>
             <button
               type="button"
               onClick={() => setAuditFilter('all')}
               className={cn(
                 'rounded-lg px-2 py-0.5 text-xs font-medium cursor-pointer transition-colors',
                 auditFilter === 'all'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50',
+                  ? 'bg-[#111318] text-white'
+                  : 'bg-[#FAF8F5] border border-[#E6E1D6] text-[#111318] hover:bg-white',
               )}
             >
               All ({totalItems})
@@ -1501,7 +1623,7 @@ export function VaultView({
                   ? 'bg-amber-600 text-white'
                   : reusedCount > 0
                     ? 'bg-amber-50 border border-amber-300 text-amber-900 hover:bg-amber-100'
-                    : 'bg-white border border-slate-200 text-slate-500',
+                    : 'bg-[#FAF8F5] border border-[#E6E1D6] text-[#686E78]',
               )}
             >
               <span>⚠️ Reused</span>
@@ -1516,7 +1638,7 @@ export function VaultView({
                   ? 'bg-amber-700 text-white'
                   : staleCount > 0
                     ? 'bg-amber-50 border border-amber-300 text-amber-900 hover:bg-amber-100'
-                    : 'bg-white border border-slate-200 text-slate-500',
+                    : 'bg-[#FAF8F5] border border-[#E6E1D6] text-[#686E78]',
               )}
             >
               <span>⏳ Stale &gt;90d</span>
@@ -1531,7 +1653,7 @@ export function VaultView({
                   ? 'bg-rose-700 text-white'
                   : weakCount > 0
                     ? 'bg-rose-50 border border-rose-300 text-rose-900 hover:bg-rose-100'
-                    : 'bg-white border border-slate-200 text-slate-500',
+                    : 'bg-[#FAF8F5] border border-[#E6E1D6] text-[#686E78]',
               )}
             >
               <span>🔴 Weak</span>
@@ -1543,8 +1665,8 @@ export function VaultView({
               className={cn(
                 'rounded-lg px-2 py-0.5 text-xs font-medium cursor-pointer transition-colors flex items-center gap-1',
                 auditFilter === 'starred'
-                  ? 'bg-amber-500 text-white'
-                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50',
+                  ? 'bg-[#C59B27] text-white'
+                  : 'bg-[#FAF8F5] border border-[#E6E1D6] text-[#111318] hover:bg-white',
               )}
             >
               <span>★ Starred</span>
@@ -1554,48 +1676,48 @@ export function VaultView({
 
           {/* Quick Template Launchers (Pillar 3) */}
           <div className="flex items-center gap-1">
-            <span className="text-[11px] text-slate-400 mr-1 hidden sm:inline">+ Fast Add:</span>
+            <span className="text-[11px] text-[#686E78] mr-1 hidden sm:inline">+ Fast Add:</span>
             <button
               type="button"
               onClick={() => openEntryModal(null, 'login')}
-              className="rounded-md bg-white border border-slate-200 px-1.5 py-0.5 text-[11px] text-slate-700 hover:bg-slate-100 cursor-pointer inline-flex items-center gap-1"
+              className="rounded-md bg-[#FAF8F5] border border-[#E6E1D6] px-2 py-0.5 text-[11px] font-medium text-[#111318] hover:bg-white cursor-pointer inline-flex items-center gap-1"
             >
-              <KeyRound className="h-3 w-3 text-indigo-600" /> Login
+              <KeyRound className="h-3 w-3 text-[#8C6D1F]" /> Login
             </button>
             <button
               type="button"
               onClick={() => openEntryModal(null, 'card')}
-              className="rounded-md bg-white border border-slate-200 px-1.5 py-0.5 text-[11px] text-slate-700 hover:bg-slate-100 cursor-pointer inline-flex items-center gap-1"
+              className="rounded-md bg-[#FAF8F5] border border-[#E6E1D6] px-2 py-0.5 text-[11px] font-medium text-[#111318] hover:bg-white cursor-pointer inline-flex items-center gap-1"
             >
               <CreditCard className="h-3 w-3 text-emerald-600" /> Card
             </button>
             <button
               type="button"
               onClick={() => openEntryModal(null, 'upi')}
-              className="rounded-md bg-white border border-slate-200 px-1.5 py-0.5 text-[11px] text-slate-700 hover:bg-slate-100 cursor-pointer inline-flex items-center gap-1"
+              className="rounded-md bg-[#FAF8F5] border border-[#E6E1D6] px-2 py-0.5 text-[11px] font-medium text-[#111318] hover:bg-white cursor-pointer inline-flex items-center gap-1"
             >
               <Smartphone className="h-3 w-3 text-teal-600" /> UPI
             </button>
             <button
               type="button"
               onClick={() => openEntryModal(null, 'identity')}
-              className="rounded-md bg-white border border-slate-200 px-1.5 py-0.5 text-[11px] text-slate-700 hover:bg-slate-100 cursor-pointer inline-flex items-center gap-1"
+              className="rounded-md bg-[#FAF8F5] border border-[#E6E1D6] px-2 py-0.5 text-[11px] font-medium text-[#111318] hover:bg-white cursor-pointer inline-flex items-center gap-1"
             >
-              <FileKey className="h-3 w-3 text-blue-600" /> ID
+              <FileKey className="h-3 w-3 text-[#111318]" /> ID
             </button>
             <button
               type="button"
               onClick={() => openEntryModal(null, 'note')}
-              className="rounded-md bg-white border border-slate-200 px-1.5 py-0.5 text-[11px] text-slate-700 hover:bg-slate-100 cursor-pointer inline-flex items-center gap-1"
+              className="rounded-md bg-[#FAF8F5] border border-[#E6E1D6] px-2 py-0.5 text-[11px] font-medium text-[#111318] hover:bg-white cursor-pointer inline-flex items-center gap-1"
             >
-              <FileText className="h-3 w-3 text-slate-600" /> Note
+              <FileText className="h-3 w-3 text-[#686E78]" /> Note
             </button>
           </div>
         </div>
 
         {/* Category Tabs */}
         {entries.length > 0 && (
-          <div className="mt-2.5 pt-2 border-t border-indigo-200/50 flex flex-wrap items-center gap-1.5">
+          <div className="mt-2.5 pt-2 border-t border-[#E6E1D6] flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               onClick={() => {
@@ -1605,8 +1727,8 @@ export function VaultView({
               className={cn(
                 'rounded-lg px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors',
                 resolvedCategory === '__all__'
-                  ? 'bg-slate-800 text-white'
-                  : 'bg-white/80 border border-slate-200 text-slate-700 hover:bg-white',
+                  ? 'bg-[#111318] text-white'
+                  : 'bg-[#FAF8F5] border border-[#E6E1D6] text-[#111318] hover:bg-white',
               )}
             >
               All Categories ({entries.length})
@@ -1622,8 +1744,8 @@ export function VaultView({
                 className={cn(
                   'rounded-lg px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5',
                   resolvedCategory === cat
-                    ? 'bg-indigo-700 text-white shadow-xs'
-                    : 'bg-white/80 border border-slate-200 text-slate-700 hover:bg-white',
+                    ? 'bg-[#111318] text-[#E5C158] shadow-xs'
+                    : 'bg-[#FAF8F5] border border-[#E6E1D6] text-[#111318] hover:bg-white',
                 )}
               >
                 <span>{cat}</span>
@@ -1636,7 +1758,7 @@ export function VaultView({
 
       {/* 3. Items Display Grid / List */}
       {filtered.length === 0 ? (
-        <Card className="p-10 text-center text-xs text-slate-500 space-y-2">
+        <Card className="p-10 text-center text-xs text-[#686E78] border-[#E6E1D6] bg-white space-y-2">
           <p>
             {auditFilter !== 'all'
               ? `No vault items matched the audit filter "${auditFilter}".`
@@ -1673,9 +1795,9 @@ export function VaultView({
                 key={entry.id}
                 onClick={() => setExpandedEntryId(isExpanded ? null : entry.id)}
                 className={cn(
-                  'studio-card-hover group relative rounded-2xl border bg-white/95 p-4 flex flex-col justify-between space-y-3 cursor-pointer shadow-xs transition-all border-[#d8e1ee]',
-                  isExpanded && 'ring-2 ring-indigo-600 border-indigo-400',
-                  entry.payload.starred && 'border-amber-300 bg-[#fffdf8]',
+                  'studio-card-hover group relative rounded-2xl border bg-white p-4 flex flex-col justify-between space-y-3 cursor-pointer shadow-[0_10px_28px_-18px_rgba(17,19,24,0.12)] transition-all border-[#E6E1D6]',
+                  isExpanded && 'ring-2 ring-[#111318] border-[#111318]',
+                  entry.payload.starred && 'border-[#E6D5A7] bg-[#FDFBF4]',
                 )}
               >
                 <div className="space-y-2.5">
@@ -1687,18 +1809,18 @@ export function VaultView({
                         ) : itemT === 'upi' ? (
                           <Smartphone className="h-4 w-4 text-teal-600 shrink-0" />
                         ) : itemT === 'identity' ? (
-                          <FileKey className="h-4 w-4 text-blue-600 shrink-0" />
+                          <FileKey className="h-4 w-4 text-[#111318] shrink-0" />
                         ) : itemT === 'note' ? (
-                          <FileText className="h-4 w-4 text-slate-600 shrink-0" />
+                          <FileText className="h-4 w-4 text-[#686E78] shrink-0" />
                         ) : (
-                          <KeyRound className="h-4 w-4 text-indigo-600 shrink-0" />
+                          <KeyRound className="h-4 w-4 text-[#8C6D1F] shrink-0" />
                         )}
-                        <h3 className="text-sm font-semibold text-slate-900 truncate">{entry.label}</h3>
+                        <h3 className="text-sm font-semibold text-[#111318] truncate">{entry.label}</h3>
                       </div>
                       <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                        <Badge className="bg-slate-100 text-slate-700 border-slate-200">{entry.category}</Badge>
+                        <Badge className="bg-[#FAF8F5] text-[#111318] border-[#E6E1D6]">{entry.category}</Badge>
                         {itemT !== 'login' && (
-                          <span className="rounded bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 text-[10px] font-semibold text-indigo-800 uppercase">
+                          <span className="rounded bg-[#FAF8F5] border border-[#E6E1D6] px-1.5 py-0.2 text-[10px] font-semibold text-[#8C6D1F] uppercase">
                             {itemT}
                           </span>
                         )}
@@ -1722,8 +1844,8 @@ export function VaultView({
                         className={cn(
                           'rounded-lg p-1.5 cursor-pointer transition-colors',
                           entry.payload.starred
-                            ? 'text-amber-500 hover:text-amber-600'
-                            : 'text-slate-300 hover:text-amber-500',
+                            ? 'text-[#C59B27] hover:text-[#8C6D1F]'
+                            : 'text-slate-300 hover:text-[#C59B27]',
                         )}
                         title={entry.payload.starred ? 'Unstar' : 'Star'}
                       >
@@ -1732,7 +1854,7 @@ export function VaultView({
                       <button
                         type="button"
                         onClick={() => openEntryModal(entry)}
-                        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-800 cursor-pointer"
+                        className="rounded-lg p-1.5 text-[#686E78] hover:bg-[#FAF8F5] hover:text-[#111318] cursor-pointer"
                         title="Edit Entry"
                       >
                         <KeyRound className="h-3.5 w-3.5" />
@@ -1740,7 +1862,7 @@ export function VaultView({
                       <button
                         type="button"
                         onClick={() => setDeleteTarget(entry)}
-                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 cursor-pointer"
+                        className="rounded-lg p-1.5 text-[#686E78] hover:bg-rose-50 hover:text-rose-600 cursor-pointer"
                         title="Delete"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -1753,29 +1875,29 @@ export function VaultView({
                     <div
                       onClick={(e) => {
                         e.stopPropagation();
-                        onNavigate?.('money');
+                        onNavigate?.(linkedAcc.type === 'credit_card' ? 'cards' : 'money');
                       }}
-                      className="inline-flex items-center gap-1 rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-[10px] font-medium text-blue-800 hover:bg-blue-100 cursor-pointer"
-                      title="Linked Ledger Account (Click to view in Money tab)"
+                      className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-medium text-emerald-900 hover:bg-emerald-100 cursor-pointer"
+                      title="Linked Ledger Account (Click to view in Treasury)"
                     >
-                      <Link2 className="h-3 w-3 text-blue-600" />
+                      <Link2 className="h-3 w-3 text-emerald-600" />
                       <span>Linked: {linkedAcc.name} ({linkedAcc.scope})</span>
                     </div>
                   )}
 
                   {/* Summary preview according to item type */}
                   {itemT === 'card' && entry.payload.cardNumber && (
-                    <div className="font-mono text-xs text-slate-700 bg-slate-50 border border-slate-200/80 rounded-lg p-2 flex items-center justify-between">
+                    <div className="font-mono text-xs text-[#111318] bg-[#FAF8F5] border border-[#E6E1D6] rounded-lg p-2 flex items-center justify-between">
                       <span>•••• •••• •••• {entry.payload.cardNumber.slice(-4)}</span>
                       {entry.payload.cardExpiry && (
-                        <span className="text-[10px] text-slate-500 font-sans">Exp: {entry.payload.cardExpiry}</span>
+                        <span className="text-[10px] text-[#686E78] font-sans">Exp: {entry.payload.cardExpiry}</span>
                       )}
                     </div>
                   )}
 
                   {itemT === 'upi' && entry.payload.upiVpa && (
-                    <div className="text-xs text-slate-700 bg-slate-50 border border-slate-200/80 rounded-lg p-2 truncate">
-                      <span className="text-slate-400 font-mono">UPI: </span>
+                    <div className="text-xs text-[#111318] bg-[#FAF8F5] border border-[#E6E1D6] rounded-lg p-2 truncate">
+                      <span className="text-[#686E78] font-mono">UPI: </span>
                       <span className="font-semibold">{entry.payload.upiVpa}</span>
                     </div>
                   )}

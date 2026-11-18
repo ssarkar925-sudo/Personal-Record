@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, type DetailedReports, type TaxSummaryPack } from '../lib/api.ts';
 import { addMonthsISO, formatINR, todayISO } from '../lib/format.ts';
-import { AnimatedTabs, Card } from '../components/ui/Primitives.tsx';
-import { type Scope, rupeesToPaise } from '../../shared/ledger-core.ts';
+import { AnimatedTabs } from '../components/ui/Primitives.tsx';
+import { type Scope } from '../../shared/ledger-core.ts';
 import { UI_STRINGS, type AppLanguage } from '../../shared/i18n.ts';
 import {
   compareTaxRegimes,
@@ -22,8 +22,10 @@ import type {
   ReportTab,
   ReportsIntelligence,
 } from './reports/types.ts';
+import { computeReportsIntelligence, safeRupeesToPaise } from './reports/reportsAnalytics.ts';
 import { ReportsHeaderToolbar } from './reports/ReportsHeaderToolbar.tsx';
 import { ReportsExecutiveKpiStrip } from './reports/ReportsExecutiveKpiStrip.tsx';
+import { ReportsHeroWorkstation } from './reports/ReportsHeroWorkstation.tsx';
 import { PnlWorkstation } from './reports/PnlWorkstation.tsx';
 import { CategoryBudgetsWorkstation } from './reports/CategoryBudgetsWorkstation.tsx';
 import { AccountsPortfolioReports } from './reports/AccountsPortfolioReports.tsx';
@@ -31,15 +33,25 @@ import { CaTaxPackWorkstation } from './reports/CaTaxPackWorkstation.tsx';
 import { CategoryBudgetModal } from './reports/CategoryBudgetModal.tsx';
 import { WhatsAppTaxPackModal } from './reports/WhatsAppTaxPackModal.tsx';
 
-export function ReportsView({ systemLanguage = 'en' }: { systemLanguage?: AppLanguage }) {
+export function ReportsView({
+  systemLanguage = 'en',
+  globalScopeFilter = 'all',
+}: {
+  systemLanguage?: AppLanguage;
+  globalScopeFilter?: Scope | 'all';
+}) {
   const dict = UI_STRINGS[systemLanguage];
   const today = todayISO();
   const [fromDate, setFromDate] = useState(`${addMonthsISO(today, -5).slice(0, 7)}-01`);
   const [toDate, setToDate] = useState(today);
-  const [scope, setScope] = useState<Scope | 'all'>('all');
+  const [scope, setScope] = useState<Scope | 'all'>(globalScopeFilter);
   const [reportTab, setReportTab] = useState<ReportTab>('pnl');
   const [data, setData] = useState<DetailedReports | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setScope(globalScopeFilter);
+  }, [globalScopeFilter]);
 
   // Sorting states
   const [catSort, setCatSort] = useState<CatSortOption>('total_desc');
@@ -135,7 +147,7 @@ export function ReportsView({ systemLanguage = 'en' }: { systemLanguage?: AppLan
       await api.upsertCategoryBudget({
         scope: budgetModalCategory.scope,
         category: budgetModalCategory.category,
-        monthlyLimitMinor: rupeesToPaise(budgetDraftRupees || '0'),
+        monthlyLimitMinor: safeRupeesToPaise(budgetDraftRupees),
       });
       setBudgetModalCategory(null);
       refreshReports();
@@ -157,7 +169,6 @@ export function ReportsView({ systemLanguage = 'en' }: { systemLanguage?: AppLan
   };
 
   useEffect(() => {
-    if (reportTab !== 'tax_pack') return;
     let cancelled = false;
     setTaxLoading(true);
     api
@@ -166,23 +177,27 @@ export function ReportsView({ systemLanguage = 'en' }: { systemLanguage?: AppLan
         if (!cancelled) {
           setTaxPack(res);
           // Auto-prefill deductions if not manually changed
-          if (sec80cRupees === '') {
+          setSec80cRupees((prev) => {
+            if (prev !== '') return prev;
             const auto80cMinor = (res.deductionEstimates?.estimated80cExpensesMinor ?? 0) + res.loanPrincipalPaidMinor;
-            setSec80cRupees(auto80cMinor > 0 ? String(Math.round(auto80cMinor / 100)) : '150000');
-          }
-          if (sec80dSelfRupees === '') {
+            return auto80cMinor > 0 ? String(Math.round(auto80cMinor / 100)) : '150000';
+          });
+          setSec80dSelfRupees((prev) => {
+            if (prev !== '') return prev;
             const auto80dMinor = res.deductionEstimates?.estimated80dExpensesMinor ?? 0;
-            setSec80dSelfRupees(auto80dMinor > 0 ? String(Math.round(auto80dMinor / 100)) : '25000');
-          }
-          if (sec80dParentsRupees === '') setSec80dParentsRupees('25000');
-          if (sec80ccd1bRupees === '') setSec80ccd1bRupees('50000');
-          if (sec24bRupees === '') {
-            setSec24bRupees(res.loanInterestPaidMinor > 0 ? String(Math.round(res.loanInterestPaidMinor / 100)) : '0');
-          }
-          if (sec80ttaRupees === '') {
+            return auto80dMinor > 0 ? String(Math.round(auto80dMinor / 100)) : '25000';
+          });
+          setSec80dParentsRupees((prev) => (prev === '' ? '25000' : prev));
+          setSec80ccd1bRupees((prev) => (prev === '' ? '50000' : prev));
+          setSec24bRupees((prev) => {
+            if (prev !== '') return prev;
+            return res.loanInterestPaidMinor > 0 ? String(Math.round(res.loanInterestPaidMinor / 100)) : '0';
+          });
+          setSec80ttaRupees((prev) => {
+            if (prev !== '') return prev;
             const autoIntMinor = res.deductionEstimates?.estimatedOtherInterestMinor ?? 0;
-            setSec80ttaRupees(autoIntMinor > 0 ? String(Math.round(autoIntMinor / 100)) : '10000');
-          }
+            return autoIntMinor > 0 ? String(Math.round(autoIntMinor / 100)) : '10000';
+          });
         }
       })
       .finally(() => {
@@ -191,62 +206,27 @@ export function ReportsView({ systemLanguage = 'en' }: { systemLanguage?: AppLan
     return () => {
       cancelled = true;
     };
-  }, [reportTab, fyStartYear]);
+  }, [fyStartYear]);
 
   // Derived Cashflow Intelligence & Financial Runway
-  const intelligence: ReportsIntelligence | null = useMemo(() => {
-    if (!data) return null;
-    const bankBalances = data.accountActivity
-      .filter((a) => a.type === 'bank')
-      .reduce((sum, a) => sum + Math.max(0, a.currentBalanceMinor), 0);
-
-    const monthsCount = Math.max(1, data.monthlyCashflow.length);
-    const totalOutflowMinor = data.monthlyCashflow.reduce((s, m) => s + m.expenseMinor, 0);
-    const totalInflowMinor = data.monthlyCashflow.reduce((s, m) => s + m.incomeMinor, 0);
-    const averageMonthlyBurnMinor = Math.round(totalOutflowMinor / monthsCount);
-
-    const runwayMonths =
-      averageMonthlyBurnMinor > 0 ? Number((bankBalances / averageMonthlyBurnMinor).toFixed(1)) : 99;
-    const savingsRatePct =
-      totalInflowMinor > 0 ? Math.round(((totalInflowMinor - totalOutflowMinor) / totalInflowMinor) * 100) : 0;
-
-    // Detect spend anomalies (>30% spike compared to average)
-    const anomalies: Array<{ category: string; amountMinor: number; spikePct: number }> = [];
-    const avgCatSpend =
-      data.categories.length > 0
-        ? data.categories.reduce((s, c) => s + (c.kind === 'expense' ? c.totalMinor : 0), 0) /
-          Math.max(1, data.categories.filter((c) => c.kind === 'expense').length)
-        : 1;
-
-    for (const c of data.categories) {
-      if (c.kind === 'expense' && c.totalMinor > avgCatSpend * 1.5 && c.totalMinor > 500000) {
-        const spikePct = Math.round(((c.totalMinor - avgCatSpend) / avgCatSpend) * 100);
-        anomalies.push({ category: c.category, amountMinor: c.totalMinor, spikePct });
-      }
-    }
-
-    return {
-      bankBalances,
-      averageMonthlyBurnMinor,
-      runwayMonths,
-      savingsRatePct,
-      anomalies: anomalies.slice(0, 3),
-    };
-  }, [data]);
+  const intelligence: ReportsIntelligence | null = useMemo(
+    () => computeReportsIntelligence(data),
+    [data],
+  );
 
   // Real-time Tax Comparison Calculation
   const taxComparison: TaxComparisonResult | null = useMemo(() => {
     if (!taxPack) return null;
 
     const salaryIncomeMinor =
-      salaryOverrideRupees !== ''
-        ? rupeesToPaise(salaryOverrideRupees)
+      salaryOverrideRupees.trim() !== ''
+        ? safeRupeesToPaise(salaryOverrideRupees)
         : taxPack.scopePnl.personal.incomeMinor;
 
     const businessNetProfitMinor = Math.max(0, taxPack.scopePnl.business.netMinor);
-    const otherIncomeMinor = rupeesToPaise(sec80ttaRupees || '0');
-    const stcgEquityMinor = rupeesToPaise(stcgEquityRupees || '0');
-    const ltcgEquityMinor = rupeesToPaise(ltcgEquityRupees || '0');
+    const otherIncomeMinor = safeRupeesToPaise(sec80ttaRupees);
+    const stcgEquityMinor = safeRupeesToPaise(stcgEquityRupees);
+    const ltcgEquityMinor = safeRupeesToPaise(ltcgEquityRupees);
 
     const incomeInputs = {
       salaryIncomeMinor,
@@ -260,13 +240,13 @@ export function ReportsView({ systemLanguage = 'en' }: { systemLanguage?: AppLan
       isSalaried,
       isSeniorCitizen,
       isParentsSenior,
-      section80cMinor: rupeesToPaise(sec80cRupees || '0'),
-      section80dSelfMinor: rupeesToPaise(sec80dSelfRupees || '0'),
-      section80dParentsMinor: rupeesToPaise(sec80dParentsRupees || '0'),
-      section80ccd1bMinor: rupeesToPaise(sec80ccd1bRupees || '0'),
-      section24bMinor: rupeesToPaise(sec24bRupees || '0'),
-      section80ttaMinor: rupeesToPaise(sec80ttaRupees || '0'),
-      hraExemptionMinor: rupeesToPaise(hraRupees || '0'),
+      section80cMinor: safeRupeesToPaise(sec80cRupees),
+      section80dSelfMinor: safeRupeesToPaise(sec80dSelfRupees),
+      section80dParentsMinor: safeRupeesToPaise(sec80dParentsRupees),
+      section80ccd1bMinor: safeRupeesToPaise(sec80ccd1bRupees),
+      section24bMinor: safeRupeesToPaise(sec24bRupees),
+      section80ttaMinor: safeRupeesToPaise(sec80ttaRupees),
+      hraExemptionMinor: safeRupeesToPaise(hraRupees),
     };
 
     return compareTaxRegimes(incomeInputs, deductionInputs);
@@ -369,26 +349,39 @@ export function ReportsView({ systemLanguage = 'en' }: { systemLanguage?: AppLan
         totalOutflowMinor={totalOutflow}
       />
 
-      {/* 3. Workspace Tabs */}
+      {/* 3. Hero Workstation (3D Audit Dossier Card + Interactive P&L / Scope / Tax Charts) */}
+      <ReportsHeroWorkstation
+        data={data}
+        intelligence={intelligence}
+        taxComparison={taxComparison}
+        fromDate={fromDate}
+        toDate={toDate}
+        exportUrl={exportUrl}
+        exportTaxPackUrl={exportTaxPackUrl}
+        onSelectTab={setReportTab}
+        onOpenWhatsAppModal={() => setShowWhatsAppModal(true)}
+      />
+
+      {/* 4. Workspace Tabs */}
       <AnimatedTabs
         variant="subtle"
         value={reportTab}
         onChange={setReportTab}
         items={[
-          { id: 'pnl', label: dict.reports.tabPnl, accentHex: '#4f46e5' },
-          { id: 'categories', label: dict.reports.tabCategories, accentHex: '#2563eb' },
-          { id: 'cards', label: dict.reports.tabCards, accentHex: '#0284c7' },
+          { id: 'pnl', label: dict.reports.tabPnl, accentHex: '#111318' },
+          { id: 'categories', label: dict.reports.tabCategories, accentHex: '#C59B27' },
+          { id: 'cards', label: dict.reports.tabCards, accentHex: '#111318' },
           { id: 'banks', label: dict.reports.tabBanks, accentHex: '#059669' },
-          { id: 'loans', label: dict.reports.tabLoans, accentHex: '#0f766e' },
-          { id: 'dues', label: dict.reports.tabDues, accentHex: '#d97706' },
-          { id: 'tax_pack', label: '🏛️ CA & Tax Pack', accentHex: '#4f46e5' },
+          { id: 'loans', label: dict.reports.tabLoans, accentHex: '#C59B27' },
+          { id: 'dues', label: dict.reports.tabDues, accentHex: '#E11D48' },
+          { id: 'tax_pack', label: 'CA & Tax Pack', accentHex: '#C59B27' },
         ]}
       />
 
       {loading || !data ? (
-        <Card className="p-8 text-center text-sm text-slate-500 border-slate-200/90 bg-white shadow-2xs">
+        <div className="rounded-2xl border border-[#E6E1D6] bg-white p-8 text-center text-sm text-[#6B7280] shadow-[0_12px_32px_-18px_rgba(17,19,24,0.1)]">
           Calculating ledger reports...
-        </Card>
+        </div>
       ) : (
         <>
           {/* TAB 1: P&L WORKSTATION */}

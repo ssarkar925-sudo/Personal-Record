@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createAccount } from './accounts-repo.ts';
 import { createTransaction, createLoan, createPersonDue, createRecurringBill } from './ledger-repo.ts';
 import { upsertNote } from './notes-repo.ts';
-import { todayISO } from '../../shared/ledger-core.ts';
+import { addMonthsISO, todayISO } from '../../shared/ledger-core.ts';
 
 export interface SeedSummary {
   accountsCount: number;
@@ -16,53 +16,57 @@ export interface SeedSummary {
 export function seedFinancialData(db: DatabaseSync): SeedSummary {
   // 1. Bank Accounts & Cards
   const salaryBank = createAccount(db, {
-    name: 'HDFC Salary Bank',
+    name: 'HDFC Corporate & Salary',
     type: 'bank',
     accountGroup: 'bank',
-    scope: 'personal',
+    scope: 'business',
     institution: 'HDFC Bank',
     last4: '4192',
-    openingBalanceMinor: 12500000, // ₹1,25,000.00
+    openingBalanceMinor: 84500000, // ₹8,45,000.00
+    minBalanceMinor: 10000000,
   });
 
-  createAccount(db, {
-    name: 'ICICI Wealth Savings',
+  const iciciWealth = createAccount(db, {
+    name: 'ICICI Wealth Treasury',
     type: 'bank',
     accountGroup: 'bank',
-    scope: 'personal',
+    scope: 'business',
     institution: 'ICICI Bank',
     last4: '9321',
-    openingBalanceMinor: 4500000, // ₹45,000.00
+    openingBalanceMinor: 142000000, // ₹14,20,000.00
+    minBalanceMinor: 25000000,
   });
 
   createAccount(db, {
-    name: 'SBI Personal Account',
+    name: 'SBI Family Reserve',
     type: 'bank',
     accountGroup: 'bank',
     scope: 'family',
     institution: 'State Bank of India',
     last4: '7810',
-    openingBalanceMinor: 3200000, // ₹32,000.00
+    openingBalanceMinor: 68000000, // ₹6,80,000.00
+    minBalanceMinor: 5000000,
   });
 
   createAccount(db, {
-    name: 'Kotak 811 Zero-Bal',
+    name: 'Kotak Personal 811',
     type: 'bank',
     accountGroup: 'bank',
     scope: 'personal',
     institution: 'Kotak Mahindra Bank',
     last4: '3319',
-    openingBalanceMinor: 1500000, // ₹15,000.00
+    openingBalanceMinor: 18500000, // ₹1,85,000.00
   });
 
-  createAccount(db, {
+  const axisBusiness = createAccount(db, {
     name: 'Axis Current Account',
     type: 'bank',
     accountGroup: 'bank',
     scope: 'business',
     institution: 'Axis Bank',
     last4: '5521',
-    openingBalanceMinor: 8500000, // ₹85,000.00
+    openingBalanceMinor: 125000000, // ₹12,50,000.00
+    minBalanceMinor: 20000000,
   });
 
   // Credit Cards
@@ -70,11 +74,11 @@ export function seedFinancialData(db: DatabaseSync): SeedSummary {
     name: 'ICICI Amazon Pay Card',
     type: 'credit_card',
     accountGroup: 'credit_card',
-    scope: 'personal',
+    scope: 'business',
     institution: 'ICICI Bank',
     last4: '8831',
     openingBalanceMinor: 0,
-    creditLimitMinor: 15000000, // ₹1,50,000 limit
+    creditLimitMinor: 25000000, // ₹2,50,000 limit
     statementDay: 15,
     dueDay: 5,
   });
@@ -83,16 +87,16 @@ export function seedFinancialData(db: DatabaseSync): SeedSummary {
     name: 'HDFC Regalia Gold',
     type: 'credit_card',
     accountGroup: 'credit_card',
-    scope: 'personal',
+    scope: 'business',
     institution: 'HDFC Bank',
     last4: '2049',
-    openingBalanceMinor: 0,
-    creditLimitMinor: 30000000, // ₹3,00,000 limit
+    openingBalanceMinor: 1240000, // ₹12,400 billed statement balance
+    creditLimitMinor: 45000000, // ₹4,50,000 limit
     statementDay: 18,
     dueDay: 8,
   });
 
-  createAccount(db, {
+  const sbiCashback = createAccount(db, {
     name: 'SBI Cashback Card',
     type: 'credit_card',
     accountGroup: 'credit_card',
@@ -100,7 +104,7 @@ export function seedFinancialData(db: DatabaseSync): SeedSummary {
     institution: 'SBI Cards',
     last4: '6712',
     openingBalanceMinor: 0,
-    creditLimitMinor: 10000000, // ₹1,00,000 limit
+    creditLimitMinor: 18000000, // ₹1,80,000 limit
     statementDay: 12,
     dueDay: 2,
   });
@@ -109,11 +113,11 @@ export function seedFinancialData(db: DatabaseSync): SeedSummary {
     name: 'Axis Flipkart Card',
     type: 'credit_card',
     accountGroup: 'credit_card',
-    scope: 'personal',
+    scope: 'business',
     institution: 'Axis Bank',
     last4: '4920',
     openingBalanceMinor: 0,
-    creditLimitMinor: 12000000, // ₹1,20,000 limit
+    creditLimitMinor: 20000000, // ₹2,00,000 limit
     statementDay: 20,
     dueDay: 10,
   });
@@ -125,44 +129,44 @@ export function seedFinancialData(db: DatabaseSync): SeedSummary {
     scope: 'business',
     institution: 'American Express',
     last4: '1004',
-    openingBalanceMinor: 0,
-    creditLimitMinor: 40000000, // ₹4,00,000 limit
+    openingBalanceMinor: 1850000, // ₹18,500 billed statement balance
+    creditLimitMinor: 60000000, // ₹6,00,000 limit
     statementDay: 25,
     dueDay: 15,
   });
 
-  createAccount(db, {
+  const oneCardMetal = createAccount(db, {
     name: 'OneCard Metal',
     type: 'credit_card',
     accountGroup: 'credit_card',
-    scope: 'personal',
+    scope: 'business',
     institution: 'Federal Bank',
     last4: '9982',
-    openingBalanceMinor: 0,
-    creditLimitMinor: 8000000, // ₹80,000 limit
+    openingBalanceMinor: 420000, // ₹4,200 billed statement balance
+    creditLimitMinor: 15000000, // ₹1,50,000 limit
     statementDay: 10,
     dueDay: 28,
   });
 
   // Wallets & Cash
   const wallet = createAccount(db, {
-    name: 'Cash & UPI Wallet',
+    name: 'Cash & UPI Float',
     type: 'bank',
     accountGroup: 'cash',
-    scope: 'personal',
-    institution: 'Cash',
+    scope: 'business',
+    institution: 'Petty Cash & UPI',
     last4: '0000',
-    openingBalanceMinor: 850000, // ₹8,500.00
+    openingBalanceMinor: 1850000, // ₹18,500.00
   });
 
   const paytmWallet = createAccount(db, {
-    name: 'Paytm Wallet',
+    name: 'Paytm Merchant Wallet',
     type: 'bank',
     accountGroup: 'wallet',
-    scope: 'personal',
+    scope: 'business',
     institution: 'Paytm Payments',
     last4: '1288',
-    openingBalanceMinor: 420000, // ₹4,200.00
+    openingBalanceMinor: 620000, // ₹6,200.00
   });
 
   createAccount(db, {
@@ -172,37 +176,95 @@ export function seedFinancialData(db: DatabaseSync): SeedSummary {
     scope: 'personal',
     institution: 'Amazon',
     last4: '9002',
-    openingBalanceMinor: 150000, // ₹1,500.00
+    openingBalanceMinor: 450000, // ₹4,500.00
   });
 
-  // 2. Transactions
+  // 2. Transactions across 6-month historical window + current month
   const today = todayISO();
+  const offsetDaysISO = (baseISO: string, daysOffset: number): string => {
+    const [y, m, d] = baseISO.split('-').map(Number);
+    const dt = new Date(Date.UTC(y || 2026, (m || 1) - 1, (d || 1) + daysOffset));
+    return dt.toISOString().slice(0, 10);
+  };
+
+  const historicalMonths = [
+    { offset: -5, incomeMinor: 14500000, expenseMinor: 8200000, bizExpenseMinor: 1900000 },
+    { offset: -4, incomeMinor: 15200000, expenseMinor: 9100000, bizExpenseMinor: 2100000 },
+    { offset: -3, incomeMinor: 14800000, expenseMinor: 7600000, bizExpenseMinor: 1650000 },
+    { offset: -2, incomeMinor: 16500000, expenseMinor: 8800000, bizExpenseMinor: 2400000 },
+    { offset: -1, incomeMinor: 17200000, expenseMinor: 8400000, bizExpenseMinor: 1950000 },
+  ];
+
+  let seededTxCount = 0;
+
+  for (const h of historicalMonths) {
+    const dateISO = addMonthsISO(today, h.offset);
+    createTransaction(db, {
+      kind: 'income',
+      scope: 'business',
+      accountId: axisBusiness.id,
+      category: 'Client Retainer & Revenue',
+      amountMinor: h.incomeMinor,
+      occurredAt: dateISO,
+      party: 'TechCorp & Enterprise Clients',
+      note: 'Monthly Enterprise Retainer & Settlement',
+    });
+    createTransaction(db, {
+      kind: 'expense',
+      scope: 'business',
+      accountId: salaryBank.id,
+      category: 'Operations & Payroll',
+      amountMinor: h.expenseMinor,
+      occurredAt: dateISO,
+      party: 'Core Operations & Vendor Payouts',
+      note: 'Monthly operating disbursements',
+    });
+    createTransaction(db, {
+      kind: 'expense',
+      scope: 'business',
+      accountId: iciciWealth.id,
+      category: 'Cloud & Operations',
+      amountMinor: h.bizExpenseMinor,
+      occurredAt: dateISO,
+      party: 'AWS & SaaS Infrastructure',
+      note: 'Monthly infrastructure billing',
+    });
+    seededTxCount += 3;
+  }
+
   const txData = [
-    { kind: 'income' as const, category: 'Salary', amountMinor: 9500000, party: 'TechCorp India', note: 'Monthly Salary Credit', accountId: salaryBank.id },
-    { kind: 'expense' as const, category: 'Groceries', amountMinor: 345000, party: 'Reliance Smart', note: 'Weekly household groceries', accountId: creditCard.id },
-    { kind: 'expense' as const, category: 'Dining', amountMinor: 128000, party: 'Social Cafe', note: 'Team lunch outing', accountId: creditCard.id },
-    { kind: 'expense' as const, category: 'Flight Tickets', amountMinor: 1850000, party: 'MakeMyTrip', note: 'Business flight booking', accountId: amexTravel.id },
-    { kind: 'expense' as const, category: 'Electronics', amountMinor: 420000, party: 'Croma Retail', note: 'Noise cancelling headphones', accountId: hdfcRegalia.id },
-    { kind: 'expense' as const, category: 'Utilities', amountMinor: 215000, party: 'Tata Power', note: 'Electricity bill payment', accountId: salaryBank.id },
-    { kind: 'expense' as const, category: 'Fuel', amountMinor: 250000, party: 'Indian Oil', note: 'Car petrol refill', accountId: salaryBank.id },
-    { kind: 'expense' as const, category: 'Entertainment', amountMinor: 64900, party: 'Netflix India', note: 'Premium subscription', accountId: creditCard.id },
-    { kind: 'expense' as const, category: 'Online Shopping', amountMinor: 89000, party: 'Flipkart', note: 'Books & stationery', accountId: axisFlipkart.id },
-    { kind: 'expense' as const, category: 'Health', amountMinor: 145000, party: 'Apollo Pharmacy', note: 'Routine vitamins & medicines', accountId: wallet.id },
-    { kind: 'expense' as const, category: 'Dining', amountMinor: 25000, party: 'Chai Point', note: 'Tea & snacks', accountId: wallet.id },
-    { kind: 'expense' as const, category: 'Cab & Auto', amountMinor: 38000, party: 'Uber India', note: 'Client office commute', accountId: paytmWallet.id },
+    { kind: 'income' as const, scope: 'business' as const, category: 'Client Retainer', amountMinor: 14500000, party: 'TechCorp India', note: 'Enterprise Retainer Settlement', accountId: salaryBank.id, daysOffset: -12 },
+    { kind: 'income' as const, scope: 'business' as const, category: 'Advisory Retainer', amountMinor: 6800000, party: 'Apex Ventures', note: 'Architecture advisory milestone', accountId: axisBusiness.id, daysOffset: -6 },
+    { kind: 'income' as const, scope: 'business' as const, category: 'Treasury Yield', amountMinor: 2450000, party: 'ICICI Corporate Sweep', note: 'Quarterly liquid reserve dividend', accountId: iciciWealth.id, daysOffset: -2 },
+    { kind: 'expense' as const, scope: 'business' as const, category: 'Office & Equipment', amountMinor: 640000, party: 'Amazon Business Prime', note: 'Smart studio lighting & network gear', accountId: creditCard.id, daysOffset: -13 },
+    { kind: 'expense' as const, scope: 'business' as const, category: 'SaaS & Cloud', amountMinor: 980000, party: 'Vercel & OpenAI Enterprise', note: 'Production compute cluster', accountId: amexTravel.id, daysOffset: -11 },
+    { kind: 'expense' as const, scope: 'business' as const, category: 'Client Hospitality', amountMinor: 428000, party: 'Indian Accent', note: 'Executive client dinner', accountId: hdfcRegalia.id, daysOffset: -9 },
+    { kind: 'expense' as const, scope: 'personal' as const, category: 'Cashback Shopping', amountMinor: 515000, party: 'Myntra Luxe & Nykaa', note: 'Apparel & grooming essentials', accountId: sbiCashback.id, daysOffset: -7 },
+    { kind: 'expense' as const, scope: 'business' as const, category: 'Flight Tickets', amountMinor: 2450000, party: 'Vistara Business', note: 'Bengaluru summit return flights', accountId: amexTravel.id, daysOffset: -5 },
+    { kind: 'expense' as const, scope: 'business' as const, category: 'Workstation Hardware', amountMinor: 389000, party: 'Flipkart Commercial', note: 'Ergonomic studio accessories', accountId: axisFlipkart.id, daysOffset: -4 },
+    { kind: 'expense' as const, scope: 'business' as const, category: 'Electronics', amountMinor: 1420000, party: 'Apple Authorised Enterprise', note: 'Studio display & Thunderbolt dock', accountId: hdfcRegalia.id, daysOffset: -2 },
+    { kind: 'expense' as const, scope: 'business' as const, category: 'Coffee & Lounge', amountMinor: 215000, party: 'Blue Tokai Roasters', note: 'Client strategy briefing', accountId: oneCardMetal.id, daysOffset: -1 },
+    { kind: 'expense' as const, scope: 'business' as const, category: 'Pantry & Supplies', amountMinor: 845000, party: 'Nature Basket Corporate', note: 'Studio hospitality & pantry supplies', accountId: creditCard.id, daysOffset: 0 },
+    { kind: 'expense' as const, scope: 'business' as const, category: 'Software Subscriptions', amountMinor: 164900, party: 'Apple One & Figma Org', note: 'Design & cloud bundle', accountId: creditCard.id, daysOffset: 0 },
+    { kind: 'expense' as const, scope: 'business' as const, category: 'Hotel & Lounge', amountMinor: 1180000, party: 'Taj West End', note: 'Executive suite & boardroom', accountId: amexTravel.id, daysOffset: 0 },
+    { kind: 'expense' as const, scope: 'business' as const, category: 'Utilities & Fiber', amountMinor: 615000, party: 'Tata Power & Airtel Leased Line', note: 'Office power & dedicated fiber', accountId: salaryBank.id, daysOffset: -3 },
+    { kind: 'expense' as const, scope: 'business' as const, category: 'Fleet & Fuel', amountMinor: 550000, party: 'Shell V-Power Corporate', note: 'Executive vehicle fuel', accountId: axisBusiness.id, daysOffset: -1 },
+    { kind: 'expense' as const, scope: 'family' as const, category: 'Health & Wellness', amountMinor: 445000, party: 'Apollo Executive Health', note: 'Preventive diagnostics & supplements', accountId: wallet.id, daysOffset: -2 },
+    { kind: 'expense' as const, scope: 'business' as const, category: 'Executive Commute', amountMinor: 138000, party: 'Uber Premier Business', note: 'Airport terminal transfers', accountId: paytmWallet.id, daysOffset: 0 },
   ];
 
   for (const tx of txData) {
     createTransaction(db, {
       kind: tx.kind,
-      scope: 'personal',
+      scope: tx.scope,
       accountId: tx.accountId,
       category: tx.category,
       amountMinor: tx.amountMinor,
-      occurredAt: today,
+      occurredAt: offsetDaysISO(today, tx.daysOffset),
       party: tx.party,
       note: tx.note,
     });
+    seededTxCount += 1;
   }
 
   // 3. Loans
@@ -405,7 +467,7 @@ export function seedFinancialData(db: DatabaseSync): SeedSummary {
 
   return {
     accountsCount: 14,
-    txCount: txData.length,
+    txCount: seededTxCount,
     loansCount: 4,
     duesCount: 8,
     notesCount: 2,

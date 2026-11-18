@@ -51,15 +51,15 @@ withTransaction(db, () => {
     DELETE FROM category_rules;
     DELETE FROM accounts;
   `);
-
-  if (mode === 'seed') {
-    console.log(`[Ledger Reset] Seeding comprehensive realistic dataset...`);
-    const summary = seedFinancialData(db);
-    console.log(`[Ledger Reset] Seed complete:`, summary);
-  } else {
-    console.log(`[Ledger Reset] Clean slate achieved. Zero transactions, accounts, or dues.`);
-  }
 });
+
+if (mode === 'seed') {
+  console.log(`[Ledger Reset] Seeding comprehensive realistic dataset...`);
+  const summary = seedFinancialData(db);
+  console.log(`[Ledger Reset] Seed complete:`, summary);
+} else {
+  console.log(`[Ledger Reset] Clean slate achieved. Zero transactions, accounts, or dues.`);
+}
 
 // Vacuum & WAL checkpoint must run outside of transaction in SQLite
 db.exec('PRAGMA wal_checkpoint(TRUNCATE);');

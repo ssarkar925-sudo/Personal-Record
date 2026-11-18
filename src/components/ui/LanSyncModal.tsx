@@ -75,26 +75,26 @@ export function LanSyncModal({ open, onClose, onSyncComplete }: LanSyncModalProp
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-      <Card className="w-full max-w-lg border-slate-700/80 bg-slate-900/95 text-slate-100 shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-800/80 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 animate-panel-in">
+      <Card className="w-full max-w-lg border-slate-200 bg-white text-slate-900 shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between border-b border-slate-100 p-4">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700">
               <Wifi className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+              <h3 className="font-display text-sm font-bold text-slate-950 flex items-center gap-2">
                 Local Wi-Fi Encrypted Sync
-                <span className="rounded bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                <span className="rounded bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">
                   Zero Cloud
                 </span>
               </h3>
-              <p className="text-xs text-slate-400">Sync phone and computer directly over your home network</p>
+              <p className="text-xs text-slate-500">Sync phone and computer directly over your home network</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors"
+            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
@@ -102,31 +102,31 @@ export function LanSyncModal({ open, onClose, onSyncComplete }: LanSyncModalProp
 
         <div className="p-5 space-y-5">
           {/* This Device Info */}
-          <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                <Laptop className="h-3.5 w-3.5 text-indigo-400" />
+              <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                <Laptop className="h-3.5 w-3.5 text-indigo-600" />
                 This Device Address
               </span>
               <button
                 onClick={fetchPairingInfo}
-                className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                className="text-[11px] font-medium text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer"
               >
                 <RefreshCw className="h-3 w-3" /> Refresh
               </button>
             </div>
             <div className="space-y-1">
               {pairingData?.ips.map((ip) => (
-                <div key={ip} className="flex items-center justify-between font-mono text-xs text-slate-300 bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-800/60">
+                <div key={ip} className="flex items-center justify-between font-mono-data text-xs text-slate-800 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200">
                   <span>http://{ip}:4173</span>
                   <span className="text-[10px] text-slate-500 uppercase font-sans">LAN IPv4</span>
                 </div>
               ))}
             </div>
             {pairingData?.token && (
-              <div className="mt-3 flex items-center justify-between border-t border-slate-800/80 pt-2.5">
-                <span className="text-xs text-slate-400">One-Time Pairing Code:</span>
-                <span className="font-mono font-bold tracking-wider text-sm text-emerald-400 bg-emerald-950/40 px-2.5 py-1 rounded border border-emerald-500/20">
+              <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-2.5">
+                <span className="text-xs text-slate-600">One-Time Pairing Code:</span>
+                <span className="font-mono-data font-bold tracking-wider text-sm text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
                   {pairingData.token}
                 </span>
               </div>
@@ -135,8 +135,8 @@ export function LanSyncModal({ open, onClose, onSyncComplete }: LanSyncModalProp
 
           {/* Sync With Remote Device */}
           <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-              <Smartphone className="h-3.5 w-3.5 text-sky-400" />
+            <h4 className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+              <Smartphone className="h-3.5 w-3.5 text-blue-600" />
               Sync with Another Device
             </h4>
             <div className="space-y-2">
@@ -144,42 +144,43 @@ export function LanSyncModal({ open, onClose, onSyncComplete }: LanSyncModalProp
                 placeholder="Enter peer IP (e.g. 192.168.1.45:4173)"
                 value={targetIp}
                 onChange={(e) => setTargetIp(e.target.value)}
-                className="bg-slate-950 border-slate-800 text-xs"
+                className="text-xs"
               />
               <Input
                 placeholder="Optional peer pairing code"
                 value={targetToken}
                 onChange={(e) => setTargetToken(e.target.value)}
-                className="bg-slate-950 border-slate-800 text-xs"
+                className="text-xs"
               />
             </div>
 
             {error && (
-              <div className="flex items-center gap-2 p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
+              <div className="flex items-center gap-2 p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{error}</span>
               </div>
             )}
 
             {status && (
-              <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">
+              <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs">
                 <Check className="h-4 w-4 shrink-0" />
                 <span>{status}</span>
               </div>
             )}
 
             <Button
+              variant="primary"
               onClick={handlePullSync}
               disabled={isSyncing}
-              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs py-2 flex items-center justify-center gap-2 shadow-sm"
+              className="w-full"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
               {isSyncing ? 'Synchronizing...' : 'Pull & Merge Peer Ledger'}
             </Button>
           </div>
 
-          <div className="flex items-center gap-2 text-[11px] text-slate-500 border-t border-slate-800/80 pt-3">
-            <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0" />
+          <div className="flex items-center gap-2 text-[11px] text-slate-500 border-t border-slate-100 pt-3">
+            <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
             <span>End-to-end local network communication with zero cloud server exposure.</span>
           </div>
         </div>

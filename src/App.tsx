@@ -9,6 +9,7 @@ import {
   CreditCard,
   Eye,
   EyeOff,
+  FileSpreadsheet,
   KeyRound,
   Landmark,
   LayoutDashboard,
@@ -32,7 +33,11 @@ import {
   type TransactionRecord,
   type WhatsAppBridgeState,
 } from './lib/api.ts';
-import { AnimatedTabs, Button, Card, Input, type AnimatedTabItem } from './components/ui/Primitives.tsx';
+import { Button, Card, Input } from './components/ui/Primitives.tsx';
+import {
+  FloatingCommandDock,
+  type DockWorkspaceItem,
+} from './components/ui/FloatingCommandDock.tsx';
 import { QuickAddModal } from './components/QuickAddModal.tsx';
 import { GlobalSearchModal } from './components/GlobalSearchModal.tsx';
 import { CommandPalette } from './components/ui/CommandPalette.tsx';
@@ -47,8 +52,10 @@ import { MoneyCardsView } from './workspaces/MoneyCardsView.tsx';
 import { LoansDuesView } from './workspaces/LoansDuesView.tsx';
 import { ReportsView } from './workspaces/ReportsView.tsx';
 import { NotesView } from './workspaces/NotesView.tsx';
+import { JobSheetsView } from './workspaces/JobSheetsView.tsx';
 import { VaultView } from './workspaces/VaultView.tsx';
 import { AlertsSettingsModal } from './workspaces/AlertsSettingsModal.tsx';
+import { SCOPE_META } from './lib/format.ts';
 import type { Scope } from '../shared/ledger-core.ts';
 import { UI_STRINGS } from '../shared/i18n.ts';
 
@@ -75,6 +82,7 @@ export function App() {
     const id = window.setTimeout(() => setToast(null), 3200);
     return () => window.clearTimeout(id);
   }, [toast]);
+
   const [preferences, setPreferences] = useState<AppPreferences>({
     systemLanguage: 'en',
     agentAutoExecute: true,
@@ -258,50 +266,65 @@ export function App() {
 
   const dict = UI_STRINGS[preferences.systemLanguage];
 
-  const workspaceTabs: AnimatedTabItem<WorkspaceId>[] = [
+  // Exact bottom bar arrangement: Dashboard, Credit Cards, Bank & Cash, Notes, Loans & Dues, Reports, Vault
+  const dockItems: DockWorkspaceItem[] = [
     {
       id: 'dashboard',
       label: dict.tabs.dashboard,
-      accentHex: '#2563eb',
-      icon: <LayoutDashboard className="h-3.5 w-3.5" />,
+      shortLabel: 'Home',
+      icon: <LayoutDashboard className="h-4 w-4" />,
     },
     {
       id: 'cards',
       label: dict.tabs.cards,
-      accentHex: '#2563eb',
-      icon: <CreditCard className="h-3.5 w-3.5" />,
+      shortLabel: 'Cards',
+      icon: <CreditCard className="h-4 w-4" />,
+      badge: dashboard?.cards.length || undefined,
     },
     {
       id: 'money',
       label: dict.tabs.money,
-      accentHex: '#059669',
-      icon: <Building2 className="h-3.5 w-3.5" />,
-    },
-    {
-      id: 'loans_dues',
-      label: dict.tabs.loans_dues,
-      accentHex: '#d97706',
-      icon: <Landmark className="h-3.5 w-3.5" />,
-    },
-    {
-      id: 'reports',
-      label: dict.tabs.reports,
-      accentHex: '#4f46e5',
-      icon: <BarChart3 className="h-3.5 w-3.5" />,
+      shortLabel: 'Banks',
+      icon: <Building2 className="h-4 w-4" />,
     },
     {
       id: 'notes',
       label: dict.tabs.notes,
-      accentHex: '#0f766e',
-      icon: <NotebookPen className="h-3.5 w-3.5" />,
+      shortLabel: 'Notes',
+      icon: <NotebookPen className="h-4 w-4" />,
+    },
+    {
+      id: 'sheets',
+      label: 'Job Sheets',
+      shortLabel: 'Sheets',
+      icon: <FileSpreadsheet className="h-4 w-4" />,
+    },
+    {
+      id: 'loans_dues',
+      label: dict.tabs.loans_dues,
+      shortLabel: 'Loans',
+      icon: <Landmark className="h-4 w-4" />,
+    },
+    {
+      id: 'reports',
+      label: dict.tabs.reports,
+      shortLabel: 'Reports',
+      icon: <BarChart3 className="h-4 w-4" />,
     },
     {
       id: 'vault',
       label: dict.tabs.vault,
-      accentHex: '#4f46e5',
-      icon: <Lock className="h-3.5 w-3.5" />,
+      shortLabel: 'Vault',
+      icon: <Lock className="h-4 w-4" />,
     },
   ];
+
+  const scopePillOptions = [
+    ['all', dict.scopes.all],
+    ['business', dict.scopes.business],
+    ['personal', dict.scopes.personal],
+    ['family', dict.scopes.family],
+  ] as const;
 
   const monthSpentByScope: Record<Scope, number> = {
     personal: dashboard?.allMonthExpenseByScope?.personal ?? dashboard?.monthByScope.personal.expenseMinor ?? 0,
@@ -310,377 +333,477 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col canvas-studio text-slate-900">
-      {/* Top Studio Command Bar */}
-      <header className="sticky top-0 z-30 border-b border-[#d8e1ee] bg-white/88 backdrop-blur-md shadow-[0_6px_20px_-14px_rgba(37,99,235,0.2)]">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <div className="flex h-14 items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 via-indigo-600 to-indigo-700 text-white text-sm font-bold tracking-tight shadow-sm">
-                ₹
-              </div>
-              <div>
-                <div className="text-sm font-bold tracking-tight text-slate-950 leading-none">{dict.appName}</div>
-                <div className="text-[11px] text-slate-500 mt-0.5 hidden sm:block">{dict.scopesSubtitle}</div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <button
-                type="button"
-                onClick={() => setPrivacyMasked((v) => !v)}
-                aria-label={privacyMasked ? 'Show INR amounts' : 'Mask INR amounts'}
-                title={privacyMasked ? 'Show amounts' : 'Mask amounts (₹••••)'}
-                className={`inline-flex h-8 items-center gap-1 rounded-lg border px-2 text-xs font-medium transition-colors cursor-pointer ${
-                  privacyMasked
-                    ? 'border-blue-300 bg-blue-50 text-blue-800'
-                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                {privacyMasked ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                <span className="hidden xl:inline">{privacyMasked ? 'Masked' : 'Privacy'}</span>
-              </button>
-
-              {preferences.hasAppPin && (
+    <div className="relative min-h-screen flex flex-col canvas-studio text-[#111318]">
+      <div className="relative z-10 min-h-screen flex flex-col">
+        {/* Editorial Sovereign Top Command Bar */}
+        <header className="sticky top-0 z-30 border-b border-[#EAE5DC] bg-[#FAF8F5]/92 backdrop-blur-md">
+          <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8">
+            <div className="flex h-15 sm:h-16 items-center justify-between gap-2 sm:gap-3">
+              {/* Brand Crest & Editorial Wordmark */}
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                 <button
                   type="button"
-                  onClick={() => {
-                    setPinError('');
-                    setPinInput('');
-                    setAppLocked(true);
-                  }}
-                  aria-label="Lock app now"
-                  title="Lock app with PIN"
-                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-600 hover:bg-slate-50 cursor-pointer"
+                  onClick={() => setActiveTab('dashboard')}
+                  className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#111318] border border-[#C59B27]/45 text-[#E5C158] text-sm font-bold font-mono-data tracking-tight shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_2px_8px_rgba(17,19,24,0.2)] cursor-pointer"
+                  title="Return to Executive Dashboard"
                 >
-                  <KeyRound className="h-3.5 w-3.5" />
+                  ₹
                 </button>
-              )}
+                <div className="min-w-0">
+                  <div className="font-display text-sm sm:text-base font-bold tracking-tight text-[#111318] leading-none whitespace-nowrap truncate">
+                    {dict.appName}
+                  </div>
+                  <div className="text-[11px] text-[#858078] font-mono-data mt-0.5 hidden sm:block truncate">
+                    PRIVATE WEALTH &amp; SOVEREIGN LEDGER
+                  </div>
+                </div>
+              </div>
 
-              {/* Command Palette Button (⌘K / Ctrl+K) */}
-              <button
-                type="button"
-                onClick={() => setCommandPaletteOpen(true)}
-                title="Command Palette (⌘K / Ctrl+K)"
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50/90 px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950 transition-colors cursor-pointer"
+              {/* Center Recessed Stone Scope Segmented Control (Desktop) */}
+              <div
+                role="group"
+                aria-label="Global Scope Filter"
+                className="hidden lg:inline-flex items-center rounded-xl bg-[#F3EFEA] p-1 border border-[#EAE5DC]"
               >
-                <Command className="h-3.5 w-3.5 text-slate-500" />
-                <span className="hidden md:inline font-medium">Commands</span>
-                <kbd className="inline-flex items-center gap-0.5 rounded bg-slate-200/80 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 border border-slate-300/60 shadow-2xs">
-                  <span className="hidden sm:inline">⌘K / Ctrl+K</span>
-                  <span className="sm:hidden">⌘K</span>
-                </kbd>
-              </button>
+                {scopePillOptions.map(([id, label]) => {
+                  const active = scopeFilter === id;
+                  const dotColor =
+                    id === 'all' ? 'bg-[#C59B27]' : SCOPE_META[id].dotClass;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setScopeFilter(id)}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition-all cursor-pointer ${
+                        active
+                          ? 'bg-[#111318] text-[#FAF8F5] shadow-2xs'
+                          : 'text-[#52504C] hover:text-[#111318]'
+                      }`}
+                    >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          active ? 'bg-[#E5C158]' : dotColor
+                        }`}
+                      />
+                      <span>{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
 
-              {/* Supabase Cloud & Multi-Device Sync */}
-              <button
-                type="button"
-                onClick={() => setCloudSyncOpen(true)}
-                title="Supabase Cloud & Multi-Device Sync"
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer shadow-2xs"
-              >
-                <Cloud className="h-3.5 w-3.5 text-blue-600" />
-                <span className="hidden lg:inline text-xs font-medium">Cloud Sync</span>
-              </button>
+              {/* Right Utility & Action Controls */}
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setPrivacyMasked((v) => !v)}
+                  aria-label={privacyMasked ? 'Show INR amounts' : 'Mask INR amounts'}
+                  title={privacyMasked ? 'Show amounts' : 'Mask amounts (₹••••)'}
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-xl border px-2 sm:px-2.5 text-xs font-medium transition-colors cursor-pointer ${
+                    privacyMasked
+                      ? 'border-[#C59B27] bg-[#111318] text-[#E5C158]'
+                      : 'border-[#EAE5DC] bg-white text-[#52504C] hover:bg-[#F3EFEA] hover:text-[#111318]'
+                  }`}
+                >
+                  {privacyMasked ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  <span className="hidden xl:inline">{privacyMasked ? 'Masked' : 'Privacy'}</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setSearchOpen(true)}
-                title="Search records"
-                className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-600 hover:bg-slate-50 cursor-pointer"
-              >
-                <Search className="h-3.5 w-3.5 text-slate-400" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setAlertsOpen(true)}
-                title="Alerts & Notifications"
-                className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-600 hover:bg-slate-50 cursor-pointer shadow-2xs"
-              >
-                <Bell className="h-3.5 w-3.5 text-slate-500" />
-                {(dashboard?.unreadInAppCount ?? 0) > 0 && (
-                  <span className="rounded-full bg-blue-600 px-1.5 text-[10px] font-semibold text-white tabular-nums">
-                    {dashboard?.unreadInAppCount}
-                  </span>
+                {preferences.hasAppPin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPinError('');
+                      setPinInput('');
+                      setAppLocked(true);
+                    }}
+                    aria-label="Lock app now"
+                    title="Lock app with PIN"
+                    className="inline-flex h-8 items-center gap-1 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#52504C] hover:bg-[#F3EFEA] hover:text-[#111318] cursor-pointer"
+                  >
+                    <KeyRound className="h-3.5 w-3.5" />
+                  </button>
                 )}
-              </button>
 
-              <Button
-                variant="secondary"
-                size="sm"
-                className="border-indigo-200 bg-indigo-50/70 text-indigo-800 hover:bg-indigo-100/70"
-                onClick={() => handleOpenAgent()}
-              >
-                <Bot className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{dict.aiAgent}</span>
-                {((briefing?.whatsWrong.length ?? 0) > 0 || (dashboard?.attentionQueue.length ?? 0) > 0) && (
-                  <span className="h-2 w-2 rounded-full bg-amber-500" aria-label="Advisor attention items" />
-                )}
-              </Button>
+                {/* Command Palette Button (⌘K / Ctrl+K) */}
+                <button
+                  type="button"
+                  onClick={() => setCommandPaletteOpen(true)}
+                  title="Command Palette (⌘K / Ctrl+K)"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#111318] hover:bg-[#F3EFEA] transition-colors cursor-pointer"
+                >
+                  <Command className="h-3.5 w-3.5 text-[#858078]" />
+                  <span className="hidden md:inline font-medium">Commands</span>
+                  <kbd className="hidden sm:inline-flex items-center rounded bg-[#F3EFEA] px-1.5 py-0.5 text-[10px] font-mono-data font-semibold text-[#52504C] border border-[#D6CFC2]">
+                    ⌘K
+                  </kbd>
+                </button>
 
-              <Button variant="primary" size="sm" onClick={() => setQuickAddOpen(true)}>
-                <Plus className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{dict.quickAdd}</span>
-                <kbd className="hidden lg:inline-block rounded bg-white/20 px-1 text-[10px] font-normal text-white">
-                  Ctrl+Q
-                </kbd>
-              </Button>
-            </div>
-          </div>
+                {/* Supabase Cloud Sync */}
+                <button
+                  type="button"
+                  onClick={() => setCloudSyncOpen(true)}
+                  title="Supabase Cloud & Multi-Device Sync"
+                  className="hidden sm:inline-flex h-8 items-center gap-1.5 rounded-xl border border-[#EAE5DC] bg-white px-2.5 text-xs font-medium text-[#111318] hover:bg-[#F3EFEA] transition-colors cursor-pointer"
+                >
+                  <Cloud className="h-3.5 w-3.5 text-[#059669]" />
+                  <span className="hidden xl:inline text-xs font-medium">Sync</span>
+                </button>
 
-          {/* Multi-Color Gliding Workspace Tabs */}
-          <AnimatedTabs
-            variant="primary"
-            items={workspaceTabs}
-            value={activeTab}
-            onChange={setActiveTab}
-          />
-        </div>
-      </header>
+                <button
+                  type="button"
+                  onClick={() => setSearchOpen(true)}
+                  title="Search records"
+                  aria-label="Search records"
+                  className="inline-flex h-8 items-center gap-1 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#52504C] hover:bg-[#F3EFEA] hover:text-[#111318] cursor-pointer"
+                >
+                  <Search className="h-3.5 w-3.5" />
+                </button>
 
-      {/* Main Content */}
-      {!(appLocked && preferences.hasAppPin) && (
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 sm:px-6 py-5">
-        {loadError && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
-            Could not load local data: {loadError}
-          </div>
-        )}
+                <button
+                  type="button"
+                  onClick={() => setAlertsOpen(true)}
+                  title="Alerts & Notifications"
+                  aria-label="Alerts & Notifications"
+                  className="inline-flex h-8 items-center gap-1 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#52504C] hover:bg-[#F3EFEA] hover:text-[#111318] cursor-pointer"
+                >
+                  <Bell className="h-3.5 w-3.5" />
+                  {(dashboard?.unreadInAppCount ?? 0) > 0 && (
+                    <span className="rounded-full bg-[#111318] px-1.5 text-[10px] font-mono-data font-semibold text-[#E5C158] tabular-nums">
+                      {dashboard?.unreadInAppCount}
+                    </span>
+                  )}
+                </button>
 
-        {activeTab === 'dashboard' && (
-          <DashboardView
-            data={dashboard}
-            briefing={briefing}
-            loading={!dashboard}
-            systemLanguage={preferences.systemLanguage}
-            scopeFilter={scopeFilter}
-            onScopeChange={setScopeFilter}
-            onNavigate={setActiveTab}
-            onOpenQuickAdd={() => setQuickAddOpen(true)}
-            onOpenAgent={handleOpenAgent}
-            onRefresh={() => void loadAll()}
-          />
-        )}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="border-[#D6CFC2] bg-[#F3EFEA] text-[#111318] hover:bg-[#EAE5DC] px-2 sm:px-3"
+                  onClick={() => handleOpenAgent()}
+                >
+                  <Bot className="h-3.5 w-3.5 text-[#C59B27]" />
+                  <span className="hidden sm:inline">{dict.aiAgent}</span>
+                </Button>
 
-        {activeTab === 'cards' && (
-          <CardsView
-            accounts={accounts}
-            transactions={transactions}
-            recurringBills={recurringBills}
-            budgets={budgets}
-            monthSpentByScope={monthSpentByScope}
-            systemLanguage={preferences.systemLanguage}
-            onNotify={notify}
-            onRefresh={() => void loadAll()}
-            onNavigateToMoney={() => setActiveTab('money')}
-          />
-        )}
-
-        {activeTab === 'money' && (
-          <MoneyCardsView
-            accounts={accounts}
-            transactions={transactions}
-            recurringBills={recurringBills}
-            budgets={budgets}
-            monthSpentByScope={monthSpentByScope}
-            systemLanguage={preferences.systemLanguage}
-            onNotify={notify}
-            onRefresh={() => void loadAll()}
-            onNavigateToCards={() => setActiveTab('cards')}
-          />
-        )}
-
-        {activeTab === 'loans_dues' && (
-          <LoansDuesView
-            loans={loans}
-            dues={dues}
-            dueSummaries={dueSummaries}
-            accounts={accounts}
-            systemLanguage={preferences.systemLanguage}
-            onNotify={notify}
-            onRefresh={() => void loadAll()}
-          />
-        )}
-
-        {activeTab === 'reports' && <ReportsView systemLanguage={preferences.systemLanguage} />}
-
-        {activeTab === 'notes' && (
-          <NotesView
-            notes={notes}
-            accounts={accounts}
-            transactions={transactions}
-            loans={loans}
-            dues={dues}
-            systemLanguage={preferences.systemLanguage}
-            onNotify={notify}
-            onNavigate={setActiveTab}
-            onRefresh={() => void loadAll()}
-          />
-        )}
-
-        {activeTab === 'vault' && (
-          <VaultView
-            accounts={accounts}
-            systemLanguage={preferences.systemLanguage}
-            onNotify={notify}
-            onNavigate={setActiveTab}
-          />
-        )}
-        </main>
-      )}
-
-      <QuickAddModal
-        open={quickAddOpen}
-        onClose={() => setQuickAddOpen(false)}
-        accounts={accounts}
-        existingCategories={transactions.map((tx) => tx.category)}
-        defaultScope={scopeFilter === 'all' ? 'personal' : scopeFilter}
-        systemLanguage={preferences.systemLanguage}
-        onSaved={() => {
-          notify(dict.quickAddModal.saveEntry + ' ✓');
-          void loadAll();
-        }}
-      />
-
-      <AlertsSettingsModal
-        open={alertsOpen}
-        onClose={() => setAlertsOpen(false)}
-        bridgeState={bridgeState}
-        onBridgeStateChange={setBridgeState}
-        preferences={preferences}
-        onPreferencesChange={setPreferences}
-        systemLanguage={preferences.systemLanguage}
-        onRefresh={() => void loadAll()}
-      />
-
-      {appLocked && preferences.hasAppPin && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="App Lock PIN Required"
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/75 backdrop-blur-md p-4"
-        >
-          <Card className="w-full max-w-sm p-6 space-y-4">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">
-                <Lock className="h-5 w-5" />
-              </span>
-              <div>
-                <h2 className="text-base font-bold text-slate-950">{dict.appName} Locked</h2>
-                <p className="text-xs text-slate-500">Enter your 4–8 digit App PIN to continue.</p>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="px-2.5 sm:px-3.5"
+                  onClick={() => setQuickAddOpen(true)}
+                >
+                  <Plus className="h-3.5 w-3.5 text-[#E5C158]" />
+                  <span className="hidden sm:inline">{dict.quickAdd}</span>
+                </Button>
               </div>
             </div>
-            {pinError && (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                {pinError}
+
+            {/* Mobile & Tablet Top Bar Scope Strip (Always Visible on < lg) */}
+            <div
+              role="group"
+              aria-label="Mobile Global Scope Filter"
+              className="lg:hidden flex items-center justify-between gap-1 pb-2.5 pt-0.5 overflow-x-auto no-scrollbar"
+            >
+              <div className="inline-flex w-full items-center rounded-xl bg-[#F3EFEA] p-1 border border-[#EAE5DC]">
+                {scopePillOptions.map(([id, label]) => {
+                  const active = scopeFilter === id;
+                  const dotColor =
+                    id === 'all' ? 'bg-[#C59B27]' : SCOPE_META[id].dotClass;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setScopeFilter(id)}
+                      className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                        active
+                          ? 'bg-[#111318] text-[#FAF8F5] shadow-2xs'
+                          : 'text-[#52504C] hover:text-[#111318]'
+                      }`}
+                    >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                          active ? 'bg-[#E5C158]' : dotColor
+                        }`}
+                      />
+                      <span>{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Main Workspace Canvas (padded at bottom for Floating Glass Command Dock) */}
+        {!(appLocked && preferences.hasAppPin) && (
+          <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 sm:px-6 lg:px-8 pt-5 sm:pt-6 pb-28">
+            {loadError && (
+              <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-800">
+                Could not load local data: {loadError}
               </div>
             )}
-            <form onSubmit={handleUnlockApp} className="space-y-3">
-              <Input
-                type="password"
-                inputMode="numeric"
-                maxLength={8}
-                placeholder="Enter PIN"
-                value={pinInput}
-                onChange={(e) => setPinInput(e.target.value)}
-                autoFocus
-                required
+
+            {activeTab === 'dashboard' && (
+              <DashboardView
+                data={dashboard}
+                briefing={briefing}
+                loading={!dashboard}
+                systemLanguage={preferences.systemLanguage}
+                scopeFilter={scopeFilter}
+                onScopeChange={setScopeFilter}
+                onNavigate={setActiveTab}
+                onOpenQuickAdd={() => setQuickAddOpen(true)}
+                onOpenAgent={handleOpenAgent}
+                onRefresh={() => void loadAll()}
               />
-              <Button variant="primary" type="submit" className="w-full">
-                Unlock Ledger
-              </Button>
-            </form>
-          </Card>
-        </div>
-      )}
+            )}
 
-      {toast && (
-        <div
-          role="status"
-          className={`fixed bottom-4 right-4 z-[60] max-w-sm rounded-xl border px-3.5 py-2.5 text-xs font-medium shadow-lg no-print animate-panel-in ${
-            toast.kind === 'err'
-              ? 'border-red-200 bg-red-50 text-red-800'
-              : 'border-emerald-200 bg-emerald-50 text-emerald-900'
-          }`}
-        >
-          {toast.text}
-        </div>
-      )}
+            {activeTab === 'cards' && (
+              <CardsView
+                accounts={accounts}
+                transactions={transactions}
+                recurringBills={recurringBills}
+                budgets={budgets}
+                monthSpentByScope={monthSpentByScope}
+                systemLanguage={preferences.systemLanguage}
+                globalScopeFilter={scopeFilter}
+                onGlobalScopeChange={setScopeFilter}
+                onNotify={notify}
+                onRefresh={() => void loadAll()}
+                onNavigateToMoney={() => setActiveTab('money')}
+              />
+            )}
 
-      <GlobalSearchModal
-        open={searchOpen}
-        onClose={() => setSearchOpen(false)}
-        onNavigate={(tab) => setActiveTab(tab)}
-        onOpenQuickAdd={() => setQuickAddOpen(true)}
-      />
+            {activeTab === 'money' && (
+              <MoneyCardsView
+                accounts={accounts}
+                transactions={transactions}
+                recurringBills={recurringBills}
+                budgets={budgets}
+                monthSpentByScope={monthSpentByScope}
+                systemLanguage={preferences.systemLanguage}
+                globalScopeFilter={scopeFilter}
+                onGlobalScopeChange={setScopeFilter}
+                onNotify={notify}
+                onRefresh={() => void loadAll()}
+                onNavigateToCards={() => setActiveTab('cards')}
+              />
+            )}
 
-      <CommandPalette
-        open={commandPaletteOpen}
-        onClose={() => setCommandPaletteOpen(false)}
-        systemLanguage={preferences.systemLanguage}
-        onNavigate={(tab) => setActiveTab(tab)}
-        onOpenQuickAdd={() => setQuickAddOpen(true)}
-        onOpenAddBank={() => setActiveTab('money')}
-        onOpenAddNote={() => setActiveTab('notes')}
-        onLockApp={() => {
-          if (preferences.hasAppPin) {
-            setPinError('');
-            setPinInput('');
-            setAppLocked(true);
-          } else {
-            notify('Set an App PIN in settings to lock ledger', 'err');
-          }
-        }}
-        onLockVault={() => {
-          setActiveTab('vault');
-          notify('Switched to Password Vault');
-        }}
-        onExportCaPack={() => {
-          window.open('/api/reports/tax-pack/export.csv', '_blank');
-          notify('Exporting CA Tax Pack CSV...');
-        }}
-        onNavigateBillboard={() => {
-          setActiveTab('dashboard');
-          setTimeout(() => {
-            document.getElementById('advisor-billboard')?.scrollIntoView({ behavior: 'smooth' });
-          }, 100);
-        }}
-        onOpenLanSync={() => setLanSyncOpen(true)}
-        onOpenCloudSync={() => setCloudSyncOpen(true)}
-        onSeedData={handleSeedDemoData}
-        onCleanData={handleCleanData}
-      />
+            {activeTab === 'loans_dues' && (
+              <LoansDuesView
+                loans={loans}
+                dues={dues}
+                dueSummaries={dueSummaries}
+                accounts={accounts}
+                globalScopeFilter={scopeFilter}
+                systemLanguage={preferences.systemLanguage}
+                onNotify={notify}
+                onRefresh={() => void loadAll()}
+              />
+            )}
 
-      <AgentDrawer
-        open={agentOpen}
-        onClose={() => setAgentOpen(false)}
-        preferences={preferences}
-        onPreferencesChange={setPreferences}
-        queuedCommand={queuedAgentCommand}
-        onConsumedQueuedCommand={() => setQueuedAgentCommand(null)}
-        onApplyUiEffects={(effects) => {
-          if (effects.setLanguage) {
-            setPreferences((p) => ({ ...p, systemLanguage: effects.setLanguage! }));
-          }
-          if (effects.navigateTab) setActiveTab(effects.navigateTab);
-          if (effects.scopeFilter) setScopeFilter(effects.scopeFilter);
-          if (effects.mutatedData || effects.setLanguage) void loadAll();
-        }}
-      />
+            {activeTab === 'reports' && (
+              <ReportsView
+                systemLanguage={preferences.systemLanguage}
+                globalScopeFilter={scopeFilter}
+              />
+            )}
 
-      <InstallPwaPrompt />
-      <LanSyncModal
-        open={lanSyncOpen}
-        onClose={() => setLanSyncOpen(false)}
-        onSyncComplete={loadAll}
-      />
-      <CloudSyncModal
-        open={cloudSyncOpen}
-        onClose={() => setCloudSyncOpen(false)}
-        onDataRefreshed={loadAll}
-        notify={notify}
-      />
+            {activeTab === 'notes' && (
+              <NotesView
+                notes={notes}
+                accounts={accounts}
+                transactions={transactions}
+                loans={loans}
+                dues={dues}
+                globalScopeFilter={scopeFilter}
+                systemLanguage={preferences.systemLanguage}
+                onNotify={notify}
+                onNavigate={setActiveTab}
+                onRefresh={() => void loadAll()}
+              />
+            )}
+
+            {activeTab === 'sheets' && (
+              <JobSheetsView
+                globalScopeFilter={scopeFilter}
+                onNotify={notify}
+              />
+            )}
+
+            {activeTab === 'vault' && (
+              <VaultView
+                accounts={accounts}
+                systemLanguage={preferences.systemLanguage}
+                onNotify={notify}
+                onNavigate={setActiveTab}
+              />
+            )}
+          </main>
+        )}
+
+        {/* Bottom Floating Glass Command Dock */}
+        {!(appLocked && preferences.hasAppPin) && (
+          <FloatingCommandDock
+            items={dockItems}
+            activeTab={activeTab}
+            onSelectTab={setActiveTab}
+            onQuickAdd={() => setQuickAddOpen(true)}
+            quickAddLabel={dict.quickAdd}
+          />
+        )}
+
+        <QuickAddModal
+          open={quickAddOpen}
+          onClose={() => setQuickAddOpen(false)}
+          accounts={accounts}
+          existingCategories={transactions.map((tx) => tx.category)}
+          defaultScope={scopeFilter === 'all' ? 'business' : scopeFilter}
+          systemLanguage={preferences.systemLanguage}
+          onSaved={() => {
+            notify(dict.quickAddModal.saveEntry + ' ✓');
+            void loadAll();
+          }}
+        />
+
+        <AlertsSettingsModal
+          open={alertsOpen}
+          onClose={() => setAlertsOpen(false)}
+          bridgeState={bridgeState}
+          onBridgeStateChange={setBridgeState}
+          preferences={preferences}
+          onPreferencesChange={setPreferences}
+          systemLanguage={preferences.systemLanguage}
+          onRefresh={() => void loadAll()}
+        />
+
+        {appLocked && preferences.hasAppPin && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="App Lock PIN Required"
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-[#111318]/75 p-4"
+          >
+            <Card className="w-full max-w-sm p-6 space-y-4">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#111318] text-[#E5C158]">
+                  <Lock className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="font-display text-base font-bold text-[#111318]">{dict.appName} Locked</h2>
+                  <p className="text-xs text-[#52504C]">Enter your 4–8 digit App PIN to continue.</p>
+                </div>
+              </div>
+              {pinError && (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                  {pinError}
+                </div>
+              )}
+              <form onSubmit={handleUnlockApp} className="space-y-3">
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={8}
+                  placeholder="Enter PIN"
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value)}
+                  autoFocus
+                  required
+                />
+                <Button variant="primary" type="submit" className="w-full">
+                  Unlock Ledger
+                </Button>
+              </form>
+            </Card>
+          </div>
+        )}
+
+        {toast && (
+          <div
+            role="status"
+            className={`fixed bottom-20 right-4 z-[60] max-w-sm rounded-xl border px-3.5 py-2.5 text-xs font-medium shadow-lg no-print animate-panel-in ${
+              toast.kind === 'err'
+                ? 'border-rose-200 bg-rose-50 text-rose-800'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-900'
+            }`}
+          >
+            {toast.text}
+          </div>
+        )}
+
+        <GlobalSearchModal
+          open={searchOpen}
+          onClose={() => setSearchOpen(false)}
+          onNavigate={(tab) => setActiveTab(tab)}
+          onOpenQuickAdd={() => setQuickAddOpen(true)}
+        />
+
+        <CommandPalette
+          open={commandPaletteOpen}
+          onClose={() => setCommandPaletteOpen(false)}
+          systemLanguage={preferences.systemLanguage}
+          onNavigate={(tab) => setActiveTab(tab)}
+          onOpenQuickAdd={() => setQuickAddOpen(true)}
+          onOpenAddBank={() => setActiveTab('money')}
+          onOpenAddNote={() => setActiveTab('notes')}
+          onLockApp={() => {
+            if (preferences.hasAppPin) {
+              setPinError('');
+              setPinInput('');
+              setAppLocked(true);
+            } else {
+              notify('Set an App PIN in settings to lock ledger', 'err');
+            }
+          }}
+          onLockVault={() => {
+            setActiveTab('vault');
+            notify('Switched to Password Vault');
+          }}
+          onExportCaPack={() => {
+            window.open('/api/reports/tax-pack/export.csv', '_blank');
+            notify('Exporting CA Tax Pack CSV...');
+          }}
+          onNavigateBillboard={() => {
+            setActiveTab('dashboard');
+            setTimeout(() => {
+              document.getElementById('advisor-billboard')?.scrollIntoView({ behavior: 'smooth' });
+            }, 100);
+          }}
+          onOpenLanSync={() => setLanSyncOpen(true)}
+          onOpenCloudSync={() => setCloudSyncOpen(true)}
+          onSeedData={handleSeedDemoData}
+          onCleanData={handleCleanData}
+        />
+
+        <AgentDrawer
+          open={agentOpen}
+          onClose={() => setAgentOpen(false)}
+          preferences={preferences}
+          onPreferencesChange={setPreferences}
+          queuedCommand={queuedAgentCommand}
+          onConsumedQueuedCommand={() => setQueuedAgentCommand(null)}
+          onApplyUiEffects={(effects) => {
+            if (effects.setLanguage) {
+              setPreferences((p) => ({ ...p, systemLanguage: effects.setLanguage! }));
+            }
+            if (effects.navigateTab) setActiveTab(effects.navigateTab);
+            if (effects.scopeFilter) setScopeFilter(effects.scopeFilter);
+            if (effects.mutatedData || effects.setLanguage) void loadAll();
+          }}
+        />
+
+        <InstallPwaPrompt />
+        <LanSyncModal
+          open={lanSyncOpen}
+          onClose={() => setLanSyncOpen(false)}
+          onSyncComplete={loadAll}
+        />
+        <CloudSyncModal
+          open={cloudSyncOpen}
+          onClose={() => setCloudSyncOpen(false)}
+          onDataRefreshed={loadAll}
+          notify={notify}
+        />
+      </div>
     </div>
   );
 }

@@ -4,18 +4,19 @@ import {
   Building2,
   CheckCircle2,
   CreditCard as CreditCardIcon,
+  Landmark,
   Plus,
-  Wallet,
+  TrendingUp,
   Zap,
 } from 'lucide-react';
 import { formatINR } from '../../lib/format.ts';
 import type { AccountRecord } from '../../lib/api.ts';
+import type { TreasuryMetrics } from './treasuryAnalytics.ts';
 
 export interface MoneyKpiStripProps {
   accounts: AccountRecord[];
   creditCards: AccountRecord[];
-  totalLiquidMinor: number;
-  totalCreditDebtMinor: number;
+  metrics: TreasuryMetrics;
   unmatchedTransfersCount: number;
   onOpenRecordTx: () => void;
   onOpenNewAccount: () => void;
@@ -25,10 +26,8 @@ export interface MoneyKpiStripProps {
 }
 
 export function MoneyKpiStrip({
-  accounts,
   creditCards,
-  totalLiquidMinor,
-  totalCreditDebtMinor,
+  metrics,
   unmatchedTransfersCount,
   onOpenRecordTx,
   onOpenNewAccount,
@@ -36,78 +35,91 @@ export function MoneyKpiStrip({
   onOpenPayCard,
   onNavigateToCards,
 }: MoneyKpiStripProps) {
-  const bankAndWalletCount = accounts.filter((a) => a.accountGroup !== 'credit_card').length;
-
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {/* 1. Total Liquid Cash & Banks */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs relative overflow-hidden flex items-center justify-between">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-500" />
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      {/* 1. Total Liquid Treasury Reserves */}
+      <div className="bento-card rounded-2xl p-4.5 relative overflow-hidden flex items-center justify-between">
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#059669] to-[#10B981]" />
         <div>
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            Total Liquid Cash & Banks
+          <div className="text-[11px] font-mono-data uppercase tracking-widest text-[#858078] font-semibold">
+            Liquid Treasury Reserves
           </div>
-          <div className="text-2xl font-bold font-mono tracking-tight text-slate-900 mt-1">
-            {formatINR(totalLiquidMinor)}
+          <div className="text-2xl font-bold font-mono-data tabular-nums tracking-tight text-[#111318] mt-1">
+            {formatINR(metrics.totalLiquidMinor)}
           </div>
-          <div className="text-[11px] text-slate-500 mt-0.5">
-            Across {bankAndWalletCount} deposit & wallet accounts
+          <div className="text-[11px] text-[#52504C] mt-0.5">
+            {metrics.bankCount} Bank Deposits · {metrics.walletCount} Cash/UPI Wallets
           </div>
         </div>
-        <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-700 flex items-center justify-center shrink-0">
-          <Wallet className="w-5 h-5" />
+        <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-200/80 text-[#059669] flex items-center justify-center shrink-0">
+          <Landmark className="w-5 h-5" />
         </div>
       </div>
 
-      {/* 2. Connected Credit Cards Debt & Liquidity Bridge */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs relative overflow-hidden flex flex-col justify-between">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-blue-600" />
+      {/* 2. Monthly Treasury Cashflow Velocity */}
+      <div className="bento-card rounded-2xl p-4.5 relative overflow-hidden flex items-center justify-between">
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#C59B27] to-[#E5C158]" />
         <div>
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+          <div className="text-[11px] font-mono-data uppercase tracking-widest text-[#858078] font-semibold">
+            Month Net Treasury Flow
+          </div>
+          <div
+            className={`text-2xl font-bold font-mono-data tabular-nums tracking-tight mt-1 ${
+              metrics.monthNetFlowMinor >= 0 ? 'text-[#059669]' : 'text-[#E11D48]'
+            }`}
+          >
+            {formatINR(metrics.monthNetFlowMinor, { signed: true })}
+          </div>
+          <div className="text-[11px] font-mono-data text-[#52504C] mt-0.5">
+            In: <span className="text-[#059669] font-semibold">+{formatINR(metrics.monthInflowMinor, { compact: true })}</span> · Out:{' '}
+            <span className="text-[#111318] font-semibold">-{formatINR(metrics.monthOutflowMinor, { compact: true })}</span>
+          </div>
+        </div>
+        <div className="w-11 h-11 rounded-xl bg-[#F3EFEA] border border-[#EAE5DC] text-[#9A7B2C] flex items-center justify-center shrink-0">
+          <TrendingUp className="w-5 h-5" />
+        </div>
+      </div>
+
+      {/* 3. Connected Credit Cards Debt & Liquidity Bridge */}
+      <div className="bento-card rounded-2xl p-4.5 relative overflow-hidden flex flex-col justify-between">
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#111318] to-[#52504C]" />
+        <div>
+          <div className="flex items-center justify-between text-[11px] font-mono-data uppercase tracking-wider text-[#858078] font-semibold">
             <span className="flex items-center gap-1.5">
-              <CreditCardIcon className="w-3.5 h-3.5 text-blue-600" />
-              Connected Card Liabilities
+              <CreditCardIcon className="w-3.5 h-3.5 text-[#C59B27]" />
+              Card Liability Bridge
             </span>
             <span
-              className={`font-mono text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                totalCreditDebtMinor === 0
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : totalLiquidMinor >= totalCreditDebtMinor
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-amber-50 text-amber-800 border-amber-200'
+              className={`font-mono-data text-[10px] font-bold px-2 py-0.5 rounded border ${
+                metrics.totalCreditDebtMinor === 0
+                  ? 'bg-emerald-50 text-[#059669] border-emerald-200'
+                  : metrics.totalLiquidMinor >= metrics.totalCreditDebtMinor
+                    ? 'bg-emerald-50 text-[#059669] border-emerald-200'
+                    : 'bg-amber-50 text-[#9A7B2C] border-amber-200'
               }`}
             >
-              {totalCreditDebtMinor === 0
-                ? 'Zero Debt ✅'
-                : totalLiquidMinor >= totalCreditDebtMinor
-                  ? `${Math.round((totalLiquidMinor / (totalCreditDebtMinor || 1)) * 100)}% Covered ✅`
-                  : 'Cash Shortfall'}
+              {metrics.totalCreditDebtMinor === 0
+                ? 'Zero Debt'
+                : `${metrics.debtCoverageRatioPct}% Covered`}
             </span>
           </div>
 
-          <div className="text-2xl font-bold font-mono tracking-tight text-slate-900 mt-1">
-            {formatINR(totalCreditDebtMinor)}
-          </div>
-
-          <div className="text-[11px] text-slate-500 mt-0.5">
-            {creditCards.length > 0
-              ? `Across ${creditCards.length} credit card${creditCards.length > 1 ? 's' : ''} · Settle from bank`
-              : 'No credit cards added'}
+          <div className="text-2xl font-bold font-mono-data tabular-nums tracking-tight text-[#111318] mt-1">
+            {formatINR(metrics.totalCreditDebtMinor)}
           </div>
         </div>
 
         {/* 1-Click Connected Actions */}
-        <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-100">
-          {creditCards.length > 0 && totalCreditDebtMinor > 0 ? (
+        <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-[#EAE5DC]">
+          {creditCards.length > 0 && metrics.totalCreditDebtMinor > 0 ? (
             <button
               type="button"
               onClick={() => onOpenPayCard(creditCards[0])}
-              className="flex-1 flex items-center justify-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/80 font-semibold text-xs py-1.5 rounded-xl transition-colors cursor-pointer"
+              className="flex-1 flex items-center justify-center gap-1 bg-[#111318] hover:bg-[#222630] text-[#FAF8F5] font-semibold text-xs py-1.5 rounded-xl transition-colors cursor-pointer"
               title="Pay credit card bill using bank balance"
             >
-              <Zap className="w-3.5 h-3.5 text-blue-600" />
-              <span>Settle Card Bill</span>
+              <Zap className="w-3.5 h-3.5 text-[#E5C158]" />
+              <span>Settle Card</span>
             </button>
           ) : null}
 
@@ -115,50 +127,55 @@ export function MoneyKpiStrip({
             <button
               type="button"
               onClick={onNavigateToCards}
-              className="flex-1 flex items-center justify-center gap-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-semibold text-xs py-1.5 rounded-xl transition-colors cursor-pointer"
+              className="flex-1 flex items-center justify-center gap-1 bg-[#FAF8F5] hover:bg-[#F3EFEA] text-[#111318] border border-[#EAE5DC] font-semibold text-xs py-1.5 rounded-xl transition-colors cursor-pointer"
               title="Open Credit Cards Command Center"
             >
-              <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
               <span>Cards Hub</span>
+              <ArrowRight className="w-3.5 h-3.5 text-[#C59B27]" />
             </button>
           )}
         </div>
       </div>
 
-      {/* 3. Financial Command Radar & Actions */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs relative overflow-hidden flex flex-col justify-between">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-amber-500" />
+      {/* 4. Treasury Command Radar & Actions */}
+      <div className="bento-card rounded-2xl p-4.5 relative overflow-hidden flex flex-col justify-between">
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#C59B27] via-[#059669] to-[#111318]" />
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-500">Banking Actions & Reconcile</span>
+          <span className="text-[11px] font-mono-data uppercase tracking-widest text-[#858078] font-semibold">
+            Treasury Actions
+          </span>
           {unmatchedTransfersCount > 0 ? (
             <button
+              type="button"
               onClick={onOpenTransferMatch}
-              className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full hover:bg-amber-100 transition-colors animate-pulse cursor-pointer"
+              className="inline-flex items-center gap-1 text-[10px] font-mono-data font-bold text-[#9A7B2C] bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md hover:bg-amber-100 transition-colors cursor-pointer"
             >
-              <ArrowRightLeft className="w-3 h-3 text-amber-600" />
+              <ArrowRightLeft className="w-3 h-3 text-[#C59B27]" />
               {unmatchedTransfersCount} Transfers
             </button>
           ) : (
-            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-              Passbooks Current
+            <span className="inline-flex items-center gap-1 text-[10px] font-mono-data font-semibold text-[#059669] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+              <CheckCircle2 className="w-3 h-3 text-[#059669]" />
+              Passbooks Synced
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-2 mt-2">
+        <div className="flex items-center gap-2 mt-2.5">
           <button
+            type="button"
             onClick={onOpenRecordTx}
-            className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs py-2 rounded-xl transition-colors shadow-2xs cursor-pointer"
+            className="flex-1 flex items-center justify-center gap-1.5 bg-[#059669] hover:bg-[#047857] text-white font-semibold text-xs py-2 rounded-xl transition-colors shadow-2xs cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Record Tx</span>
           </button>
           <button
+            type="button"
             onClick={onOpenNewAccount}
-            className="flex-1 flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs py-2 rounded-xl border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+            className="flex-1 flex items-center justify-center gap-1.5 bg-[#FAF8F5] hover:bg-[#F3EFEA] text-[#111318] font-semibold text-xs py-2 rounded-xl border border-[#EAE5DC] transition-colors cursor-pointer"
           >
-            <Building2 className="w-4 h-4 text-slate-500" />
+            <Building2 className="w-4 h-4 text-[#C59B27]" />
             <span>New Bank</span>
           </button>
         </div>

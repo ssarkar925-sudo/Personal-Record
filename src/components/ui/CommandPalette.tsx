@@ -254,6 +254,15 @@ export function CommandPalette({
         action: () => onNavigate('notes'),
       },
       {
+        id: 'nav-sheets',
+        label: 'Job Sheets Workbook',
+        description: 'Google Sheets-style multi-tab job tracker, client billing & auto-sum formulas',
+        category: 'workspaces',
+        icon: <FileSpreadsheet className="h-4 w-4 text-amber-600" />,
+        keywords: ['sheets', 'google sheets', 'jobs', 'multiple jobs', 'spreadsheet', 'tabs', 'workbook'],
+        action: () => onNavigate('sheets'),
+      },
+      {
         id: 'nav-vault',
         label: dict.tabs.vault || 'Password Vault',
         description: 'Client-side PBKDF2/AES-GCM zero-knowledge credential vault',
@@ -360,7 +369,7 @@ export function CommandPalette({
       role="dialog"
       aria-modal="true"
       aria-label={cpDict.title}
-      className="fixed inset-0 z-[70] flex items-start justify-center bg-slate-950/60 backdrop-blur-xs p-4 pt-[10vh] sm:pt-[14vh] animate-panel-in"
+      className="fixed inset-0 z-[70] flex items-start justify-center bg-slate-900/40 p-4 pt-[10vh] sm:pt-[14vh] animate-panel-in"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

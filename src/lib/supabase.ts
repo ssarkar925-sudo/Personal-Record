@@ -42,7 +42,11 @@ export function getSupabaseConfig(): SupabaseConfig {
     }
   }
 
-  const isConfigured = Boolean(url && anonKey && url.startsWith('http'));
+  const isPlaceholder =
+    url.includes('your-project-id') ||
+    url.includes('example.supabase.co') ||
+    anonKey.includes('your-anon-key');
+  const isConfigured = Boolean(url && anonKey && url.startsWith('http') && !isPlaceholder);
   return { url, anonKey, isConfigured };
 }
 

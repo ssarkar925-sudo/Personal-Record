@@ -37,3 +37,10 @@ inbox/failed/
 .env.local
 .env.*.local
 
+# Playwright & runtime artifacts
+.playwright-cli/
+.aistudio/
+https:/
+
+
+

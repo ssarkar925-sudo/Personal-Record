@@ -12,6 +12,7 @@ export type WorkspaceId =
   | 'loans_dues'
   | 'reports'
   | 'notes'
+  | 'sheets'
   | 'vault';
 
 export interface DashboardViewProps {

@@ -6,7 +6,7 @@ import {
   MessageCircle,
   Users,
 } from 'lucide-react';
-import { formatINR, buildWhatsAppLink } from '../../lib/format.ts';
+import { buildWhatsAppLink, formatINR } from '../../lib/format.ts';
 import type {
   LoanRecord,
   PersonDueRecord,
@@ -38,22 +38,23 @@ export function SettlementStream({
     const personDues = dues.filter((d) => d.personName.toLowerCase() === personName.toLowerCase());
 
     return (
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 space-y-4">
+      <div className="bg-white rounded-3xl border border-[#E6E1D6] shadow-[0_8px_24px_rgba(17,19,24,0.03)] p-5 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-emerald-600" />
-            <h4 className="text-sm font-bold text-slate-900">
+            <Users className="w-4 h-4 text-[#059669]" />
+            <h4 className="font-display text-sm font-bold text-[#111318]">
               Khatabook Ledger History for {personName}
             </h4>
-            <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+            <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-[#F3EFEA] text-[#52504C] border border-[#E6E1D6]">
               {personDues.length} Records
             </span>
           </div>
           <button
+            type="button"
             onClick={onExportCSV}
-            className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="px-3 py-1.5 text-xs font-semibold text-[#111318] bg-[#FAF8F5] hover:bg-[#F3EFEA] rounded-xl border border-[#E6E1D6] flex items-center gap-1.5 transition-colors cursor-pointer"
           >
-            <Download className="w-3.5 h-3.5" />
+            <Download className="w-3.5 h-3.5 text-[#C59B27]" />
             <span>Export CSV</span>
           </button>
         </div>
@@ -66,21 +67,29 @@ export function SettlementStream({
             return (
               <div
                 key={d.id}
-                className="p-3 rounded-xl border border-slate-100 bg-slate-50/60 flex items-center justify-between text-xs"
+                className="p-3.5 rounded-2xl border border-[#E6E1D6] bg-[#FAF8F5] flex items-center justify-between text-xs"
               >
                 <div className="flex items-center gap-3">
                   <div
-                    className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                      isSettled ? 'bg-slate-200 text-slate-500' : isNeed ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                    className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                      isSettled
+                        ? 'bg-[#F3EFEA] text-[#52504C]'
+                        : isNeed
+                          ? 'bg-[#059669]/12 text-[#059669]'
+                          : 'bg-[#E11D48]/12 text-[#E11D48]'
                     }`}
                   >
-                    {isNeed ? <ArrowDownLeft className="w-3.5 h-3.5" /> : <ArrowUpRight className="w-3.5 h-3.5" />}
+                    {isNeed ? (
+                      <ArrowDownLeft className="w-4 h-4" />
+                    ) : (
+                      <ArrowUpRight className="w-4 h-4" />
+                    )}
                   </div>
                   <div>
-                    <span className="font-semibold text-slate-900 block">
+                    <span className="font-semibold text-[#111318] block">
                       {d.note || (isNeed ? 'Lent / Advance' : 'Borrowed / Bill Split')}
                     </span>
-                    <span className="text-[11px] text-slate-500">
+                    <span className="text-[11px] text-[#52504C]">
                       {d.dueDate ? `Due date: ${d.dueDate}` : 'No due date'} · Scope: {d.scope}
                     </span>
                   </div>
@@ -90,20 +99,25 @@ export function SettlementStream({
                   <div className="text-right">
                     <span
                       className={`font-mono font-bold block ${
-                        isSettled ? 'text-slate-400 line-through' : isNeed ? 'text-emerald-700' : 'text-rose-700'
+                        isSettled
+                          ? 'text-[#52504C] line-through'
+                          : isNeed
+                            ? 'text-[#059669]'
+                            : 'text-[#E11D48]'
                       }`}
                     >
                       {formatINR(d.remainingMinor)}
                     </span>
-                    <span className="text-[10px] text-slate-400">
+                    <span className="text-[10px] text-[#52504C] font-mono">
                       {isSettled ? 'Settled' : `of ${formatINR(d.amountMinor)}`}
                     </span>
                   </div>
 
                   {!isSettled && (
                     <button
+                      type="button"
                       onClick={() => onOpenSettleDue(d)}
-                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-[11px] rounded-lg shadow-2xs transition-colors cursor-pointer"
+                      className="px-2.5 py-1 bg-[#059669] hover:bg-[#047857] text-white font-semibold text-[11px] rounded-xl transition-colors cursor-pointer"
                     >
                       Settle
                     </button>
@@ -123,48 +137,66 @@ export function SettlementStream({
     const paidMinor = Math.max(0, loan.principalMinor - loan.remainingMinor);
 
     return (
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 space-y-4">
+      <div className="bg-white rounded-3xl border border-[#E6E1D6] shadow-[0_8px_24px_rgba(17,19,24,0.03)] p-5 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Landmark className="w-4 h-4 text-blue-600" />
-            <h4 className="text-sm font-bold text-slate-900">
+            <Landmark className="w-4 h-4 text-[#C59B27]" />
+            <h4 className="font-display text-sm font-bold text-[#111318]">
               Loan Repayment Structure: {loan.name}
             </h4>
           </div>
           <button
+            type="button"
             onClick={onExportCSV}
-            className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="px-3 py-1.5 text-xs font-semibold text-[#111318] bg-[#FAF8F5] hover:bg-[#F3EFEA] rounded-xl border border-[#E6E1D6] flex items-center gap-1.5 transition-colors cursor-pointer"
           >
-            <Download className="w-3.5 h-3.5" />
+            <Download className="w-3.5 h-3.5 text-[#C59B27]" />
             <span>Export CSV</span>
           </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Principal Borrowed</span>
-            <span className="text-lg font-bold font-mono text-slate-900 mt-0.5 block">{formatINR(loan.principalMinor)}</span>
-            <span className="text-[11px] text-slate-500 mt-1 block">Already paid back: {formatINR(paidMinor)}</span>
+          <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#E6E1D6]">
+            <span className="text-[10px] font-mono uppercase font-bold text-[#52504C] block">
+              Total Principal Borrowed
+            </span>
+            <span className="text-lg font-bold font-mono-data text-[#111318] mt-0.5 block">
+              {formatINR(loan.principalMinor)}
+            </span>
+            <span className="text-[11px] text-[#52504C] mt-1 block">
+              Already paid back: {formatINR(paidMinor)}
+            </span>
           </div>
 
-          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block">Remaining Balance</span>
-            <span className="text-lg font-bold font-mono text-blue-700 mt-0.5 block">{formatINR(loan.remainingMinor)}</span>
-            <span className="text-[11px] text-slate-500 mt-1 block">Next payment due: {loan.nextDueDate}</span>
+          <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#E6E1D6]">
+            <span className="text-[10px] font-mono uppercase font-bold text-[#52504C] block">
+              Remaining Balance
+            </span>
+            <span className="text-lg font-bold font-mono-data text-[#C59B27] mt-0.5 block">
+              {formatINR(loan.remainingMinor)}
+            </span>
+            <span className="text-[11px] text-[#52504C] mt-1 block">
+              Next payment due: {loan.nextDueDate}
+            </span>
           </div>
         </div>
 
-        <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/40 flex items-center justify-between text-xs">
+        <div className="p-3.5 rounded-2xl border border-[#C59B27]/35 bg-[#FAF8F5] flex items-center justify-between text-xs">
           <div>
-            <span className="font-semibold text-blue-950 block">Monthly Installment Due</span>
-            <span className="text-[11px] text-blue-800/80">Scheduled auto-debit or manual repayment</span>
+            <span className="font-semibold text-[#111318] block">Monthly Installment Due</span>
+            <span className="text-[11px] text-[#52504C]">
+              Scheduled auto-debit or manual repayment
+            </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="font-mono text-base font-bold text-blue-900">{formatINR(loan.emiMinor)}</span>
+            <span className="font-mono text-base font-bold text-[#111318]">
+              {formatINR(loan.emiMinor)}
+            </span>
             {loan.status !== 'closed' && (
               <button
+                type="button"
                 onClick={() => onOpenPayEmi(loan)}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs rounded-xl shadow-2xs transition-colors cursor-pointer"
+                className="px-3 py-1.5 bg-[#111318] hover:bg-[#232730] text-[#FAF8F5] font-semibold text-xs rounded-xl transition-colors cursor-pointer"
               >
                 Pay Now
               </button>
@@ -177,29 +209,30 @@ export function SettlementStream({
 
   // 3. Default: Overview of Per-Person Net Summaries (Khatabook Balance Cards)
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 space-y-4">
+    <div className="bg-white rounded-3xl border border-[#E6E1D6] shadow-[0_8px_24px_rgba(17,19,24,0.03)] p-5 space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Users className="w-4 h-4 text-slate-600" />
-          <h4 className="text-sm font-bold text-slate-900">
+          <Users className="w-4 h-4 text-[#059669]" />
+          <h4 className="font-display text-sm font-bold text-[#111318]">
             Khatabook Net Position by Person
           </h4>
-          <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+          <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-[#F3EFEA] text-[#52504C] border border-[#E6E1D6]">
             {dueSummaries.length} People
           </span>
         </div>
 
         <button
+          type="button"
           onClick={onExportCSV}
-          className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+          className="px-3 py-1.5 text-xs font-semibold text-[#111318] bg-[#FAF8F5] hover:bg-[#F3EFEA] rounded-xl border border-[#E6E1D6] flex items-center gap-1.5 transition-colors cursor-pointer"
         >
-          <Download className="w-3.5 h-3.5" />
+          <Download className="w-3.5 h-3.5 text-[#C59B27]" />
           <span>Export CSV</span>
         </button>
       </div>
 
       {dueSummaries.length === 0 ? (
-        <div className="p-8 text-center text-xs text-slate-500 rounded-xl border border-dashed border-slate-200">
+        <div className="p-8 text-center text-xs text-[#52504C] rounded-2xl border border-dashed border-[#E6E1D6] bg-[#FAF8F5]">
           No pending people dues recorded. All borrowing and lending balances are even.
         </div>
       ) : (
@@ -208,43 +241,45 @@ export function SettlementStream({
             const isNeed = p.netMinor >= 0;
             const whatsappLink = buildWhatsAppLink(
               p.phone,
-              `Hi ${p.personName}, gentle reminder regarding our net balance of ${formatINR(Math.abs(p.netMinor))}.`
+              `Hi ${p.personName}, gentle reminder regarding our net balance of ${formatINR(Math.abs(p.netMinor))}.`,
             );
 
             return (
               <div
                 key={p.personName}
-                className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/50 flex flex-col justify-between space-y-2 hover:border-slate-300 transition-colors"
+                className="p-3.5 rounded-2xl border border-[#E6E1D6] bg-[#FAF8F5] flex flex-col justify-between space-y-2.5 hover:border-[#C59B27] transition-colors"
               >
                 <div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-xs text-slate-900 flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5 text-slate-400" />
-                      {p.personName}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-xs text-[#111318] flex items-center gap-1.5 truncate">
+                      <Users className="w-3.5 h-3.5 text-[#52504C] shrink-0" />
+                      <span className="truncate">{p.personName}</span>
                     </span>
                     <span
-                      className={`font-mono text-xs font-bold px-2 py-0.5 rounded-full border ${
+                      className={`font-mono text-xs font-bold px-2.5 py-0.5 rounded-full border shrink-0 ${
                         isNeed
-                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                          : 'bg-rose-50 text-rose-800 border-rose-200'
+                          ? 'bg-[#059669]/10 text-[#059669] border-[#059669]/25'
+                          : 'bg-[#E11D48]/10 text-[#E11D48] border-[#E11D48]/25'
                       }`}
                     >
-                      {isNeed ? `Owed to You: ${formatINR(p.netMinor)}` : `You Owe: ${formatINR(Math.abs(p.netMinor))}`}
+                      {isNeed
+                        ? `Owed: ${formatINR(p.netMinor)}`
+                        : `You Owe: ${formatINR(Math.abs(p.netMinor))}`}
                     </span>
                   </div>
 
-                  <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+                  <div className="mt-2 flex items-center justify-between text-[11px] text-[#52504C] font-mono">
                     <span>
-                      Owed to You: <strong>{formatINR(p.totalNeedMinor, { compact: true })}</strong>
+                      Receivable: <strong>{formatINR(p.totalNeedMinor, { compact: true })}</strong>
                     </span>
                     <span>
-                      You Owe: <strong>{formatINR(p.totalGiveMinor, { compact: true })}</strong>
+                      Payable: <strong>{formatINR(p.totalGiveMinor, { compact: true })}</strong>
                     </span>
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs">
-                  <span className="text-[11px] text-slate-400">
+                <div className="pt-2 border-t border-[#E6E1D6]/70 flex items-center justify-between text-xs">
+                  <span className="text-[11px] text-[#52504C]">
                     {p.openCount} Open Item{p.openCount > 1 ? 's' : ''}
                   </span>
 
@@ -253,7 +288,7 @@ export function SettlementStream({
                       href={whatsappLink}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 cursor-pointer"
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#059669] hover:underline cursor-pointer"
                     >
                       <MessageCircle className="w-3.5 h-3.5" />
                       <span>WhatsApp Nudge</span>

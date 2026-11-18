@@ -36,7 +36,7 @@ export const CategoryBudgetModal: React.FC<CategoryBudgetModalProps> = ({
       {categoryState && (
         <form onSubmit={onSave} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">
+            <label className="block text-xs font-semibold text-[#111318] mb-1">
               Monthly Limit (₹)
             </label>
             <Input
@@ -47,10 +47,10 @@ export const CategoryBudgetModal: React.FC<CategoryBudgetModalProps> = ({
               value={budgetDraftRupees}
               onChange={(e) => onDraftChange(e.target.value)}
               placeholder="e.g. 5000"
-              className="w-full"
+              className="w-full bg-[#FAF8F5] border-[#E6E1D6]"
               autoFocus
             />
-            <p className="mt-1 text-[11px] text-slate-500">
+            <p className="mt-1 text-[11px] text-[#6B7280]">
               You will receive warning alerts at 80% and urgent alerts when spending reaches 100% of this limit.
             </p>
           </div>
@@ -77,7 +77,13 @@ export const CategoryBudgetModal: React.FC<CategoryBudgetModalProps> = ({
               >
                 Cancel
               </Button>
-              <Button type="submit" variant="primary" size="sm" disabled={savingBudget}>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                disabled={savingBudget}
+                className="bg-[#111318] hover:bg-[#1E232D] text-white border-[#111318]"
+              >
                 {savingBudget ? 'Saving...' : 'Save Budget'}
               </Button>
             </div>

@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowDownLeft,
+  ArrowUpRight,
   BookmarkPlus,
   Calendar,
+  CheckCircle2,
   Clock,
   Copy,
   CreditCard,
   Download,
   Edit3,
   FileText,
+  Filter,
   Layers,
   MessageSquare,
   Paperclip,
@@ -30,10 +34,11 @@ import {
   type TransactionRecord,
 } from '../lib/api.ts';
 import {
-  formatINR,
   formatDisplayDateShort,
+  formatINR,
   formatOrdinalDay,
   rupeesToPaise,
+  SCOPE_META,
   todayISO,
 } from '../lib/format.ts';
 import {
@@ -52,6 +57,13 @@ import {
   type Scope,
 } from '../../shared/ledger-core.ts';
 import type { AppLanguage } from '../../shared/i18n.ts';
+import {
+  getMetallicFinishById,
+  resolveMetallicFinish,
+  type MetallicFinishId,
+} from './dashboard/dashboardVisuals.ts';
+import { computeCardsPortfolioMetrics } from './cards/cardsAnalytics.ts';
+import { CardsHeroWorkstation } from './cards/CardsHeroWorkstation.tsx';
 
 export interface CardsViewProps {
   accounts: AccountRecord[];
@@ -60,6 +72,8 @@ export interface CardsViewProps {
   budgets?: ScopeBudgetRecord[];
   monthSpentByScope?: Record<Scope, number>;
   systemLanguage?: AppLanguage;
+  globalScopeFilter?: Scope | 'all';
+  onGlobalScopeChange?: (scope: Scope | 'all') => void;
   onNotify: (text: string, kind?: 'ok' | 'err') => void;
   onRefresh: () => void;
   onNavigateToMoney?: () => void;
@@ -84,177 +98,26 @@ export interface QuickFillMerchant {
 }
 
 const DEFAULT_QUICK_MERCHANTS: QuickFillMerchant[] = [
-  { id: 'm-1', name: 'Amazon.in', category: 'Shopping', scope: 'personal' },
-  { id: 'm-2', name: 'Swiggy', category: 'Food & Dining', scope: 'personal' },
-  { id: 'm-3', name: 'Zomato', category: 'Food & Dining', scope: 'personal' },
-  { id: 'm-4', name: 'Blinkit', category: 'Groceries', scope: 'family' },
-  { id: 'm-5', name: 'Zepto', category: 'Groceries', scope: 'family' },
-  { id: 'm-6', name: 'Uber', category: 'Travel & Fuel', scope: 'personal' },
-  { id: 'm-7', name: 'Shell Petrol', category: 'Travel & Fuel', scope: 'personal' },
-  { id: 'm-8', name: 'MakeMyTrip', category: 'Travel & Fuel', scope: 'personal' },
-  { id: 'm-9', name: 'Apollo Pharmacy', category: 'Medical & Health', scope: 'family' },
-  { id: 'm-10', name: 'Netflix', category: 'Subscriptions', scope: 'family' },
-  { id: 'm-11', name: 'Google Cloud / AWS', category: 'Software & SaaS', scope: 'business' },
-  { id: 'm-12', name: 'Flipkart', category: 'Shopping', scope: 'personal' },
+  { id: 'm-1', name: 'Amazon Business', category: 'Inventory / Supplies', scope: 'business' },
+  { id: 'm-2', name: 'Google Cloud / AWS', category: 'Software & SaaS', scope: 'business' },
+  { id: 'm-3', name: 'Meta / Google Ads', category: 'Marketing / Ads', scope: 'business' },
+  { id: 'm-4', name: 'Swiggy Corporate', category: 'Travel & Client', scope: 'business' },
+  { id: 'm-5', name: 'MakeMyTrip Biz', category: 'Travel & Client', scope: 'business' },
+  { id: 'm-6', name: 'Uber Business', category: 'Travel & Client', scope: 'business' },
+  { id: 'm-7', name: 'Shell Petrol', category: 'Logistics & Courier', scope: 'business' },
+  { id: 'm-8', name: 'BlueDart / Delhivery', category: 'Logistics & Courier', scope: 'business' },
+  { id: 'm-9', name: 'Flipkart Wholesale', category: 'Inventory / Supplies', scope: 'business' },
+  { id: 'm-10', name: 'Airtel / Jio Fiber', category: 'Rent & Utilities', scope: 'business' },
+  { id: 'm-11', name: 'Blinkit', category: 'Groceries', scope: 'family' },
+  { id: 'm-12', name: 'Apollo Pharmacy', category: 'Medical & Health', scope: 'personal' },
 ];
-
-interface CardVisualTheme {
-  gradientTop: string;
-  borderClass: string;
-  hoverBorderClass: string;
-  badgeClass: string;
-  chipGradient: string;
-  chipBorder: string;
-  accentText: string;
-}
-
-function getCardVisualTheme(card: AccountRecord): CardVisualTheme {
-  const name = (card.name + ' ' + (card.institution || '')).toLowerCase();
-
-  // 1. HDFC (Deep Royal Blue)
-  if (name.includes('hdfc') || name.includes('regalia') || name.includes('millennia') || name.includes('diners') || name.includes('infinia')) {
-    return {
-      gradientTop: 'bg-gradient-to-r from-blue-700 via-blue-600 to-sky-500',
-      borderClass: 'border-blue-200/90',
-      hoverBorderClass: 'hover:border-blue-400',
-      badgeClass: 'bg-blue-50 text-blue-800 border-blue-200',
-      chipGradient: 'from-amber-300 via-amber-200 to-yellow-100',
-      chipBorder: 'border-amber-400/90',
-      accentText: 'text-blue-700',
-    };
-  }
-
-  // 2. Amazon Pay / ICICI (Warm Amber / Gold)
-  if (name.includes('amazon') || (name.includes('icici') && !name.includes('coral') && !name.includes('sapphiro'))) {
-    return {
-      gradientTop: 'bg-gradient-to-r from-amber-600 via-orange-500 to-yellow-500',
-      borderClass: 'border-amber-200/90',
-      hoverBorderClass: 'hover:border-amber-400',
-      badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
-      chipGradient: 'from-amber-400 via-yellow-200 to-amber-100',
-      chipBorder: 'border-amber-500/90',
-      accentText: 'text-amber-700',
-    };
-  }
-
-  // 3. Coral / Rubyx / Axis / Crimson (Coral / Rose / Ruby)
-  if (name.includes('coral') || name.includes('ruby') || name.includes('axis') || name.includes('flipkart') || name.includes('magnus') || name.includes('myzone')) {
-    return {
-      gradientTop: 'bg-gradient-to-r from-rose-600 via-rose-500 to-orange-500',
-      borderClass: 'border-rose-200/90',
-      hoverBorderClass: 'hover:border-rose-400',
-      badgeClass: 'bg-rose-50 text-rose-800 border-rose-200',
-      chipGradient: 'from-rose-300 via-amber-100 to-yellow-100',
-      chipBorder: 'border-rose-300',
-      accentText: 'text-rose-700',
-    };
-  }
-
-  // 4. IndusInd / Amex (Teal / Cyan)
-  if (name.includes('indus') || name.includes('legend') || name.includes('amex') || name.includes('american')) {
-    return {
-      gradientTop: 'bg-gradient-to-r from-teal-700 via-teal-600 to-emerald-500',
-      borderClass: 'border-teal-200/90',
-      hoverBorderClass: 'hover:border-teal-400',
-      badgeClass: 'bg-teal-50 text-teal-800 border-teal-200',
-      chipGradient: 'from-teal-200 via-amber-100 to-emerald-100',
-      chipBorder: 'border-teal-300',
-      accentText: 'text-teal-700',
-    };
-  }
-
-  // 5. Kotak / Platinum (Slate / Steel)
-  if (name.includes('kotak') || name.includes('koyak') || name.includes('white') || name.includes('platinum') || name.includes('zen')) {
-    return {
-      gradientTop: 'bg-gradient-to-r from-slate-700 via-slate-600 to-zinc-600',
-      borderClass: 'border-slate-300',
-      hoverBorderClass: 'hover:border-slate-500',
-      badgeClass: 'bg-slate-100 text-slate-800 border-slate-300',
-      chipGradient: 'from-slate-300 via-slate-100 to-zinc-200',
-      chipBorder: 'border-slate-400',
-      accentText: 'text-slate-800',
-    };
-  }
-
-  // 6. SBI / Standard / Cashback (Emerald / Mint)
-  if (name.includes('sbi') || name.includes('cashback') || name.includes('simply') || name.includes('aurum')) {
-    return {
-      gradientTop: 'bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-500',
-      borderClass: 'border-emerald-200/90',
-      hoverBorderClass: 'hover:border-emerald-400',
-      badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-      chipGradient: 'from-amber-300 to-yellow-100',
-      chipBorder: 'border-amber-400',
-      accentText: 'text-emerald-700',
-    };
-  }
-
-  // Deterministic hash fallback among curated palettes
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) & 0xffffffff;
-  const palettes: CardVisualTheme[] = [
-    {
-      gradientTop: 'bg-gradient-to-r from-blue-700 via-blue-600 to-sky-500',
-      borderClass: 'border-blue-200/90',
-      hoverBorderClass: 'hover:border-blue-400',
-      badgeClass: 'bg-blue-50 text-blue-800 border-blue-200',
-      chipGradient: 'from-amber-300 via-amber-200 to-yellow-100',
-      chipBorder: 'border-amber-400/90',
-      accentText: 'text-blue-700',
-    },
-    {
-      gradientTop: 'bg-gradient-to-r from-amber-600 via-orange-500 to-yellow-500',
-      borderClass: 'border-amber-200/90',
-      hoverBorderClass: 'hover:border-amber-400',
-      badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
-      chipGradient: 'from-amber-400 via-yellow-200 to-amber-100',
-      chipBorder: 'border-amber-500/90',
-      accentText: 'text-amber-700',
-    },
-    {
-      gradientTop: 'bg-gradient-to-r from-rose-600 via-rose-500 to-orange-500',
-      borderClass: 'border-rose-200/90',
-      hoverBorderClass: 'hover:border-rose-400',
-      badgeClass: 'bg-rose-50 text-rose-800 border-rose-200',
-      chipGradient: 'from-rose-300 via-amber-100 to-yellow-100',
-      chipBorder: 'border-rose-300',
-      accentText: 'text-rose-700',
-    },
-    {
-      gradientTop: 'bg-gradient-to-r from-teal-700 via-teal-600 to-emerald-500',
-      borderClass: 'border-teal-200/90',
-      hoverBorderClass: 'hover:border-teal-400',
-      badgeClass: 'bg-teal-50 text-teal-800 border-teal-200',
-      chipGradient: 'from-teal-200 via-amber-100 to-emerald-100',
-      chipBorder: 'border-teal-300',
-      accentText: 'text-teal-700',
-    },
-    {
-      gradientTop: 'bg-gradient-to-r from-slate-700 via-slate-600 to-zinc-600',
-      borderClass: 'border-slate-300',
-      hoverBorderClass: 'hover:border-slate-500',
-      badgeClass: 'bg-slate-100 text-slate-800 border-slate-300',
-      chipGradient: 'from-slate-300 via-slate-100 to-zinc-200',
-      chipBorder: 'border-slate-400',
-      accentText: 'text-slate-800',
-    },
-    {
-      gradientTop: 'bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-500',
-      borderClass: 'border-emerald-200/90',
-      hoverBorderClass: 'hover:border-emerald-400',
-      badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-      chipGradient: 'from-amber-300 to-yellow-100',
-      chipBorder: 'border-amber-400',
-      accentText: 'text-emerald-700',
-    },
-  ];
-  return palettes[Math.abs(hash) % palettes.length];
-}
 
 export function CardsView({
   accounts,
   transactions,
   recurringBills: _recurringBills,
+  globalScopeFilter,
+  onGlobalScopeChange,
   onNotify,
   onRefresh,
   onNavigateToMoney,
@@ -276,6 +139,35 @@ export function CardsView({
     () => liquidAccounts.reduce((sum, a) => sum + (a.currentBalanceMinor || 0), 0),
     [liquidAccounts],
   );
+
+  // Per-Card Metallic Finish Overrides (persisted in localStorage)
+  const [cardFinishOverrides, setCardFinishOverrides] = useState<Record<string, MetallicFinishId>>(
+    () => {
+      try {
+        const raw = localStorage.getItem('pl_card_finish_overrides_v1');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') return parsed;
+        }
+      } catch {}
+      return {};
+    },
+  );
+
+  const handleChangeCardFinish = (cardId: string, finish: 'auto' | MetallicFinishId) => {
+    setCardFinishOverrides((prev) => {
+      const next = { ...prev };
+      if (finish === 'auto') {
+        delete next[cardId];
+      } else {
+        next[cardId] = finish;
+      }
+      try {
+        localStorage.setItem('pl_card_finish_overrides_v1', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
 
   // Active Card Filter (null = all cards)
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
@@ -310,14 +202,26 @@ export function CardsView({
 
   // Filters for Spend Feed
   const [searchQuery, setSearchQuery] = useState('');
-  const [scopeFilter, setScopeFilter] = useState<Scope | 'all'>('all');
+  const [localScopeFilter, setLocalScopeFilter] = useState<Scope | 'all'>(
+    globalScopeFilter ?? 'all',
+  );
+  useEffect(() => {
+    if (globalScopeFilter !== undefined) {
+      setLocalScopeFilter(globalScopeFilter);
+    }
+  }, [globalScopeFilter]);
+  const scopeFilter = localScopeFilter;
+  const setScopeFilter = (next: Scope | 'all') => {
+    setLocalScopeFilter(next);
+    onGlobalScopeChange?.(next);
+  };
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | '7days' | 'month'>('all');
 
-  // Input Mode: 'rapid' (fast batch multi-row logger) | 'detailed' (modal) | 'sms' (paste parser)
+  // Input Mode: 'rapid' | 'sms'
   const [entryTab, setEntryTab] = useState<'rapid' | 'sms'>('rapid');
 
-  // 2. Rapid Multi-Row Spend Logger State (Tailored for high daily volume)
+  // 2. Rapid Multi-Row Spend Logger State
   const [rapidRows, setRapidRows] = useState<RapidSpendRow[]>(() => [
     {
       id: 'row-1',
@@ -325,8 +229,8 @@ export function CardsView({
       cardId: creditCards[0]?.id || '',
       amountStr: '',
       party: '',
-      category: 'Food & Dining',
-      scope: 'personal',
+      category: 'Inventory / Supplies',
+      scope: 'business',
       note: '',
     },
     {
@@ -335,8 +239,8 @@ export function CardsView({
       cardId: creditCards[0]?.id || '',
       amountStr: '',
       party: '',
-      category: 'Shopping',
-      scope: 'personal',
+      category: 'Software & SaaS',
+      scope: 'business',
       note: '',
     },
     {
@@ -345,14 +249,13 @@ export function CardsView({
       cardId: creditCards[0]?.id || '',
       amountStr: '',
       party: '',
-      category: 'Travel & Fuel',
-      scope: 'personal',
+      category: 'Travel & Client',
+      scope: 'business',
       note: '',
     },
   ]);
   const [isSavingRapid, setIsSavingRapid] = useState(false);
 
-  // If creditCards load later, sync initial cardId
   useEffect(() => {
     if (creditCards.length > 0) {
       setRapidRows((prev) =>
@@ -379,8 +282,8 @@ export function CardsView({
 
   const [manageMerchantsOpen, setManageMerchantsOpen] = useState(false);
   const [newMName, setNewMName] = useState('');
-  const [newMCat, setNewMCat] = useState('Shopping');
-  const [newMScope, setNewMScope] = useState<Scope>('personal');
+  const [newMCat, setNewMCat] = useState('Inventory / Supplies');
+  const [newMScope, setNewMScope] = useState<Scope>('business');
 
   // 4. Detailed Spend Modal State
   const [detailedModalOpen, setDetailedModalOpen] = useState(false);
@@ -389,13 +292,12 @@ export function CardsView({
   const [txAmountStr, setTxAmountStr] = useState('');
   const [txDate, setTxDate] = useState(todayISO());
   const [txParty, setTxParty] = useState('');
-  const [txCategory, setTxCategory] = useState('Food & Dining');
-  const [txScope, setTxScope] = useState<Scope>('personal');
+  const [txCategory, setTxCategory] = useState('Inventory / Supplies');
+  const [txScope, setTxScope] = useState<Scope>('business');
   const [txNote, setTxNote] = useState('');
   const [txAttachmentBase64, setTxAttachmentBase64] = useState<string | null>(null);
   const [txAttachmentName, setTxAttachmentName] = useState<string | null>(null);
   const [txAttachmentMime, setTxAttachmentMime] = useState<string | null>(null);
-  // Split Khatabook state
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [splitFriendsStr, setSplitFriendsStr] = useState('');
   const [splitIncludeSelf, setSplitIncludeSelf] = useState(true);
@@ -410,7 +312,7 @@ export function CardsView({
   const [cardLimitStr, setCardLimitStr] = useState('100000');
   const [cardStatementDay, setCardStatementDay] = useState(15);
   const [cardDueDay, setCardDueDay] = useState(5);
-  const [cardScope, setCardScope] = useState<Scope>('personal');
+  const [cardScope, setCardScope] = useState<Scope>('business');
   const [isSavingCard, setIsSavingCard] = useState(false);
 
   // 6. Card Reconcile & Bill Pay Modal
@@ -423,7 +325,11 @@ export function CardsView({
 
   // 7. Attachment Viewer Modal & Delete Confirmation
   const [attachmentViewerTx, setAttachmentViewerTx] = useState<TransactionRecord | null>(null);
-  const [attachmentData, setAttachmentData] = useState<{ filename: string; mimeType: string; dataBase64: string } | null>(null);
+  const [attachmentData, setAttachmentData] = useState<{
+    filename: string;
+    mimeType: string;
+    dataBase64: string;
+  } | null>(null);
   const [deleteTxConfirmId, setDeleteTxConfirmId] = useState<string | null>(null);
   const [deleteCardConfirmId, setDeleteCardConfirmId] = useState<string | null>(null);
 
@@ -434,7 +340,9 @@ export function CardsView({
 
   const cardTransactions = useMemo(() => {
     return transactions.filter(
-      (tx) => creditCardIds.has(tx.accountId) || (tx.toAccountId && creditCardIds.has(tx.toAccountId)),
+      (tx) =>
+        creditCardIds.has(tx.accountId) ||
+        (tx.toAccountId && creditCardIds.has(tx.toAccountId)),
     );
   }, [transactions, creditCardIds]);
 
@@ -451,36 +359,28 @@ export function CardsView({
   }, [todayCardTxs]);
 
   const monthCardTxs = useMemo(() => {
-    return cardTransactions.filter((tx) => tx.occurredAt.startsWith(currentMonthPrefix) && tx.kind === 'expense');
+    return cardTransactions.filter(
+      (tx) => tx.occurredAt.startsWith(currentMonthPrefix) && tx.kind === 'expense',
+    );
   }, [cardTransactions, currentMonthPrefix]);
 
   const monthCardSpendMinor = useMemo(() => {
     return monthCardTxs.reduce((sum, tx) => sum + tx.amountMinor, 0);
   }, [monthCardTxs]);
 
-  const totalCardDebtMinor = useMemo(() => {
-    return creditCards.reduce((sum, c) => sum + Math.abs(c.currentBalanceMinor || 0), 0);
-  }, [creditCards]);
-
-  const totalCardLimitMinor = useMemo(() => {
-    return creditCards.reduce((sum, c) => sum + (c.creditLimitMinor || 0), 0);
-  }, [creditCards]);
-
-  const availableCreditMinor = Math.max(0, totalCardLimitMinor - totalCardDebtMinor);
-  const totalUtilizationPct = totalCardLimitMinor > 0 ? (totalCardDebtMinor / totalCardLimitMinor) * 100 : 0;
+  const portfolioMetrics = useMemo(
+    () => computeCardsPortfolioMetrics(creditCards, totalBankLiquidity, monthCardSpendMinor),
+    [creditCards, totalBankLiquidity, monthCardSpendMinor],
+  );
 
   // Filtered Card Transactions Stream
   const filteredTxs = useMemo(() => {
     return cardTransactions.filter((tx) => {
-      // Card Filter
       if (selectedCardId && tx.accountId !== selectedCardId && tx.toAccountId !== selectedCardId) {
         return false;
       }
-      // Scope Filter
       if (scopeFilter !== 'all' && tx.scope !== scopeFilter) return false;
-      // Category Filter
       if (categoryFilter !== 'all' && tx.category !== categoryFilter) return false;
-      // Date Filter
       if (dateFilter === 'today' && tx.occurredAt !== todayStr) return false;
       if (dateFilter === 'month' && !tx.occurredAt.startsWith(currentMonthPrefix)) return false;
       if (dateFilter === '7days') {
@@ -488,7 +388,6 @@ export function CardsView({
         const now = new Date(todayStr).getTime();
         if (now - d > 7 * 86400000 || d > now) return false;
       }
-      // Search Query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const mParty = tx.party.toLowerCase().includes(q);
@@ -500,7 +399,16 @@ export function CardsView({
       }
       return true;
     });
-  }, [cardTransactions, selectedCardId, scopeFilter, categoryFilter, dateFilter, searchQuery, todayStr, currentMonthPrefix]);
+  }, [
+    cardTransactions,
+    selectedCardId,
+    scopeFilter,
+    categoryFilter,
+    dateFilter,
+    searchQuery,
+    todayStr,
+    currentMonthPrefix,
+  ]);
 
   // Group Filtered Transactions by Date
   const groupedTxs = useMemo(() => {
@@ -523,8 +431,8 @@ export function CardsView({
         cardId: selectedCardId || creditCards[0]?.id || '',
         amountStr: '',
         party: '',
-        category: 'Food & Dining',
-        scope: 'personal',
+        category: 'Inventory / Supplies',
+        scope: 'business',
         note: '',
       },
     ]);
@@ -546,8 +454,6 @@ export function CardsView({
   };
 
   const handleApplyMerchantChip = (merchant: QuickFillMerchant) => {
-    // If the last row is completely blank (no party and no amount), fill it.
-    // Otherwise, append a new row with this merchant pre-filled!
     setRapidRows((prev) => {
       const lastRow = prev[prev.length - 1];
       if (lastRow && !lastRow.party && !lastRow.amountStr) {
@@ -629,7 +535,7 @@ export function CardsView({
       scope: row.scope || 'personal',
     };
     saveQuickMerchants([newItem, ...quickMerchants]);
-    onNotify(`Saved "${nameTrimmed}" as a quick-fill preset! ⭐`);
+    onNotify(`Saved "${nameTrimmed}" as a quick-fill preset!`);
   };
 
   // Commit All Rapid Rows
@@ -659,7 +565,6 @@ export function CardsView({
 
       await api.commitImport(items);
       onNotify(`Successfully recorded ${items.length} credit card spends!`);
-      // Reset rows to 2 clean rows
       setRapidRows([
         {
           id: `row-${Date.now()}-1`,
@@ -701,7 +606,7 @@ export function CardsView({
       const res = await api.previewImport({
         text: smsText,
         defaultAccountId: selectedCardId || creditCards[0]?.id,
-        defaultScope: 'personal',
+        defaultScope: 'business',
       });
 
       if (!res || res.length === 0) {
@@ -709,15 +614,14 @@ export function CardsView({
         return;
       }
 
-      // Convert parsed candidates into rapidRows for easy review
       const convertedRows: RapidSpendRow[] = res.map((item) => ({
         id: `parsed-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         occurredAt: item.occurredAt || todayISO(),
         cardId: item.accountId || creditCards[0]?.id || '',
         amountStr: (item.amountMinor / 100).toFixed(2),
         party: item.party || 'Merchant',
-        category: item.category || 'Shopping',
-        scope: item.scope || 'personal',
+        category: item.category || 'Inventory / Supplies',
+        scope: item.scope || 'business',
         note: item.note || 'Parsed from SMS',
       }));
 
@@ -739,8 +643,8 @@ export function CardsView({
     setTxAmountStr('');
     setTxDate(todayISO());
     setTxParty('');
-    setTxCategory('Food & Dining');
-    setTxScope('personal');
+    setTxCategory('Inventory / Supplies');
+    setTxScope('business');
     setTxNote('');
     setTxAttachmentBase64(null);
     setTxAttachmentName(null);
@@ -809,12 +713,16 @@ export function CardsView({
         });
         onNotify('Credit card spend updated!');
       } else {
-        const splitPayload = splitEnabled && splitFriendsStr.trim()
-          ? {
-              participants: splitFriendsStr.split(',').map((s) => s.trim()).filter(Boolean),
-              includeSelf: splitIncludeSelf,
-            }
-          : undefined;
+        const splitPayload =
+          splitEnabled && splitFriendsStr.trim()
+            ? {
+                participants: splitFriendsStr
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+                includeSelf: splitIncludeSelf,
+              }
+            : undefined;
 
         await api.createTransaction({
           kind: 'expense',
@@ -855,7 +763,7 @@ export function CardsView({
     setCardLimitStr('100000');
     setCardStatementDay(15);
     setCardDueDay(5);
-    setCardScope('personal');
+    setCardScope('business');
     setCardModalOpen(true);
   };
 
@@ -1031,20 +939,32 @@ export function CardsView({
   };
 
   return (
-    <div className="space-y-6">
-      {/* 1. Header Toolbar & Quick Stats */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-4">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
-              <CreditCard className="h-5 w-5" />
+    <div className="space-y-5 animate-panel-in">
+      {/* ==================== 1. EXECUTIVE HEADER TOOLBAR ==================== */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#EAE5DC] pb-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#111318] border border-[#C59B27]/45 text-[#E5C158] shadow-xs shrink-0">
+            <CreditCard className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono-data uppercase tracking-widest text-[#858078] font-semibold">
+                Sovereign Credit &amp; Liability Desk
+              </span>
+              {selectedCardId && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedCardId(null)}
+                  className="inline-flex items-center gap-1 rounded-md bg-[#111318] text-[#E5C158] px-2 py-0.5 text-[10px] font-mono-data font-semibold cursor-pointer"
+                >
+                  <Filter className="w-2.5 h-2.5" />
+                  <span>Filtered Card · Clear ×</span>
+                </button>
+              )}
             </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-950">Credit Cards Command Center</h1>
-              <p className="text-xs text-slate-500">
-                High-volume daily spend recording, per-card limits, and billing cycle radar.
-              </p>
-            </div>
+            <h1 className="font-display text-xl font-bold tracking-tight text-[#111318]">
+              Credit Cards Command Center
+            </h1>
           </div>
         </div>
 
@@ -1054,10 +974,10 @@ export function CardsView({
               variant="secondary"
               size="sm"
               onClick={onNavigateToMoney}
-              className="text-xs border-slate-200 bg-white hover:bg-slate-50"
+              className="text-xs"
             >
-              <Wallet className="h-3.5 w-3.5 text-slate-500 mr-1.5" />
-              <span>Switch to Bank &amp; Cash</span>
+              <Wallet className="h-3.5 w-3.5 text-[#858078] mr-1.5" />
+              <span>Bank &amp; Cash Hub</span>
             </Button>
           )}
 
@@ -1065,10 +985,10 @@ export function CardsView({
             variant="secondary"
             size="sm"
             onClick={handleExportCsv}
-            className="text-xs border-slate-200 bg-white hover:bg-slate-50"
+            className="text-xs"
             title="Download CSV spreadsheet"
           >
-            <Download className="h-3.5 w-3.5 text-slate-500 mr-1.5" />
+            <Download className="h-3.5 w-3.5 text-[#858078] mr-1.5" />
             <span>Export CSV</span>
           </Button>
 
@@ -1076,9 +996,9 @@ export function CardsView({
             variant="secondary"
             size="sm"
             onClick={handleOpenAddCard}
-            className="text-xs border-blue-200 bg-blue-50/60 text-blue-800 hover:bg-blue-100/60"
+            className="text-xs"
           >
-            <Plus className="h-3.5 w-3.5 mr-1" />
+            <Plus className="h-3.5 w-3.5 text-[#059669] mr-1" />
             <span>New Card</span>
           </Button>
 
@@ -1086,119 +1006,154 @@ export function CardsView({
             variant="primary"
             size="sm"
             onClick={() => handleOpenDetailedAdd()}
-            className="text-xs shadow-xs"
+            className="text-xs"
           >
-            <Sparkles className="h-3.5 w-3.5 mr-1" />
+            <Sparkles className="h-3.5 w-3.5 text-[#E5C158] mr-1" />
             <span>Record Detailed Spend</span>
           </Button>
         </div>
       </div>
 
-      {/* 2. Executive KPI Velocity Strip */}
+      {/* ==================== 2. BENTO ROW 1: 3D METALLIC CARD INSPECTOR + 14D VELOCITY WORKSTATION ==================== */}
+      <CardsHeroWorkstation
+        creditCards={sortedCreditCards}
+        cardTransactions={cardTransactions}
+        portfolioMetrics={portfolioMetrics}
+        bankLiquidityMinor={totalBankLiquidity}
+        selectedCardId={selectedCardId}
+        onSelectCardId={setSelectedCardId}
+        onSelectCategoryFilter={(cat) => setCategoryFilter(cat)}
+        onOpenSwipeModal={(cardId) => handleOpenDetailedAdd(cardId)}
+        onOpenPayBillModal={handleOpenPayBill}
+        onOpenEditCardModal={handleOpenEditCard}
+        onOpenAddCardModal={handleOpenAddCard}
+        cardFinishOverrides={cardFinishOverrides}
+        onChangeCardFinish={handleChangeCardFinish}
+      />
+
+      {/* ==================== 3. BENTO ROW 2: 4-COLUMN PRECISION TELEMETRY STRIP ==================== */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI 1: Today's Spend Velocity */}
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
-            <span>Today's Card Spend</span>
-            <span className="flex items-center gap-1 text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200/60">
-              <Zap className="h-3 w-3" />
+        {/* KPI 1: Today's & Monthly Spend Velocity */}
+        <div className="bento-card rounded-2xl p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs font-semibold text-[#52504C]">
+            <span className="font-mono-data uppercase tracking-wider text-[11px] text-[#858078]">
+              Today&apos;s Card Spend
+            </span>
+            <span className="inline-flex items-center gap-1 text-[10px] font-mono-data font-bold text-[#111318] bg-[#F3EFEA] px-2 py-0.5 rounded-md border border-[#EAE5DC]">
+              <Zap className="h-3 w-3 text-[#C59B27]" />
               {todayCardTxs.length} swipes
             </span>
           </div>
-          <div className="mt-2 text-2xl font-bold tracking-tight text-slate-950 font-mono">
+          <div className="mt-2 text-2xl font-extrabold tracking-tight text-[#111318] font-mono-data tabular-nums">
             {formatINR(todayCardSpendMinor)}
           </div>
-          <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
-            <span>This Month:</span>
-            <span className="font-semibold text-slate-800 font-mono">{formatINR(monthCardSpendMinor)}</span>
+          <div className="mt-2 pt-2 border-t border-[#EAE5DC] flex items-center justify-between text-xs text-[#52504C]">
+            <span>Current Month Spend:</span>
+            <strong className="font-mono-data text-[#111318] tabular-nums">
+              {formatINR(monthCardSpendMinor)}
+            </strong>
           </div>
         </div>
 
-        {/* KPI 2: Total Unbilled Debt */}
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
-            <span>Total Outstanding Debt</span>
+        {/* KPI 2: Total Card Liability & Split */}
+        <div className="bento-card rounded-2xl p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs font-semibold text-[#52504C]">
+            <span className="font-mono-data uppercase tracking-wider text-[11px] text-[#858078]">
+              Total Card Liability
+            </span>
             <span
-              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                totalUtilizationPct > 70
-                  ? 'bg-rose-50 text-rose-800 border-rose-200'
-                  : totalUtilizationPct > 30
-                    ? 'bg-amber-50 text-amber-800 border-amber-200'
-                    : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              className={`text-[10px] font-mono-data font-bold px-2 py-0.5 rounded-md border ${
+                portfolioMetrics.overallUtilizationPct > 50
+                  ? 'bg-rose-50 text-[#E11D48] border-rose-200'
+                  : portfolioMetrics.overallUtilizationPct > 30
+                    ? 'bg-amber-50 text-[#9A7B2C] border-amber-200'
+                    : 'bg-emerald-50 text-[#059669] border-emerald-200'
               }`}
             >
-              {totalUtilizationPct.toFixed(1)}% Used
+              {portfolioMetrics.overallUtilizationPct}% Used
             </span>
           </div>
-          <div className="mt-2 text-2xl font-bold tracking-tight text-rose-700 font-mono">
-            {formatINR(totalCardDebtMinor)}
+          <div className="mt-2 text-2xl font-extrabold tracking-tight text-[#111318] font-mono-data tabular-nums">
+            {formatINR(portfolioMetrics.totalDebtMinor)}
           </div>
-          <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
-            <span>Combined Limit:</span>
-            <span className="font-semibold text-slate-800 font-mono">{formatINR(totalCardLimitMinor)}</span>
+          <div className="mt-2 pt-2 border-t border-[#EAE5DC] flex items-center justify-between text-xs text-[#52504C]">
+            <span>Billed Due:</span>
+            <strong className="font-mono-data text-[#E11D48] tabular-nums">
+              {formatINR(portfolioMetrics.totalStatementDueMinor)}
+            </strong>
           </div>
         </div>
 
-        {/* KPI 3: Available Credit */}
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
-            <span>Available Credit Limit</span>
-            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
-              Safe Buffer
+        {/* KPI 3: Available Credit Reserve */}
+        <div className="bento-card rounded-2xl p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs font-semibold text-[#52504C]">
+            <span className="font-mono-data uppercase tracking-wider text-[11px] text-[#858078]">
+              Available Credit Reserve
+            </span>
+            <span className="text-[10px] font-mono-data font-semibold text-[#059669] bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+              Limit: {formatINR(portfolioMetrics.totalLimitMinor, { compact: true })}
             </span>
           </div>
-          <div className="mt-2 text-2xl font-bold tracking-tight text-emerald-700 font-mono">
-            {formatINR(availableCreditMinor)}
+          <div className="mt-2 text-2xl font-extrabold tracking-tight text-[#059669] font-mono-data tabular-nums">
+            {formatINR(portfolioMetrics.availableCreditMinor)}
           </div>
-          <div className="mt-1.5 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+          <div className="mt-2.5 w-full bg-[#F3EFEA] rounded-full h-1.5 overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-500 ${
-                totalUtilizationPct > 70 ? 'bg-rose-500' : totalUtilizationPct > 30 ? 'bg-amber-500' : 'bg-emerald-500'
+                portfolioMetrics.overallUtilizationPct > 50
+                  ? 'bg-[#E11D48]'
+                  : portfolioMetrics.overallUtilizationPct > 30
+                    ? 'bg-[#C59B27]'
+                    : 'bg-[#059669]'
               }`}
-              style={{ width: `${Math.min(100, Math.max(5, totalUtilizationPct))}%` }}
+              style={{ width: `${Math.min(100, Math.max(4, portfolioMetrics.overallUtilizationPct))}%` }}
             />
           </div>
         </div>
 
-        {/* KPI 4: Bank Cash Debt Coverage Bridge */}
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
-            <span>Bank Cash Coverage</span>
+        {/* KPI 4: Liquid Bank Debt Coverage */}
+        <div className="bento-card rounded-2xl p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs font-semibold text-[#52504C]">
+            <span className="font-mono-data uppercase tracking-wider text-[11px] text-[#858078]">
+              Bank Treasury Coverage
+            </span>
             <span
-              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                totalBankLiquidity >= totalCardDebtMinor
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                  : 'bg-amber-50 text-amber-800 border-amber-200'
+              className={`text-[10px] font-mono-data font-bold px-2 py-0.5 rounded-md border ${
+                totalBankLiquidity >= portfolioMetrics.totalDebtMinor
+                  ? 'bg-emerald-50 text-[#059669] border-emerald-200'
+                  : 'bg-amber-50 text-[#9A7B2C] border-amber-200'
               }`}
             >
-              {totalBankLiquidity >= totalCardDebtMinor ? '100% Covered ✅' : 'Shortfall'}
+              {totalBankLiquidity >= portfolioMetrics.totalDebtMinor
+                ? '100% Covered'
+                : 'Shortfall'}
             </span>
           </div>
-          <div className="mt-2 text-2xl font-bold tracking-tight text-emerald-700 font-mono">
+          <div className="mt-2 text-2xl font-extrabold tracking-tight text-[#111318] font-mono-data tabular-nums">
             {formatINR(totalBankLiquidity)}
           </div>
-          <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
-            <span>Liquid Funds to Settle Cards</span>
-            {onNavigateToMoney && (
-              <button
-                type="button"
-                onClick={onNavigateToMoney}
-                className="text-blue-600 font-bold hover:underline text-[11px] cursor-pointer inline-flex items-center gap-0.5"
-              >
-                <span>Bank Hub →</span>
-              </button>
-            )}
+          <div className="mt-2 pt-2 border-t border-[#EAE5DC] flex items-center justify-between text-xs text-[#52504C]">
+            <span>Urgent Due (≤5d):</span>
+            <strong className="font-mono-data text-[#C59B27]">
+              {portfolioMetrics.urgentDueCardsCount} {portfolioMetrics.urgentDueCardsCount === 1 ? 'Card' : 'Cards'}
+            </strong>
           </div>
         </div>
       </div>
 
-      {/* 3. Cards Carousel & Deck */}
-      <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-2xs space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-blue-600" />
-            <h2 className="text-sm font-bold text-slate-950 uppercase tracking-wider">Your Credit Cards</h2>
-            <span className="text-xs text-slate-400 font-normal">({creditCards.length})</span>
+      {/* ==================== 4. BENTO ROW 3: METALLIC CREDIT CARD FLEET GRID / LIST ==================== */}
+      <section className="bento-card rounded-2xl p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#EAE5DC]">
+          <div className="flex items-center gap-2.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-[#C59B27]" />
+            <div>
+              <span className="text-[10px] font-mono-data uppercase tracking-widest text-[#858078] font-semibold block">
+                Active Instrument Portfolio
+              </span>
+              <h2 className="font-display text-base font-bold text-[#111318]">
+                Your Credit Card Fleet ({creditCards.length})
+              </h2>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -1206,9 +1161,9 @@ export function CardsView({
               <button
                 type="button"
                 onClick={() => setSelectedCardId(null)}
-                className="text-xs font-semibold text-blue-600 hover:text-blue-700 underline cursor-pointer mr-1"
+                className="text-xs font-semibold text-[#059669] hover:underline cursor-pointer mr-1"
               >
-                Clear Card Filter
+                Show All {creditCards.length} Cards
               </button>
             )}
 
@@ -1217,7 +1172,13 @@ export function CardsView({
               value={cardSort}
               onChange={(v) =>
                 setCardSort(
-                  v as 'debt_desc' | 'debt_asc' | 'util_desc' | 'due_date' | 'limit_desc' | 'name_asc',
+                  v as
+                    | 'debt_desc'
+                    | 'debt_asc'
+                    | 'util_desc'
+                    | 'due_date'
+                    | 'limit_desc'
+                    | 'name_asc',
                 )
               }
               options={[
@@ -1240,11 +1201,13 @@ export function CardsView({
         </div>
 
         {creditCards.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center bg-slate-50/50">
-            <CreditCard className="mx-auto h-8 w-8 text-slate-400 mb-2" />
-            <h3 className="text-sm font-bold text-slate-900">No Credit Cards Linked Yet</h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 mb-4">
-              Add your primary cards (e.g. HDFC Regalia, ICICI Amazon Pay, SBI Cashback) to start tracking high-volume daily spends.
+          <div className="rounded-xl border border-dashed border-[#D6CFC2] p-8 text-center bg-[#FAF8F5]">
+            <CreditCard className="mx-auto h-8 w-8 text-[#858078] mb-2" />
+            <h3 className="font-display text-sm font-bold text-[#111318]">
+              No Credit Cards Linked Yet
+            </h3>
+            <p className="text-xs text-[#52504C] max-w-sm mx-auto mt-1 mb-4">
+              Add your primary cards (e.g. HDFC Regalia Gold, Amex Platinum Travel, ICICI Amazon Pay) to track billing cycles and daily spend velocity.
             </p>
             <Button variant="primary" size="sm" onClick={handleOpenAddCard}>
               <Plus className="h-3.5 w-3.5 mr-1" />
@@ -1252,13 +1215,16 @@ export function CardsView({
             </Button>
           </div>
         ) : cardViewMode === 'grid' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {sortedCreditCards.map((card) => {
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {sortedCreditCards.map((card, idx) => {
               const outstanding = Math.abs(card.currentBalanceMinor || 0);
               const limit = card.creditLimitMinor || 0;
               const utilPct = limit > 0 ? (outstanding / limit) * 100 : 0;
               const isSelected = selectedCardId === card.id;
-              const theme = getCardVisualTheme(card);
+              const override = cardFinishOverrides[card.id];
+              const finish = override
+                ? getMetallicFinishById(override, 'credit')
+                : resolveMetallicFinish(card.name, idx, 'credit');
               const cycle = card.cardCycle;
               const statementDateStr = cycle?.nextStatementDate
                 ? formatDisplayDateShort(cycle.nextStatementDate)
@@ -1275,198 +1241,221 @@ export function CardsView({
               return (
                 <div
                   key={card.id}
-                  className={`rounded-2xl border transition-all duration-300 p-4.5 relative flex flex-col justify-between cursor-pointer credit-card-interactive group overflow-hidden ${
-                    isSelected
-                      ? 'border-blue-600 bg-blue-50/30 ring-2 ring-blue-500/20 shadow-md'
-                      : `${theme.borderClass} bg-white/95 ${theme.hoverBorderClass} shadow-2xs`
-                  }`}
                   onClick={() => setSelectedCardId(isSelected ? null : card.id)}
+                  className={`rounded-2xl border transition-all duration-300 flex flex-col justify-between cursor-pointer overflow-hidden group ${
+                    isSelected
+                      ? 'border-[#111318] ring-2 ring-[#C59B27]/50 shadow-lg bg-white'
+                      : 'border-[#EAE5DC] bg-[#FAF8F5] hover:bg-white hover:border-[#D6CFC2] shadow-2xs'
+                  }`}
                 >
-                  {/* Distinct Bank Brand Accent Top Bar with Hover Animation */}
+                  {/* Top Metallic Instrument Header Band */}
                   <div
-                    className={`absolute top-0 left-0 right-0 h-1.5 ${theme.gradientTop} group-hover:h-2.5 transition-all duration-300`}
-                  />
-
-                  <div>
-                    {/* Top Bar: EMV Chip & Institution & Utilization Pill */}
-                    <div className="flex items-center justify-between mb-3 pt-1">
-                      <div className="flex items-center gap-2">
-                        {/* EMV Chip Visual matching brand tone */}
-                        <div
-                          className={`w-7 h-5 rounded bg-gradient-to-tr ${theme.chipGradient} border ${theme.chipBorder} shadow-2xs flex items-center justify-center shrink-0`}
-                        >
-                          <div className="w-4 h-2.5 border border-slate-700/30 rounded-2xs flex items-center justify-center">
-                            <div className="w-2 h-0.5 border-y border-slate-700/20" />
-                          </div>
+                    className={`${finish.cssClass} p-4 relative overflow-hidden ${
+                      finish.isLightSurface ? 'text-[#111318]' : 'text-[#FAF8F5]'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2 relative z-10">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`text-[9px] font-mono-data uppercase tracking-[0.16em] px-1.5 py-0.5 rounded border ${
+                              finish.isLightSurface
+                                ? 'bg-[#111318]/10 border-[#111318]/20 text-[#111318]'
+                                : 'bg-white/10 border-white/15 text-[#FBE698]'
+                            }`}
+                          >
+                            {card.institution || finish.tierBadge}
+                          </span>
+                          <span className="text-[10px] font-mono-data opacity-75">
+                            {SCOPE_META[card.scope].label}
+                          </span>
                         </div>
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${theme.badgeClass}`}
-                        >
-                          {card.institution || 'Credit Card'}
-                        </span>
+                        <h3 className="font-display text-base font-bold tracking-tight mt-1.5 truncate">
+                          {card.name}
+                        </h3>
                       </div>
 
                       <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border tabular-nums ${
-                          utilPct > 70
-                            ? 'bg-rose-50 text-rose-800 border-rose-200'
-                            : utilPct > 30
-                              ? 'bg-amber-50 text-amber-800 border-amber-200'
-                              : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        className={`text-[10px] font-mono-data font-bold px-2 py-0.5 rounded-md border shrink-0 ${
+                          finish.isLightSurface
+                            ? 'bg-white/80 text-[#111318] border-[#111318]/20'
+                            : 'bg-black/35 text-[#E5C158] border-white/15'
                         }`}
                       >
-                        {utilPct.toFixed(0)}% util
+                        {utilPct.toFixed(0)}% Util
                       </span>
                     </div>
 
-                    {/* Card Title & Masked Number */}
-                    <div className="font-bold text-sm text-slate-950 truncate">{card.name}</div>
-                    <div className="text-xs text-slate-400 font-mono mt-0.5 tracking-wider">
-                      •••• •••• •••• {card.last4 || '0000'}
-                    </div>
-
-                    {/* Bill Date & Due Date Strip */}
-                    <div className="mt-3.5 pt-2.5 border-t border-slate-100 grid grid-cols-2 gap-2 bg-slate-50/80 rounded-xl p-2.5 border border-slate-200/60">
-                      <div>
-                        <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
-                          <Calendar className="w-3 h-3 text-slate-400" />
-                          <span>Bill Date</span>
-                        </div>
-                        <div className="text-xs font-bold text-slate-800 mt-0.5">
-                          {statementDateStr}
-                        </div>
+                    <div className="mt-3 flex items-center justify-between relative z-10">
+                      {/* Mini Metallic EMV Chip */}
+                      <div className="w-8 h-6 rounded bg-gradient-to-br from-[#FBE698] via-[#D4AF37] to-[#9A7B2C] border border-white/30 flex items-center justify-center">
+                        <div className="w-4 h-3 border border-black/25 rounded-2xs" />
                       </div>
-
-                      <div>
-                        <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
-                          <Clock className="w-3 h-3 text-blue-600" />
-                          <span>Due Date</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-xs font-bold text-slate-900">{dueDateStr}</span>
-                          {cycle && (
-                            <span
-                              className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded border ${
-                                cycle.daysUntilDue < 0 || cycle.isBillOverdue
-                                  ? 'bg-rose-100 text-rose-800 border-rose-300'
-                                  : cycle.daysUntilDue <= 3
-                                    ? 'bg-amber-100 text-amber-800 border-amber-300'
-                                    : 'bg-blue-100 text-blue-800 border-blue-200'
-                              }`}
-                            >
-                              {cycle.daysUntilDue < 0 ? 'Overdue' : `${cycle.daysUntilDue}d`}
-                            </span>
-                          )}
-                        </div>
-                      </div>
+                      <span className="font-mono-data text-xs tracking-[0.2em] font-semibold opacity-90">
+                        •••• •••• •••• {card.last4 || '0000'}
+                      </span>
                     </div>
+                  </div>
 
-                    {/* Detailed Balance Breakdown */}
-                    <div className="mt-3 space-y-2">
+                  {/* Card Telemetry Body */}
+                  <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                    <div>
+                      {/* Total Outstanding Readout */}
                       <div className="flex items-baseline justify-between">
-                        <span className="text-xs font-medium text-slate-500">Total Outstanding:</span>
-                        <span className="text-base font-extrabold font-mono text-rose-700 tabular-nums">
+                        <span className="text-[11px] font-mono-data uppercase tracking-wider text-[#858078]">
+                          Total Outstanding
+                        </span>
+                        <span className="text-lg font-extrabold font-mono-data text-[#111318] tabular-nums">
                           {formatINR(outstanding)}
                         </span>
                       </div>
 
-                      {/* Statement Due vs Unbilled Spends Sub-Grid */}
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div className="bg-slate-50/70 rounded-lg p-2 border border-slate-100">
-                          <span className="text-[10px] text-slate-500 block">Statement Due</span>
+                      {/* Statement Billed vs Unbilled Sub-Grid */}
+                      <div className="mt-2.5 grid grid-cols-2 gap-2 text-xs">
+                        <div className="rounded-xl bg-white border border-[#EAE5DC] p-2.5">
+                          <span className="text-[10px] font-mono-data uppercase text-[#858078] block">
+                            Statement Due
+                          </span>
                           <span
-                            className={`font-mono font-bold tabular-nums ${
-                              statementDue > 0 ? 'text-amber-700' : 'text-slate-700'
+                            className={`font-mono-data font-bold tabular-nums ${
+                              statementDue > 0 ? 'text-[#E11D48]' : 'text-[#111318]'
                             }`}
                           >
                             {formatINR(statementDue)}
                           </span>
                         </div>
-                        <div className="bg-slate-50/70 rounded-lg p-2 border border-slate-100">
-                          <span className="text-[10px] text-slate-500 block">Unbilled Spends</span>
-                          <span className="font-mono font-bold text-slate-700 tabular-nums">
+                        <div className="rounded-xl bg-white border border-[#EAE5DC] p-2.5">
+                          <span className="text-[10px] font-mono-data uppercase text-[#858078] block">
+                            Unbilled Spend
+                          </span>
+                          <span className="font-mono-data font-bold text-[#111318] tabular-nums">
                             {formatINR(unbilled)}
                           </span>
                         </div>
                       </div>
 
+                      {/* Bill Date & Due Date Strip */}
+                      <div className="mt-2.5 grid grid-cols-2 gap-2 rounded-xl bg-[#F3EFEA]/75 border border-[#EAE5DC] p-2.5 text-xs">
+                        <div>
+                          <div className="flex items-center gap-1 text-[10px] font-mono-data uppercase text-[#858078]">
+                            <Calendar className="w-3 h-3 text-[#858078]" />
+                            <span>Bill Date</span>
+                          </div>
+                          <div className="font-mono-data font-bold text-[#111318] mt-0.5">
+                            {statementDateStr}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex items-center gap-1 text-[10px] font-mono-data uppercase text-[#858078]">
+                            <Clock className="w-3 h-3 text-[#C59B27]" />
+                            <span>Due Date</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="font-mono-data font-bold text-[#111318]">
+                              {dueDateStr}
+                            </span>
+                            {cycle && (
+                              <span
+                                className={`text-[9px] font-mono-data font-bold px-1.5 py-0.2 rounded border ${
+                                  cycle.daysUntilDue < 0 || cycle.isBillOverdue
+                                    ? 'bg-rose-50 text-[#E11D48] border-rose-200'
+                                    : cycle.daysUntilDue <= 5
+                                      ? 'bg-amber-50 text-[#9A7B2C] border-amber-200'
+                                      : 'bg-emerald-50 text-[#059669] border-emerald-200'
+                                }`}
+                              >
+                                {cycle.daysUntilDue < 0 ? 'Overdue' : `${cycle.daysUntilDue}d`}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Available vs Limit */}
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
+                      <div className="mt-2.5 flex items-center justify-between text-[11px] text-[#52504C]">
                         <span>
                           Avail:{' '}
-                          <strong className="text-slate-700 font-mono font-semibold">
-                            {formatINR(availableLimit)}
+                          <strong className="text-[#059669] font-mono-data font-semibold">
+                            {formatINR(availableLimit, { compact: true })}
                           </strong>
                         </span>
                         <span>
                           Limit:{' '}
-                          <strong className="text-slate-700 font-mono font-semibold">
-                            {formatINR(limit)}
+                          <strong className="text-[#111318] font-mono-data font-semibold">
+                            {formatINR(limit, { compact: true })}
                           </strong>
                         </span>
                       </div>
 
-                      {/* Utilization Progress Bar */}
-                      <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                      <div className="mt-1.5 w-full bg-[#EAE5DC] rounded-full h-1.5 overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all duration-300 ${
-                            utilPct > 70 ? 'bg-rose-500' : utilPct > 30 ? 'bg-amber-500' : 'bg-emerald-500'
+                            utilPct > 50
+                              ? 'bg-[#E11D48]'
+                              : utilPct > 30
+                                ? 'bg-[#C59B27]'
+                                : 'bg-[#059669]'
                           }`}
-                          style={{ width: `${Math.min(100, Math.max(3, utilPct))}%` }}
+                          style={{ width: `${Math.min(100, Math.max(4, utilPct))}%` }}
                         />
                       </div>
                     </div>
-                  </div>
 
-                  {/* Bottom Actions */}
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-1 text-xs">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenDetailedAdd(card.id);
-                      }}
-                      className="font-semibold text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50 cursor-pointer flex items-center gap-1"
-                    >
-                      <Plus className="h-3 w-3" />
-                      <span>Swipe</span>
-                    </button>
+                    {/* Action Footer */}
+                    <div className="pt-3 border-t border-[#EAE5DC] flex items-center justify-between gap-1.5 text-xs">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenDetailedAdd(card.id);
+                        }}
+                        className="flex-1 py-1.5 px-2.5 rounded-lg bg-[#111318] hover:bg-[#222630] text-[#FAF8F5] font-semibold cursor-pointer inline-flex items-center justify-center gap-1"
+                      >
+                        <Plus className="h-3 w-3 text-[#E5C158]" />
+                        <span>Swipe</span>
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenPayBill(card);
-                      }}
-                      className="font-semibold text-emerald-600 hover:text-emerald-800 px-2 py-1 rounded hover:bg-emerald-50 cursor-pointer"
-                    >
-                      Pay Bill
-                    </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenPayBill(card);
+                        }}
+                        className="flex-1 py-1.5 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#059669] border border-emerald-200 font-semibold cursor-pointer text-center"
+                      >
+                        Pay Bill
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenEditCard(card);
-                      }}
-                      className="text-slate-400 hover:text-slate-700 p-1 rounded hover:bg-slate-100 cursor-pointer"
-                      title="Edit Card Details"
-                    >
-                      <Edit3 className="h-3.5 w-3.5" />
-                    </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEditCard(card);
+                        }}
+                        className="p-1.5 rounded-lg border border-[#EAE5DC] bg-white hover:bg-[#F3EFEA] text-[#52504C] hover:text-[#111318] cursor-pointer"
+                        title="Edit Card Details"
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
         ) : (
+          /* List Mode */
           <div className="space-y-2.5">
-            {sortedCreditCards.map((card) => {
+            {sortedCreditCards.map((card, idx) => {
               const outstanding = Math.abs(card.currentBalanceMinor || 0);
               const limit = card.creditLimitMinor || 0;
               const utilPct = limit > 0 ? (outstanding / limit) * 100 : 0;
               const isSelected = selectedCardId === card.id;
-              const theme = getCardVisualTheme(card);
+              const override = cardFinishOverrides[card.id];
+              const finish = override
+                ? getMetallicFinishById(override, 'credit')
+                : resolveMetallicFinish(card.name, idx, 'credit');
               const cycle = card.cardCycle;
               const statementDateStr = cycle?.nextStatementDate
                 ? formatDisplayDateShort(cycle.nextStatementDate)
@@ -1484,109 +1473,69 @@ export function CardsView({
                 <div
                   key={card.id}
                   onClick={() => setSelectedCardId(isSelected ? null : card.id)}
-                  className={`rounded-xl border transition-all p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 cursor-pointer credit-card-interactive relative overflow-hidden ${
+                  className={`rounded-xl border transition-all p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 cursor-pointer relative overflow-hidden ${
                     isSelected
-                      ? 'border-blue-600 bg-blue-50/40 ring-2 ring-blue-500/20 shadow-xs'
-                      : `${theme.borderClass} bg-white hover:bg-slate-50/50 shadow-2xs`
+                      ? 'border-[#111318] bg-white ring-2 ring-[#C59B27]/45'
+                      : 'border-[#EAE5DC] bg-[#FAF8F5] hover:bg-white'
                   }`}
                 >
-                  {/* Left Animated Accent Pillar */}
-                  <div className={`absolute top-0 bottom-0 left-0 w-1.5 ${theme.gradientTop}`} />
-
-                  {/* Card Brand & Identification */}
-                  <div className="flex items-center gap-3 pl-1 min-w-[200px]">
+                  <div className="flex items-center gap-3 min-w-[210px]">
                     <div
-                      className={`w-7 h-5 rounded bg-gradient-to-tr ${theme.chipGradient} border ${theme.chipBorder} shadow-2xs flex items-center justify-center shrink-0`}
+                      className={`w-10 h-7 rounded-lg ${finish.cssClass} flex items-center justify-center shrink-0`}
                     >
-                      <div className="w-4 h-2.5 border border-slate-700/30 rounded-2xs" />
+                      <div className="w-4 h-3 rounded-2xs bg-[#E5C158]/80" />
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-sm text-slate-900">{card.name}</span>
-                        <span className="font-mono text-xs text-slate-400">••{card.last4 || '0000'}</span>
+                        <span className="font-display font-bold text-sm text-[#111318]">
+                          {card.name}
+                        </span>
+                        <span className="font-mono-data text-xs text-[#858078]">
+                          ••{card.last4 || '0000'}
+                        </span>
                       </div>
-                      <span
-                        className={`text-[10px] font-bold px-1.5 py-0.2 rounded border uppercase tracking-wider inline-block mt-0.5 ${theme.badgeClass}`}
-                      >
-                        {card.institution || 'Credit Card'}
+                      <span className="text-[10px] font-mono-data uppercase tracking-wider text-[#52504C]">
+                        {card.institution || finish.label} · {SCOPE_META[card.scope].label}
                       </span>
                     </div>
                   </div>
 
-                  {/* Metrics & Dates Grid */}
                   <div className="flex flex-wrap items-center gap-5 px-1">
-                    {/* Bill Date & Due Date */}
                     <div className="text-xs">
-                      <div className="flex items-center gap-1 text-[10px] uppercase font-semibold text-slate-400">
-                        <Calendar className="w-3 h-3" />
-                        <span>Bill Date</span>
-                      </div>
-                      <span className="text-xs font-bold text-slate-800">{statementDateStr}</span>
+                      <span className="text-[10px] uppercase font-mono-data text-[#858078] block">
+                        Bill / Due
+                      </span>
+                      <span className="font-mono-data font-bold text-[#111318]">
+                        {statementDateStr} → {dueDateStr}
+                      </span>
                     </div>
 
-                    <div className="text-xs">
-                      <div className="flex items-center gap-1 text-[10px] uppercase font-semibold text-slate-400">
-                        <Clock className="w-3 h-3 text-blue-600" />
-                        <span>Payment Due</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold text-slate-900">{dueDateStr}</span>
-                        {cycle && (
-                          <span
-                            className={`text-[10px] font-extrabold px-1.5 py-0.2 rounded border ${
-                              cycle.daysUntilDue < 0 || cycle.isBillOverdue
-                                ? 'bg-rose-100 text-rose-800 border-rose-300'
-                                : cycle.daysUntilDue <= 3
-                                  ? 'bg-amber-100 text-amber-800 border-amber-300'
-                                  : 'bg-blue-100 text-blue-800 border-blue-200'
-                            }`}
-                          >
-                            {cycle.daysUntilDue < 0 ? 'Overdue' : `${cycle.daysUntilDue}d`}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Outstanding & Split Breakdown */}
                     <div>
-                      <span className="text-[10px] uppercase font-semibold text-slate-400 block">Outstanding</span>
-                      <span className="text-sm font-bold font-mono text-rose-700 tabular-nums">
+                      <span className="text-[10px] uppercase font-mono-data text-[#858078] block">
+                        Outstanding
+                      </span>
+                      <span className="text-sm font-bold font-mono-data text-[#111318] tabular-nums">
                         {formatINR(outstanding)}
                       </span>
-                      <span className="text-[10px] text-slate-400 font-mono block">
-                        Stmt: {formatINR(statementDue)} · Unbilled: {formatINR(unbilled)}
+                      <span className="text-[10px] text-[#858078] font-mono-data block">
+                        Stmt: {formatINR(statementDue, { compact: true })} · Unbilled:{' '}
+                        {formatINR(unbilled, { compact: true })}
                       </span>
                     </div>
 
-                    {/* Credit Limit & Available */}
                     <div>
-                      <span className="text-[10px] uppercase font-semibold text-slate-400 block">Credit Limit</span>
-                      <span className="text-sm font-medium font-mono text-slate-700 tabular-nums">
-                        {formatINR(limit)}
+                      <span className="text-[10px] uppercase font-mono-data text-[#858078] block">
+                        Credit Limit
                       </span>
-                      <span className="text-[10px] text-emerald-700 font-mono block">
-                        Avail: {formatINR(availableLimit)}
+                      <span className="text-sm font-medium font-mono-data text-[#111318] tabular-nums">
+                        {formatINR(limit, { compact: true })}
                       </span>
-                    </div>
-
-                    {/* Utilization Bar */}
-                    <div className="w-28 hidden sm:block">
-                      <div className="flex justify-between text-[10px] font-mono mb-0.5">
-                        <span className="text-slate-500">Utilization</span>
-                        <span className="font-bold text-slate-800">{utilPct.toFixed(0)}%</span>
-                      </div>
-                      <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${
-                            utilPct > 70 ? 'bg-rose-500' : utilPct > 30 ? 'bg-amber-500' : 'bg-emerald-500'
-                          }`}
-                          style={{ width: `${Math.min(100, Math.max(3, utilPct))}%` }}
-                        />
-                      </div>
+                      <span className="text-[10px] text-[#059669] font-mono-data block">
+                        Avail: {formatINR(availableLimit, { compact: true })} ({utilPct.toFixed(0)}%)
+                      </span>
                     </div>
                   </div>
 
-                  {/* Actions */}
                   <div className="flex items-center gap-1.5 self-end lg:self-auto shrink-0">
                     <button
                       type="button"
@@ -1594,9 +1543,9 @@ export function CardsView({
                         e.stopPropagation();
                         handleOpenDetailedAdd(card.id);
                       }}
-                      className="font-semibold text-blue-600 hover:text-blue-800 px-2.5 py-1 rounded-lg hover:bg-blue-50 cursor-pointer flex items-center gap-1 text-xs border border-transparent hover:border-blue-200"
+                      className="px-2.5 py-1.5 rounded-lg bg-[#111318] text-[#FAF8F5] text-xs font-semibold cursor-pointer flex items-center gap-1"
                     >
-                      <Plus className="h-3 w-3" />
+                      <Plus className="h-3 w-3 text-[#E5C158]" />
                       <span>Swipe</span>
                     </button>
                     <button
@@ -1605,7 +1554,7 @@ export function CardsView({
                         e.stopPropagation();
                         handleOpenPayBill(card);
                       }}
-                      className="font-semibold text-emerald-600 hover:text-emerald-800 px-2.5 py-1 rounded-lg hover:bg-emerald-50 cursor-pointer text-xs border border-transparent hover:border-emerald-200"
+                      className="px-2.5 py-1.5 rounded-lg bg-emerald-50 text-[#059669] border border-emerald-200 text-xs font-semibold cursor-pointer"
                     >
                       Pay Bill
                     </button>
@@ -1615,8 +1564,7 @@ export function CardsView({
                         e.stopPropagation();
                         handleOpenEditCard(card);
                       }}
-                      className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
-                      title="Edit Card Details"
+                      className="p-1.5 rounded-lg border border-[#EAE5DC] bg-white text-[#52504C] hover:text-[#111318] cursor-pointer"
                     >
                       <Edit3 className="h-3.5 w-3.5" />
                     </button>
@@ -1626,65 +1574,66 @@ export function CardsView({
             })}
           </div>
         )}
-      </div>
+      </section>
 
-      {/* 4. High-Speed Spend Entry Workstation (Rapid Multi-Row Logger & SMS Ingestion) */}
-      <div className="rounded-2xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
-        {/* Sub-header with Tabs */}
-        <div className="border-b border-slate-200/80 bg-slate-50/70 px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
-            <h2 className="text-sm font-bold text-slate-900">Record Daily Credit Card Spends</h2>
-            <span className="text-xs text-slate-500 hidden md:inline">
-              — Multi-row fast logger &amp; instant bank SMS parser
-            </span>
+      {/* ==================== 5. BENTO ROW 4: HIGH-SPEED SPEND ENTRY WORKSTATION ==================== */}
+      <section className="bento-card rounded-2xl overflow-hidden">
+        <div className="border-b border-[#EAE5DC] bg-[#F3EFEA]/70 px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-2.5 w-2.5 rounded-full bg-[#059669]" />
+            <div>
+              <h2 className="font-display text-sm font-bold text-[#111318]">
+                High-Speed Daily Swipe Desk
+              </h2>
+              <p className="text-[11px] text-[#52504C]">
+                Batch multi-row card spend logger &amp; automated bank SMS alert parser
+              </p>
+            </div>
           </div>
 
-          <div className="flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-xl shadow-2xs">
+          <div className="inline-flex items-center gap-1 bg-white border border-[#EAE5DC] p-1 rounded-xl">
             <button
               type="button"
               onClick={() => setEntryTab('rapid')}
-              className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
                 entryTab === 'rapid'
-                  ? 'bg-blue-600 text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-[#111318] text-[#FAF8F5]'
+                  : 'text-[#52504C] hover:text-[#111318]'
               }`}
             >
-              <Zap className="h-3 w-3" />
-              <span>⚡ Rapid Multi-Row Logger</span>
+              <Zap className="h-3.5 w-3.5 text-[#E5C158]" />
+              <span>Rapid Multi-Row Logger</span>
             </button>
             <button
               type="button"
               onClick={() => setEntryTab('sms')}
-              className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
                 entryTab === 'sms'
-                  ? 'bg-blue-600 text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-[#111318] text-[#FAF8F5]'
+                  : 'text-[#52504C] hover:text-[#111318]'
               }`}
             >
-              <MessageSquare className="h-3 w-3" />
+              <MessageSquare className="h-3.5 w-3.5 text-[#059669]" />
               <span>Paste Bank SMS Alerts</span>
             </button>
           </div>
         </div>
 
-        {/* Tab 1: Rapid Multi-Row Logger */}
-        {entryTab === 'rapid' && (
+        {entryTab === 'rapid' ? (
           <div className="p-5 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#52504C]">
               <p>
-                Log 1 to 20 swipes in one go without closing modals. Enter amounts, select merchants, and save all with 1 click.
+                Log 1 to 20 card swipes in one batch. Click any quick-fill merchant chip below or enter custom rows.
               </p>
-              <span className="font-mono text-slate-600 font-semibold">
+              <span className="font-mono-data text-[#111318] font-semibold">
                 {rapidRows.filter((r) => parseFloat(r.amountStr) > 0).length} valid entries ready
               </span>
             </div>
 
-            {/* Rapid Rows Table */}
-            <div className="overflow-x-auto border border-slate-200/90 rounded-xl">
+            <div className="overflow-x-auto border border-[#EAE5DC] rounded-xl bg-[#FAF8F5]">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="bg-slate-50/80 border-b border-slate-200/90 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
+                  <tr className="bg-[#F3EFEA] border-b border-[#EAE5DC] text-[#52504C] font-mono-data uppercase tracking-wider text-[10px]">
                     <th className="py-2.5 px-3 w-32">Date</th>
                     <th className="py-2.5 px-3 w-48">Card Used</th>
                     <th className="py-2.5 px-3 w-32">Amount (₹)</th>
@@ -1695,25 +1644,27 @@ export function CardsView({
                     <th className="py-2.5 px-2 w-10 text-center"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
+                <tbody className="divide-y divide-[#EAE5DC] bg-white">
                   {rapidRows.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
-                      {/* Date */}
+                    <tr key={row.id} className="hover:bg-[#FAF8F5] transition-colors">
                       <td className="p-2">
                         <input
                           type="date"
                           value={row.occurredAt}
-                          onChange={(e) => handleUpdateRapidRow(row.id, { occurredAt: e.target.value })}
-                          className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 focus:border-blue-500 focus:outline-hidden"
+                          onChange={(e) =>
+                            handleUpdateRapidRow(row.id, { occurredAt: e.target.value })
+                          }
+                          className="w-full rounded-lg border border-[#EAE5DC] bg-white px-2 py-1 text-xs text-[#111318] font-mono-data focus:border-[#111318] focus:outline-none"
                         />
                       </td>
 
-                      {/* Card Selection */}
                       <td className="p-2">
                         <select
                           value={row.cardId}
-                          onChange={(e) => handleUpdateRapidRow(row.id, { cardId: e.target.value })}
-                          className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 font-medium focus:border-blue-500 focus:outline-hidden"
+                          onChange={(e) =>
+                            handleUpdateRapidRow(row.id, { cardId: e.target.value })
+                          }
+                          className="w-full rounded-lg border border-[#EAE5DC] bg-white px-2 py-1 text-xs text-[#111318] font-medium focus:border-[#111318] focus:outline-none"
                         >
                           {creditCards.map((c) => (
                             <option key={c.id} value={c.id}>
@@ -1723,38 +1674,40 @@ export function CardsView({
                         </select>
                       </td>
 
-                      {/* Amount */}
                       <td className="p-2">
                         <div className="relative">
-                          <span className="absolute left-2 top-1 text-slate-400 font-bold">₹</span>
+                          <span className="absolute left-2 top-1 text-[#858078] font-bold">₹</span>
                           <input
                             type="number"
                             step="0.01"
                             min="0"
                             placeholder="0.00"
                             value={row.amountStr}
-                            onChange={(e) => handleUpdateRapidRow(row.id, { amountStr: e.target.value })}
-                            className="w-full rounded-md border border-slate-200 bg-white pl-5 pr-2 py-1 text-xs font-bold font-mono text-slate-900 focus:border-blue-500 focus:outline-hidden"
+                            onChange={(e) =>
+                              handleUpdateRapidRow(row.id, { amountStr: e.target.value })
+                            }
+                            className="w-full rounded-lg border border-[#EAE5DC] bg-white pl-5 pr-2 py-1 text-xs font-bold font-mono-data text-[#111318] focus:border-[#111318] focus:outline-none"
                           />
                         </div>
                       </td>
 
-                      {/* Merchant / Party */}
                       <td className="p-2">
                         <div className="relative flex items-center">
                           <input
                             type="text"
                             placeholder="e.g. Swiggy, Amazon, Shell"
                             value={row.party}
-                            onChange={(e) => handleUpdateRapidRow(row.id, { party: e.target.value })}
-                            className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 pr-7 text-xs text-slate-800 focus:border-blue-500 focus:outline-hidden"
+                            onChange={(e) =>
+                              handleUpdateRapidRow(row.id, { party: e.target.value })
+                            }
+                            className="w-full rounded-lg border border-[#EAE5DC] bg-white px-2 py-1 pr-7 text-xs text-[#111318] focus:border-[#111318] focus:outline-none"
                           />
                           {row.party.trim().length > 1 && (
                             <button
                               type="button"
                               onClick={() => handleSaveRowAsMerchantPreset(row)}
                               title={`Save "${row.party.trim()}" as a Quick-Fill Preset`}
-                              className="absolute right-1 text-slate-400 hover:text-blue-600 p-0.5 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+                              className="absolute right-1 text-[#858078] hover:text-[#111318] p-0.5 rounded hover:bg-[#F3EFEA] transition-colors cursor-pointer"
                             >
                               <BookmarkPlus className="h-3.5 w-3.5" />
                             </button>
@@ -1762,12 +1715,13 @@ export function CardsView({
                         </div>
                       </td>
 
-                      {/* Category */}
                       <td className="p-2">
                         <select
                           value={row.category}
-                          onChange={(e) => handleUpdateRapidRow(row.id, { category: e.target.value })}
-                          className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-blue-500 focus:outline-hidden"
+                          onChange={(e) =>
+                            handleUpdateRapidRow(row.id, { category: e.target.value })
+                          }
+                          className="w-full rounded-lg border border-[#EAE5DC] bg-white px-2 py-1 text-xs text-[#111318] focus:border-[#111318] focus:outline-none"
                         >
                           {getCategoryOptions(row.scope, 'expense').map((cat) => (
                             <option key={cat} value={cat}>
@@ -1777,44 +1731,43 @@ export function CardsView({
                         </select>
                       </td>
 
-                      {/* Scope */}
                       <td className="p-2">
                         <select
                           value={row.scope}
                           onChange={(e) =>
                             handleUpdateRapidRow(row.id, { scope: e.target.value as Scope })
                           }
-                          className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 capitalize focus:border-blue-500 focus:outline-hidden"
+                          className="w-full rounded-lg border border-[#EAE5DC] bg-white px-2 py-1 text-xs text-[#111318] capitalize focus:border-[#111318] focus:outline-none"
                         >
-                          <option value="personal">Personal</option>
                           <option value="business">Business</option>
+                          <option value="personal">Personal</option>
                           <option value="family">Family</option>
                         </select>
                       </td>
 
-                      {/* Note */}
                       <td className="p-2">
                         <input
                           type="text"
                           placeholder="Optional note / tag"
                           value={row.note}
-                          onChange={(e) => handleUpdateRapidRow(row.id, { note: e.target.value })}
+                          onChange={(e) =>
+                            handleUpdateRapidRow(row.id, { note: e.target.value })
+                          }
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               e.preventDefault();
                               handleAddRapidRow();
                             }
                           }}
-                          className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-blue-500 focus:outline-hidden"
+                          className="w-full rounded-lg border border-[#EAE5DC] bg-white px-2 py-1 text-xs text-[#111318] focus:border-[#111318] focus:outline-none"
                         />
                       </td>
 
-                      {/* Delete */}
                       <td className="p-2 text-center">
                         <button
                           type="button"
                           onClick={() => handleRemoveRapidRow(row.id)}
-                          className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+                          className="text-[#858078] hover:text-[#E11D48] p-1 rounded hover:bg-[#F3EFEA] transition-colors cursor-pointer"
                           title="Remove row"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -1828,14 +1781,14 @@ export function CardsView({
 
             {/* Quick Merchant Chips */}
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <span className="text-[11px] font-semibold text-slate-500">Quick fill merchant:</span>
+              <span className="text-[11px] font-semibold text-[#52504C]">Quick fill merchant:</span>
               {quickMerchants.map((m) => (
                 <button
                   key={m.id}
                   type="button"
                   onClick={() => handleApplyMerchantChip(m)}
                   title={`Click to fill or append row: ${m.name} (${m.category})`}
-                  className="px-2 py-0.5 text-[11px] font-medium rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer border border-slate-200/60 inline-flex items-center gap-1"
+                  className="px-2 py-0.5 text-[11px] font-medium rounded-lg bg-[#F3EFEA] hover:bg-[#111318] text-[#111318] hover:text-[#FAF8F5] transition-colors cursor-pointer border border-[#EAE5DC] inline-flex items-center gap-1"
                 >
                   +{m.name}
                 </button>
@@ -1844,21 +1797,19 @@ export function CardsView({
               <button
                 type="button"
                 onClick={() => setManageMerchantsOpen(true)}
-                className="px-2 py-0.5 text-[11px] font-semibold rounded-md bg-blue-50 hover:bg-blue-100 text-blue-700 transition-colors cursor-pointer border border-blue-200/80 inline-flex items-center gap-1"
-                title="Customize quick-fill merchants"
+                className="px-2.5 py-0.5 text-[11px] font-semibold rounded-lg bg-white hover:bg-[#F3EFEA] text-[#111318] transition-colors cursor-pointer border border-[#D6CFC2] inline-flex items-center gap-1"
               >
-                <SlidersHorizontal className="h-3 w-3" />
+                <SlidersHorizontal className="h-3 w-3 text-[#C59B27]" />
                 <span>Customize ({quickMerchants.length})</span>
               </button>
             </div>
 
-            {/* Footer Action Buttons */}
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-between pt-2 border-t border-[#EAE5DC]">
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={handleAddRapidRow}
-                className="text-xs border-dashed border-slate-300 hover:border-slate-400"
+                className="text-xs border-dashed"
               >
                 <Plus className="h-3.5 w-3.5 mr-1" />
                 <span>Add Another Row (or Press Enter)</span>
@@ -1882,7 +1833,7 @@ export function CardsView({
                       },
                     ])
                   }
-                  className="text-xs text-slate-600"
+                  className="text-xs"
                 >
                   Clear All
                 </Button>
@@ -1892,23 +1843,22 @@ export function CardsView({
                   size="sm"
                   onClick={handleCommitRapidRows}
                   disabled={isSavingRapid}
-                  className="text-xs shadow-xs"
+                  className="text-xs"
                 >
-                  <Zap className="h-3.5 w-3.5 mr-1" />
+                  <Zap className="h-3.5 w-3.5 text-[#E5C158] mr-1" />
                   <span>
-                    {isSavingRapid ? 'Recording Spends...' : `Save All Spends (${rapidRows.filter((r) => parseFloat(r.amountStr) > 0).length})`}
+                    {isSavingRapid
+                      ? 'Recording Spends...'
+                      : `Save All Spends (${rapidRows.filter((r) => parseFloat(r.amountStr) > 0).length})`}
                   </span>
                 </Button>
               </div>
             </div>
           </div>
-        )}
-
-        {/* Tab 2: SMS Parser */}
-        {entryTab === 'sms' && (
+        ) : (
           <div className="p-5 space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
+              <label className="block text-xs font-semibold text-[#111318] mb-1.5">
                 Paste Bank SMS Messages (HDFC, ICICI, SBI, Axis, Amex, Kotak, etc.)
               </label>
               <textarea
@@ -1916,10 +1866,10 @@ export function CardsView({
                 value={smsText}
                 onChange={(e) => setSmsText(e.target.value)}
                 placeholder={`Example:\nAlert: You've spent INR 1,450.00 on your ICICI Bank Credit Card XX1234 at SWIGGY on 14-Nov-2026.\nDear SBI Cardholder, payment of Rs 3,200.00 made on card ending 5678 at SHELL PETROL on 14/11/2026.`}
-                className="w-full rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-800 font-mono focus:border-blue-500 focus:outline-hidden"
+                className="w-full rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] p-3 text-xs text-[#111318] font-mono-data focus:border-[#111318] focus:outline-none"
               />
-              <p className="mt-1 text-[11px] text-slate-500">
-                The smart parser will automatically extract the card last 4 digits, merchant name, transaction amount, and date.
+              <p className="mt-1 text-[11px] text-[#858078]">
+                Automatically extracts card last 4 digits, merchant name, transaction amount, and date into editable rows.
               </p>
             </div>
 
@@ -1929,70 +1879,73 @@ export function CardsView({
                 size="sm"
                 onClick={handleParseSms}
                 disabled={isParsingSms || !smsText.trim()}
-                className="text-xs shadow-xs"
+                className="text-xs"
               >
-                <Sparkles className="h-3.5 w-3.5 mr-1" />
-                <span>{isParsingSms ? 'Analyzing SMS...' : 'Parse &amp; Convert to Spends'}</span>
+                <Sparkles className="h-3.5 w-3.5 text-[#E5C158] mr-1" />
+                <span>{isParsingSms ? 'Analyzing SMS...' : 'Parse & Convert to Spends'}</span>
               </Button>
             </div>
           </div>
         )}
-      </div>
+      </section>
 
-      {/* 5. Card Spends Feed & Daily Grouped Stream */}
-      <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-2xs space-y-4">
-        {/* Filter Bar */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+      {/* ==================== 6. BENTO ROW 5: CREDIT CARD EXPENSE & SETTLEMENT LEDGER ==================== */}
+      <section className="bento-card rounded-2xl p-5 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-[#EAE5DC]">
           <div className="flex items-center gap-2">
-            <Layers className="h-4 w-4 text-blue-600" />
-            <h3 className="text-sm font-bold text-slate-900">Credit Card Expense Ledger</h3>
-            <span className="text-xs text-slate-500">({filteredTxs.length} transactions)</span>
+            <Layers className="h-4 w-4 text-[#C59B27]" />
+            <h3 className="font-display text-sm font-bold text-[#111318]">
+              Credit Card Expense &amp; Settlement Ledger
+            </h3>
+            <span className="text-xs font-mono-data text-[#858078]">
+              ({filteredTxs.length} entries)
+            </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Search Input */}
             <div className="relative w-48 sm:w-60">
-              <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
+              <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-[#858078]" />
               <input
                 type="text"
                 placeholder="Search merchant, card, note..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-slate-50/50 pl-8 pr-2.5 py-1 text-xs text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:bg-white focus:outline-hidden"
+                className="w-full rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] pl-8 pr-2.5 py-1 text-xs text-[#111318] placeholder-[#858078] focus:border-[#111318] focus:bg-white focus:outline-none"
               />
             </div>
 
-            {/* Scope Filter */}
             <select
               value={scopeFilter}
               onChange={(e) => setScopeFilter(e.target.value as Scope | 'all')}
-              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-blue-500 focus:outline-hidden"
+              className="rounded-xl border border-[#EAE5DC] bg-white px-2.5 py-1 text-xs text-[#111318] focus:border-[#111318] focus:outline-none"
             >
               <option value="all">All Scopes</option>
-              <option value="personal">Personal</option>
               <option value="business">Business</option>
+              <option value="personal">Personal</option>
               <option value="family">Family</option>
             </select>
 
-            {/* Category Filter */}
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-blue-500 focus:outline-hidden"
+              className="rounded-xl border border-[#EAE5DC] bg-white px-2.5 py-1 text-xs text-[#111318] focus:border-[#111318] focus:outline-none"
             >
               <option value="all">All Categories</option>
-              {Array.from(new Set(cardTransactions.map((t) => t.category))).sort().map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
+              {Array.from(new Set(cardTransactions.map((t) => t.category)))
+                .sort()
+                .map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
             </select>
 
-            {/* Date Quick Filter */}
             <select
               value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value as any)}
-              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-blue-500 focus:outline-hidden"
+              onChange={(e) =>
+                setDateFilter(e.target.value as 'all' | 'today' | '7days' | 'month')
+              }
+              className="rounded-xl border border-[#EAE5DC] bg-white px-2.5 py-1 text-xs text-[#111318] focus:border-[#111318] focus:outline-none"
             >
               <option value="all">All Dates</option>
               <option value="today">Today Only</option>
@@ -2002,10 +1955,9 @@ export function CardsView({
           </div>
         </div>
 
-        {/* Transactions Grouped by Date */}
         {groupedTxs.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-500 bg-slate-50/50">
-            No credit card spends match your filter criteria. Record a spend using the rapid logger above.
+          <div className="rounded-xl border border-dashed border-[#D6CFC2] p-8 text-center text-xs text-[#858078] bg-[#FAF8F5]">
+            No credit card transactions match your filter criteria. Record a swipe using the Rapid Multi-Row Logger above.
           </div>
         ) : (
           <div className="space-y-4">
@@ -2016,60 +1968,70 @@ export function CardsView({
 
               return (
                 <div key={dateKey} className="space-y-2">
-                  {/* Date Heading */}
                   <div className="flex items-center justify-between px-1">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                      <Calendar className="h-3.5 w-3.5 text-slate-400" />
-                      <span>{dateKey === todayStr ? `Today (${dateKey})` : dateKey}</span>
-                      <span className="text-[11px] font-normal text-slate-400">· {txs.length} txs</span>
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-[#111318]">
+                      <Calendar className="h-3.5 w-3.5 text-[#C59B27]" />
+                      <span className="font-mono-data">
+                        {dateKey === todayStr ? `Today (${dateKey})` : dateKey}
+                      </span>
+                      <span className="text-[11px] font-normal text-[#858078]">
+                        · {txs.length} {txs.length === 1 ? 'entry' : 'entries'}
+                      </span>
                     </div>
-                    <span className="text-xs font-bold font-mono text-slate-900">
+                    <span className="text-xs font-bold font-mono-data text-[#111318]">
                       {formatINR(daySpendTotalMinor)}
                     </span>
                   </div>
 
-                  {/* Transactions in this Day */}
-                  <div className="divide-y divide-slate-100 rounded-xl border border-slate-200/80 bg-white overflow-hidden shadow-2xs">
+                  <div className="divide-y divide-[#EAE5DC] rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] overflow-hidden">
                     {txs.map((tx) => {
                       const isExpense = tx.kind === 'expense';
                       return (
                         <div
                           key={tx.id}
-                          className="flex items-center justify-between p-3 hover:bg-slate-50/70 transition-colors gap-3"
+                          className="flex items-center justify-between p-3 hover:bg-white transition-colors gap-3"
                         >
                           <div className="flex items-center gap-3 min-w-0">
-                            {/* Icon */}
-                            <div className="h-8 w-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
-                              <CreditCard className="h-4 w-4" />
+                            <div
+                              className={`h-8 w-8 rounded-xl flex items-center justify-center shrink-0 border ${
+                                isExpense
+                                  ? 'bg-[#111318] text-[#E5C158] border-[#C59B27]/35'
+                                  : 'bg-emerald-50 text-[#059669] border-emerald-200'
+                              }`}
+                            >
+                              {isExpense ? (
+                                <ArrowUpRight className="h-4 w-4" />
+                              ) : (
+                                <ArrowDownLeft className="h-4 w-4" />
+                              )}
                             </div>
 
                             <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-xs text-slate-900 truncate">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-xs text-[#111318] truncate">
                                   {tx.party || tx.category}
                                 </span>
-                                <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/60 truncate">
+                                <span className="text-[10px] font-mono-data font-semibold text-[#111318] bg-[#F3EFEA] px-1.5 py-0.5 rounded border border-[#EAE5DC] truncate">
                                   {tx.accountName}
                                 </span>
-                                <span className="text-[10px] font-medium text-slate-500 capitalize hidden sm:inline">
-                                  • {tx.category}
+                                <span className="text-[10px] font-mono-data text-[#858078] hidden sm:inline">
+                                  · {tx.category}
                                 </span>
                               </div>
 
-                              <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
-                                <span className="capitalize">{tx.scope}</span>
+                              <div className="flex items-center gap-2 text-[11px] text-[#52504C] mt-0.5">
+                                <span className="capitalize">{SCOPE_META[tx.scope].label}</span>
                                 {tx.note && <span className="truncate">· {tx.note}</span>}
                               </div>
                             </div>
                           </div>
 
-                          {/* Right side: Amount & Action buttons */}
                           <div className="flex items-center gap-3 shrink-0">
                             {tx.hasAttachment && (
                               <button
                                 type="button"
                                 onClick={() => handleViewAttachment(tx)}
-                                className="text-slate-400 hover:text-blue-600 p-1 rounded hover:bg-blue-50 transition-colors cursor-pointer"
+                                className="text-[#858078] hover:text-[#111318] p-1 rounded hover:bg-[#F3EFEA] transition-colors cursor-pointer"
                                 title="View Receipt"
                               >
                                 <Paperclip className="h-3.5 w-3.5" />
@@ -2078,8 +2040,8 @@ export function CardsView({
 
                             <div className="text-right">
                               <div
-                                className={`text-xs font-bold font-mono ${
-                                  isExpense ? 'text-rose-700' : 'text-emerald-700'
+                                className={`text-xs font-bold font-mono-data tabular-nums ${
+                                  isExpense ? 'text-[#111318]' : 'text-[#059669]'
                                 }`}
                               >
                                 {isExpense ? '-' : '+'}
@@ -2087,12 +2049,11 @@ export function CardsView({
                               </div>
                             </div>
 
-                            {/* Action icons */}
                             <div className="flex items-center gap-1">
                               <button
                                 type="button"
                                 onClick={() => handleDuplicateSwipe(tx)}
-                                className="text-slate-400 hover:text-slate-700 p-1 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+                                className="text-[#858078] hover:text-[#111318] p-1 rounded hover:bg-[#F3EFEA] transition-colors cursor-pointer"
                                 title="Repeat / Duplicate Swipe"
                               >
                                 <Copy className="h-3.5 w-3.5" />
@@ -2100,7 +2061,7 @@ export function CardsView({
                               <button
                                 type="button"
                                 onClick={() => handleOpenDetailedEdit(tx)}
-                                className="text-slate-400 hover:text-slate-700 p-1 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+                                className="text-[#858078] hover:text-[#111318] p-1 rounded hover:bg-[#F3EFEA] transition-colors cursor-pointer"
                                 title="Edit Spend"
                               >
                                 <Edit3 className="h-3.5 w-3.5" />
@@ -2108,7 +2069,7 @@ export function CardsView({
                               <button
                                 type="button"
                                 onClick={() => setDeleteTxConfirmId(tx.id)}
-                                className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition-colors cursor-pointer"
+                                className="text-[#858078] hover:text-[#E11D48] p-1 rounded hover:bg-rose-50 transition-colors cursor-pointer"
                                 title="Delete Spend"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -2124,11 +2085,11 @@ export function CardsView({
             })}
           </div>
         )}
-      </div>
+      </section>
 
-      {/* 6. MODALS */}
+      {/* ==================== 7. MODALS ==================== */}
 
-      {/* A. Detailed Single Spend Modal (Complete freedom with split & attachments) */}
+      {/* A. Detailed Single Spend Modal */}
       <Dialog
         open={detailedModalOpen}
         onClose={() => setDetailedModalOpen(false)}
@@ -2164,7 +2125,7 @@ export function CardsView({
                 value={txAmountStr}
                 onChange={(e) => setTxAmountStr(e.target.value)}
                 required
-                className="font-mono font-bold"
+                className="font-mono-data font-bold"
               />
             </div>
           </div>
@@ -2176,7 +2137,7 @@ export function CardsView({
                 <button
                   type="button"
                   onClick={() => setManageMerchantsOpen(true)}
-                  className="text-[11px] text-blue-600 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                  className="text-[11px] text-[#059669] hover:underline inline-flex items-center gap-1 cursor-pointer"
                 >
                   <SlidersHorizontal className="h-2.5 w-2.5" />
                   <span>Presets</span>
@@ -2190,7 +2151,6 @@ export function CardsView({
                 onChange={(e) => setTxParty(e.target.value)}
                 required
               />
-              {/* Quick suggestions */}
               <div className="flex flex-wrap gap-1 mt-1.5">
                 {quickMerchants.slice(0, 8).map((m) => (
                   <button
@@ -2201,7 +2161,7 @@ export function CardsView({
                       setTxCategory(m.category);
                       setTxScope(m.scope);
                     }}
-                    className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200/60 cursor-pointer"
+                    className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-[#F3EFEA] hover:bg-[#111318] text-[#111318] hover:text-[#FAF8F5] border border-[#EAE5DC] cursor-pointer"
                   >
                     {m.name}
                   </button>
@@ -2239,8 +2199,8 @@ export function CardsView({
                 value={txScope}
                 onChange={(e) => setTxScope(e.target.value as Scope)}
               >
-                <option value="personal">Personal</option>
                 <option value="business">Business</option>
+                <option value="personal">Personal</option>
                 <option value="family">Family</option>
               </Select>
             </div>
@@ -2251,19 +2211,18 @@ export function CardsView({
             <Input
               id="noteInput"
               type="text"
-              placeholder="e.g. Team dinner, flight ticket, 5% cashback card offer"
+              placeholder="e.g. Team dinner, flight ticket, 5% cashback offer"
               value={txNote}
               onChange={(e) => setTxNote(e.target.value)}
             />
           </div>
 
-          {/* Split with Friends / Khatabook */}
           {!editingTx && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2.5">
+            <div className="rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] p-3 space-y-2.5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Split className="h-4 w-4 text-blue-600" />
-                  <span className="text-xs font-bold text-slate-900">
+                  <Split className="h-4 w-4 text-[#C59B27]" />
+                  <span className="text-xs font-bold text-[#111318]">
                     Split Bill with Friends (Auto-create Khatabook Dues)
                   </span>
                 </div>
@@ -2271,13 +2230,13 @@ export function CardsView({
                   type="checkbox"
                   checked={splitEnabled}
                   onChange={(e) => setSplitEnabled(e.target.checked)}
-                  className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  className="rounded text-[#111318] cursor-pointer"
                 />
               </div>
 
               {splitEnabled && (
-                <div className="space-y-2 pt-2 border-t border-slate-200/60">
-                  <FieldLabel htmlFor="friendsInput">Friends' Names (comma separated)</FieldLabel>
+                <div className="space-y-2 pt-2 border-t border-[#EAE5DC]">
+                  <FieldLabel htmlFor="friendsInput">Friends&apos; Names (comma separated)</FieldLabel>
                   <Input
                     id="friendsInput"
                     type="text"
@@ -2291,9 +2250,9 @@ export function CardsView({
                       id="includeSelf"
                       checked={splitIncludeSelf}
                       onChange={(e) => setSplitIncludeSelf(e.target.checked)}
-                      className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      className="rounded text-[#111318] cursor-pointer"
                     />
-                    <label htmlFor="includeSelf" className="text-xs text-slate-600">
+                    <label htmlFor="includeSelf" className="text-xs text-[#52504C]">
                       Include my own share in split calculation
                     </label>
                   </div>
@@ -2302,7 +2261,6 @@ export function CardsView({
             </div>
           )}
 
-          {/* Receipt Attachment Upload */}
           <div>
             <FieldLabel htmlFor="receiptUpload">Attach Bill / Receipt Photo (Optional)</FieldLabel>
             <div className="flex items-center gap-2">
@@ -2338,12 +2296,12 @@ export function CardsView({
                 <span>{txAttachmentName ? 'Change File' : 'Upload File / Receipt'}</span>
               </Button>
               {txAttachmentName && (
-                <span className="text-xs text-slate-600 truncate max-w-xs">{txAttachmentName}</span>
+                <span className="text-xs text-[#52504C] truncate max-w-xs">{txAttachmentName}</span>
               )}
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+          <div className="flex justify-end gap-2 pt-3 border-t border-[#EAE5DC]">
             <Button
               type="button"
               variant="secondary"
@@ -2450,13 +2408,13 @@ export function CardsView({
               value={cardScope}
               onChange={(e) => setCardScope(e.target.value as Scope)}
             >
-              <option value="personal">Personal</option>
               <option value="business">Business</option>
+              <option value="personal">Personal</option>
               <option value="family">Family</option>
             </Select>
           </div>
 
-          <div className="flex justify-between items-center pt-3 border-t border-slate-100">
+          <div className="flex justify-between items-center pt-3 border-t border-[#EAE5DC]">
             {editingCard ? (
               <Button
                 type="button"
@@ -2469,7 +2427,9 @@ export function CardsView({
               >
                 Delete Card
               </Button>
-            ) : <div />}
+            ) : (
+              <div />
+            )}
 
             <div className="flex gap-2">
               <Button
@@ -2492,30 +2452,30 @@ export function CardsView({
       <Dialog
         open={payCardModalOpen}
         onClose={() => setPayCardModalOpen(false)}
-        title={`Pay Bill · ${payCardAccount?.name || 'Credit Card'}`}
+        title={`Settle Statement · ${payCardAccount?.name || 'Credit Card'}`}
       >
         <form onSubmit={handlePayCardBill} className="space-y-4">
-          <div className="rounded-xl border border-blue-200/80 bg-blue-50/50 p-3 text-xs space-y-1">
-            <div className="font-bold text-blue-900 flex items-center gap-1.5 mb-1">
-              <Zap className="h-3.5 w-3.5 text-blue-600" />
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-xs space-y-1">
+            <div className="font-bold text-[#059669] flex items-center gap-1.5 mb-1">
+              <CheckCircle2 className="h-3.5 w-3.5 text-[#059669]" />
               <span>Double-Entry Bank Settlement</span>
             </div>
-            <p className="text-slate-600 text-[11px]">
+            <p className="text-[#52504C] text-[11px]">
               Deducts from your selected Bank Account and credits this Credit Card, clearing the liability and restoring available limit.
             </p>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs space-y-1">
+          <div className="rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] p-3 text-xs space-y-1">
             <div className="flex justify-between">
-              <span className="text-slate-500">Total Outstanding Balance:</span>
-              <span className="font-bold text-rose-700 font-mono">
+              <span className="text-[#52504C]">Total Outstanding Balance:</span>
+              <span className="font-bold text-[#111318] font-mono-data">
                 {formatINR(Math.abs(payCardAccount?.currentBalanceMinor || 0))}
               </span>
             </div>
             {cardReconData?.cycles?.[0] && (
-              <div className="flex justify-between text-blue-700">
+              <div className="flex justify-between text-[#059669]">
                 <span>Latest Statement Billed Due:</span>
-                <span className="font-bold font-mono">
+                <span className="font-bold font-mono-data">
                   {formatINR(cardReconData.cycles[0].netDueMinor)}
                 </span>
               </div>
@@ -2549,11 +2509,11 @@ export function CardsView({
               value={payAmountStr}
               onChange={(e) => setPayAmountStr(e.target.value)}
               required
-              className="font-mono font-bold"
+              className="font-mono-data font-bold"
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+          <div className="flex justify-end gap-2 pt-3 border-t border-[#EAE5DC]">
             <Button
               type="button"
               variant="secondary"
@@ -2581,16 +2541,16 @@ export function CardsView({
               <img
                 src={attachmentData.dataBase64}
                 alt="Receipt"
-                className="max-h-96 w-full object-contain rounded-xl border border-slate-200"
+                className="max-h-96 w-full object-contain rounded-xl border border-[#EAE5DC]"
               />
             ) : (
-              <div className="p-8 text-center border border-slate-200 rounded-xl bg-slate-50">
-                <FileText className="mx-auto h-12 w-12 text-slate-400 mb-2" />
-                <p className="text-xs font-semibold text-slate-800">{attachmentData.filename}</p>
+              <div className="p-8 text-center border border-[#EAE5DC] rounded-xl bg-[#FAF8F5]">
+                <FileText className="mx-auto h-12 w-12 text-[#858078] mb-2" />
+                <p className="text-xs font-semibold text-[#111318]">{attachmentData.filename}</p>
                 <a
                   href={attachmentData.dataBase64}
                   download={attachmentData.filename}
-                  className="mt-3 inline-flex items-center gap-1.5 text-xs text-blue-600 font-semibold underline"
+                  className="mt-3 inline-flex items-center gap-1.5 text-xs text-[#059669] font-semibold underline"
                 >
                   <Download className="h-3.5 w-3.5" />
                   <span>Download Document</span>
@@ -2598,7 +2558,7 @@ export function CardsView({
               </div>
             )
           ) : (
-            <p className="text-xs text-slate-500">Loading attachment...</p>
+            <p className="text-xs text-[#858078]">Loading attachment...</p>
           )}
 
           <div className="flex justify-end">
@@ -2641,20 +2601,19 @@ export function CardsView({
         title="Customize Quick-Fill Merchants"
       >
         <div className="space-y-4">
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-[#52504C]">
             Define your personalized frequent merchants for high-volume daily swipes. Clicking a preset in the rapid logger auto-fills the merchant, category, and scope instantly.
           </p>
 
-          {/* Add New Preset Form */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               handleAddCustomMerchant();
             }}
-            className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-3"
+            className="rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] p-3 space-y-3"
           >
-            <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-              <Plus className="h-3.5 w-3.5 text-blue-600" />
+            <div className="text-xs font-bold text-[#111318] flex items-center gap-1.5">
+              <Plus className="h-3.5 w-3.5 text-[#059669]" />
               <span>Add Custom Merchant Preset</span>
             </div>
 
@@ -2688,8 +2647,8 @@ export function CardsView({
                   value={newMScope}
                   onChange={(e) => setNewMScope(e.target.value as Scope)}
                 >
-                  <option value="personal">Personal</option>
                   <option value="business">Business</option>
+                  <option value="personal">Personal</option>
                   <option value="family">Family</option>
                 </Select>
               </div>
@@ -2703,33 +2662,32 @@ export function CardsView({
             </div>
           </form>
 
-          {/* Current Presets List */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-800">
+              <span className="text-xs font-bold text-[#111318]">
                 Active Presets ({quickMerchants.length})
               </span>
               <button
                 type="button"
                 onClick={handleResetMerchantsToDefault}
-                className="text-[11px] text-slate-500 hover:text-rose-600 hover:underline cursor-pointer"
+                className="text-[11px] text-[#858078] hover:text-[#E11D48] hover:underline cursor-pointer"
               >
                 Reset to Standard Defaults
               </button>
             </div>
 
-            <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 divide-y divide-slate-100 border border-slate-200 rounded-xl bg-white p-2">
+            <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 divide-y divide-[#EAE5DC] border border-[#EAE5DC] rounded-xl bg-white p-2">
               {quickMerchants.map((m) => (
                 <div
                   key={m.id}
-                  className="flex items-center justify-between py-1.5 px-2 hover:bg-slate-50 rounded-md transition-colors"
+                  className="flex items-center justify-between py-1.5 px-2 hover:bg-[#FAF8F5] rounded-md transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-900">{m.name}</span>
-                    <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-slate-100 text-slate-600 border border-slate-200/60">
+                    <span className="text-xs font-bold text-[#111318]">{m.name}</span>
+                    <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-[#F3EFEA] text-[#52504C] border border-[#EAE5DC]">
                       {m.category}
                     </span>
-                    <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-blue-50 text-blue-700 capitalize border border-blue-200/60">
+                    <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-emerald-50 text-[#059669] capitalize border border-emerald-200">
                       {m.scope}
                     </span>
                   </div>
@@ -2737,7 +2695,7 @@ export function CardsView({
                   <button
                     type="button"
                     onClick={() => handleDeleteQuickMerchant(m.id)}
-                    className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+                    className="text-[#858078] hover:text-[#E11D48] p-1 rounded hover:bg-rose-50 transition-colors cursor-pointer"
                     title={`Delete ${m.name}`}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -2747,7 +2705,7 @@ export function CardsView({
             </div>
           </div>
 
-          <div className="flex justify-end pt-2 border-t border-slate-100">
+          <div className="flex justify-end pt-2 border-t border-[#EAE5DC]">
             <Button
               type="button"
               variant="secondary"

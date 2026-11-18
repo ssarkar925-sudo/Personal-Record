@@ -9,6 +9,7 @@
     "start:prod": "node --experimental-strip-types server/index.ts",
     "desktop": "scripts\\launch-desktop.bat",
     "build": "vite build",
+    "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "db:backup": "node --experimental-strip-types scripts/backup-db.ts",
     "db:test": "node --experimental-strip-types scripts/test-local-db.ts",
@@ -23,6 +24,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.119.0",
     "@tesseract.js-data/eng": "^1.0.0",
+    "@types/three": "^0.187.0",
     "@whiskeysockets/baileys": "^7.0.0-rc14",
     "clsx": "^2.1.1",
     "lucide-react": "^1.72.0",
@@ -31,7 +33,9 @@
     "react-dom": "^19.3.1",
     "tailwind-merge": "^3.7.0",
     "tesseract.js": "^7.0.0",
+    "three": "^0.187.0",
     "unpdf": "^2.1.0",
+    "xlsx": "^0.18.5",
     "zod": "^4.6.7"
   },
   "devDependencies": {

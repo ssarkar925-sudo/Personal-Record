@@ -53,8 +53,10 @@ import {
   ViewModeToggle,
   cn,
 } from '../components/ui/Primitives.tsx';
-import { NOTE_COLORS, type NoteColor, type NoteScope } from '../../shared/ledger-core.ts';
+import { NOTE_COLORS, type NoteColor, type NoteScope, type Scope } from '../../shared/ledger-core.ts';
 import { UI_STRINGS, type AppLanguage } from '../../shared/i18n.ts';
+import { computeNotesIntelligence } from './notes-vault/notesVaultAnalytics.ts';
+import { NotesHeroWorkstation } from './notes-vault/NotesHeroWorkstation.tsx';
 
 type KeepSection = 'active' | 'reminders' | 'checklists' | 'archive';
 type NoteSort = 'custom' | 'updated_desc' | 'remind_asc' | 'title_asc' | 'scope_asc';
@@ -64,46 +66,46 @@ const KEEP_COLOR_STYLE: Record<
   { label: string; cardClass: string; swatchClass: string; modalBgClass: string; dotClass: string }
 > = {
   default: {
-    label: 'Paper',
-    cardClass: 'bg-white/95 border-[#d8e1ee]',
-    swatchClass: 'bg-white border-slate-300',
-    modalBgClass: 'bg-white border-slate-200',
-    dotClass: 'bg-white border-slate-300',
+    label: 'Ivory Paper',
+    cardClass: 'bg-white border-[#E6E1D6]',
+    swatchClass: 'bg-white border-[#E6E1D6]',
+    modalBgClass: 'bg-white border-[#E6E1D6]',
+    dotClass: 'bg-white border-[#D5CEBF]',
   },
   honey: {
-    label: 'Honey',
-    cardClass: 'bg-amber-50/90 border-amber-200/90',
-    swatchClass: 'bg-amber-200 border-amber-400',
-    modalBgClass: 'bg-[#fffef7] border-amber-200/90',
-    dotClass: 'bg-amber-300 border-amber-400',
+    label: 'Champagne Gold',
+    cardClass: 'bg-[#FAF5E6] border-[#E5C158]/50',
+    swatchClass: 'bg-[#F5D97E] border-[#C59B27]',
+    modalBgClass: 'bg-[#FDFBF5] border-[#E5C158]/60',
+    dotClass: 'bg-[#E5C158] border-[#C59B27]',
   },
   mint: {
-    label: 'Mint',
-    cardClass: 'bg-emerald-50/90 border-emerald-200/90',
-    swatchClass: 'bg-emerald-200 border-emerald-400',
-    modalBgClass: 'bg-[#f4fbf7] border-emerald-200/90',
-    dotClass: 'bg-emerald-300 border-emerald-400',
+    label: 'Forest Mint',
+    cardClass: 'bg-[#F2FBF7] border-[#059669]/30',
+    swatchClass: 'bg-emerald-200 border-[#059669]',
+    modalBgClass: 'bg-[#F6FCF9] border-[#059669]/40',
+    dotClass: 'bg-[#10B981] border-[#059669]',
   },
   sky: {
-    label: 'Sky',
-    cardClass: 'bg-sky-50/90 border-sky-200/90',
-    swatchClass: 'bg-sky-200 border-sky-400',
-    modalBgClass: 'bg-[#f4f9fd] border-sky-200/90',
-    dotClass: 'bg-sky-300 border-sky-400',
+    label: 'Alabaster Stone',
+    cardClass: 'bg-[#FAF8F5] border-[#E6E1D6]',
+    swatchClass: 'bg-[#F3EFEA] border-[#D5CEBF]',
+    modalBgClass: 'bg-[#FAF8F5] border-[#E6E1D6]',
+    dotClass: 'bg-[#D5CEBF] border-[#9CA3AF]',
   },
   lavender: {
-    label: 'Periwinkle',
-    cardClass: 'bg-indigo-50/90 border-indigo-200/90',
-    swatchClass: 'bg-indigo-200 border-indigo-400',
-    modalBgClass: 'bg-[#f6f8fe] border-indigo-200/90',
-    dotClass: 'bg-indigo-300 border-indigo-400',
+    label: 'Obsidian Mist',
+    cardClass: 'bg-[#F6F6F7] border-[#D4D4D8]',
+    swatchClass: 'bg-zinc-200 border-zinc-400',
+    modalBgClass: 'bg-[#F8F8F9] border-[#D4D4D8]',
+    dotClass: 'bg-zinc-400 border-zinc-600',
   },
   blush: {
-    label: 'Blush',
-    cardClass: 'bg-rose-50/90 border-rose-200/90',
-    swatchClass: 'bg-rose-200 border-rose-400',
-    modalBgClass: 'bg-[#fdf6f7] border-rose-200/90',
-    dotClass: 'bg-rose-300 border-rose-400',
+    label: 'Crimson Silk',
+    cardClass: 'bg-[#FFF5F7] border-[#E11D48]/25',
+    swatchClass: 'bg-rose-200 border-[#E11D48]',
+    modalBgClass: 'bg-[#FFF8F9] border-[#E11D48]/30',
+    dotClass: 'bg-rose-300 border-[#E11D48]',
   },
 };
 
@@ -392,6 +394,7 @@ export function NotesView({
   transactions = [],
   loans = [],
   dues = [],
+  globalScopeFilter = 'all',
   systemLanguage = 'en',
   onNotify,
   onNavigate,
@@ -402,9 +405,10 @@ export function NotesView({
   transactions?: TransactionRecord[];
   loans?: LoanRecord[];
   dues?: PersonDueRecord[];
+  globalScopeFilter?: Scope | 'all';
   systemLanguage?: AppLanguage;
   onNotify?: (msg: string, kind?: 'ok' | 'err') => void;
-  onNavigate?: (tab: 'dashboard' | 'money' | 'loans_dues' | 'reports' | 'notes' | 'vault') => void;
+  onNavigate?: (tab: 'dashboard' | 'cards' | 'money' | 'loans_dues' | 'reports' | 'notes' | 'sheets' | 'vault') => void;
   onRefresh: () => void;
 }) {
   const dict = UI_STRINGS[systemLanguage];
@@ -417,7 +421,10 @@ export function NotesView({
 
   // Filter, sort & view state
   const [section, setSection] = useState<KeepSection>('active');
-  const [scopeFilter, setScopeFilter] = useState<NoteScope | 'all'>('all');
+  const [scopeFilter, setScopeFilter] = useState<NoteScope | 'all'>(globalScopeFilter);
+  useEffect(() => {
+    setScopeFilter(globalScopeFilter);
+  }, [globalScopeFilter]);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [colorFilter, setColorFilter] = useState<NoteColor | null>(null);
   const [search, setSearch] = useState('');
@@ -433,7 +440,7 @@ export function NotesView({
 
   // Bulk actions state (Pillar 5)
   const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
-  const [bulkScope, setBulkScope] = useState<NoteScope>('general');
+  const [bulkScope, setBulkScope] = useState<NoteScope>('business');
   const [bulkTagInput, setBulkTagInput] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
 
@@ -446,7 +453,7 @@ export function NotesView({
   const [captureChecklistMode, setCaptureChecklistMode] = useState(false);
   const [qTitle, setQTitle] = useState('');
   const [qBody, setQBody] = useState('');
-  const [qScope, setQScope] = useState<NoteScope>('general');
+  const [qScope, setQScope] = useState<NoteScope>('business');
   const [qColor, setQColor] = useState<NoteColor>('default');
   const [qTags, setQTags] = useState<string[]>([]);
   const [qTagInput, setQTagInput] = useState('');
@@ -461,7 +468,7 @@ export function NotesView({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [eTitle, setETitle] = useState('');
   const [eBody, setEBody] = useState('');
-  const [eScope, setEScope] = useState<NoteScope>('general');
+  const [eScope, setEScope] = useState<NoteScope>('business');
   const [eColor, setEColor] = useState<NoteColor>('default');
   const [eTags, setETags] = useState<string[]>([]);
   const [eTagInput, setETagInput] = useState('');
@@ -502,7 +509,7 @@ export function NotesView({
     setCaptureChecklistMode(false);
     setQTitle('');
     setQBody('');
-    setQScope('general');
+    setQScope(scopeFilter === 'all' ? 'business' : scopeFilter);
     setQColor('default');
     setQTags([]);
     setQTagInput('');
@@ -547,7 +554,7 @@ export function NotesView({
       setEditingId(null);
       setETitle('');
       setEBody('');
-      setEScope(scopeFilter === 'all' ? 'general' : scopeFilter);
+      setEScope(scopeFilter === 'all' ? 'business' : scopeFilter);
       setEColor('default');
       setETags([]);
       setEPinned(false);
@@ -1458,13 +1465,31 @@ export function NotesView({
     );
   };
 
+  const notesIntelligence = computeNotesIntelligence(notes, nowMs);
+
   return (
     <div className="space-y-4 animate-panel-in relative pb-16">
+      {/* 0. Executive Notes Hero Workstation (3D Metallic Memo Card + SVG Checklist Ring) */}
+      <NotesHeroWorkstation
+        intelligence={notesIntelligence}
+        activeScopeFilter={scopeFilter}
+        onScopeFilterChange={setScopeFilter}
+        onStartQuickNote={() => {
+          setCaptureExpanded(true);
+          setCaptureChecklistMode(false);
+        }}
+        onStartQuickChecklist={() => {
+          setCaptureExpanded(true);
+          setCaptureChecklistMode(true);
+        }}
+        onOpenFullEditor={() => openEditor(null)}
+      />
+
       {/* Active Reminders Notice Banner (when reminders due/overdue) */}
       {(overdueReminders.length > 0 || todayReminders.length > 0) && (
-        <div className="mx-auto max-w-4xl rounded-2xl border border-amber-300 bg-amber-50/90 p-3 sm:p-4 text-amber-900 shadow-sm flex flex-wrap items-center justify-between gap-3 animate-slide-up">
+        <div className="mx-auto max-w-4xl rounded-2xl border border-[#C59B27]/45 bg-[#FAF5E6] p-3 sm:p-4 text-[#111318] shadow-xs flex flex-wrap items-center justify-between gap-3 animate-slide-up">
           <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-amber-200/80 p-2 text-amber-800">
+            <div className="rounded-xl bg-[#C59B27]/20 p-2 text-[#9A7418]">
               <BellRing className="h-5 w-5" />
             </div>
             <div>
@@ -1473,7 +1498,7 @@ export function NotesView({
                   ? `⚠️ ${overdueReminders.length} Overdue Reminder(s) · ${todayReminders.length} Upcoming Today`
                   : `🔔 ${todayReminders.length} Note Reminder(s) Scheduled For Today`}
               </p>
-              <p className="text-[11px] text-amber-800/90 mt-0.5">
+              <p className="text-[11px] text-[#6B7280] mt-0.5">
                 WhatsApp alerts dispatch automatically to your connected number, and In-App alerts appear on the top bell.
               </p>
             </div>
@@ -1484,7 +1509,7 @@ export function NotesView({
               variant="secondary"
               size="sm"
               onClick={requestBrowserNotification}
-              className="text-xs bg-white text-amber-900 border-amber-300"
+              className="text-xs bg-white text-[#111318] border-[#E6E1D6]"
             >
               Enable Desktop Alerts
             </Button>
@@ -1492,7 +1517,7 @@ export function NotesView({
               variant="primary"
               size="sm"
               onClick={triggerAlertCycleCheck}
-              className="text-xs"
+              className="text-xs bg-[#111318] text-white border-[#111318]"
             >
               Run Alert Check Now
             </Button>
@@ -1501,8 +1526,8 @@ export function NotesView({
       )}
 
       {/* 1. Google Keep Quick Capture Bar with Templates */}
-      <div className="mx-auto max-w-2xl">
-        <Card className={cn('p-3 transition-colors', KEEP_COLOR_STYLE[qColor].cardClass)}>
+      <div className="mx-auto max-w-3xl">
+        <Card className={cn('p-3.5 transition-colors rounded-2xl shadow-[0_12px_32px_-18px_rgba(17,19,24,0.1)]', KEEP_COLOR_STYLE[qColor].cardClass)}>
           {!captureExpanded ? (
             <div className="flex items-center justify-between gap-2">
               <button
@@ -1687,10 +1712,10 @@ export function NotesView({
                     value={qScope}
                     onChange={(e) => setQScope(e.target.value as NoteScope)}
                   >
-                    <option value="general">General</option>
-                    <option value="personal">{dict.scopes.personal}</option>
                     <option value="business">{dict.scopes.business}</option>
+                    <option value="personal">{dict.scopes.personal}</option>
                     <option value="family">{dict.scopes.family}</option>
+                    <option value="general">General</option>
                   </Select>
 
                   <button
@@ -1735,7 +1760,7 @@ export function NotesView({
       </div>
 
       {/* 2. Organized Navigation Strip: Keep Tabs + Scope Filter + Tag Pills + Color Dots + Search + Sort + Grid/List */}
-      <div className="space-y-2.5">
+      <div className="space-y-2.5 rounded-2xl border border-[#E6E1D6] bg-white p-3.5 sm:p-4 shadow-[0_12px_32px_-18px_rgba(17,19,24,0.1)]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <AnimatedTabs
             variant="subtle"
@@ -1745,10 +1770,10 @@ export function NotesView({
               setShowAllOthers(false);
             }}
             items={[
-              { id: 'active', label: dict.notes.tabActive, accentHex: '#0f766e', badge: activeCount },
-              { id: 'reminders', label: dict.notes.tabReminders, accentHex: '#d97706', badge: remindersCount },
-              { id: 'checklists', label: dict.notes.tabChecklists, accentHex: '#2563eb', badge: checklistsCount },
-              { id: 'archive', label: dict.notes.tabArchive, accentHex: '#64748b', badge: archiveCount },
+              { id: 'active', label: dict.notes.tabActive, accentHex: '#111318', badge: activeCount },
+              { id: 'reminders', label: dict.notes.tabReminders, accentHex: '#C59B27', badge: remindersCount },
+              { id: 'checklists', label: dict.notes.tabChecklists, accentHex: '#059669', badge: checklistsCount },
+              { id: 'archive', label: dict.notes.tabArchive, accentHex: '#6B7280', badge: archiveCount },
             ]}
           />
 
@@ -1758,29 +1783,29 @@ export function NotesView({
                 variant="ghost"
                 size="sm"
                 onClick={handleSelectAllVisible}
-                className="text-xs h-8 text-slate-600"
+                className="text-xs h-8 text-[#6B7280]"
               >
                 {selectedNoteIds.length === filteredNotes.length ? 'Deselect All' : 'Select All'}
               </Button>
             )}
 
             <Input
-              className="w-36 sm:w-44 h-8 text-xs"
+              className="w-36 sm:w-44 h-8 text-xs bg-[#FAF8F5] border-[#E6E1D6]"
               placeholder={dict.common.search}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
             <Select
               aria-label="Filter note scope"
-              className="w-auto h-8 text-xs"
+              className="w-auto h-8 text-xs bg-[#FAF8F5] border-[#E6E1D6] font-semibold"
               value={scopeFilter}
               onChange={(e) => setScopeFilter(e.target.value as NoteScope | 'all')}
             >
               <option value="all">{dict.common.allScopes}</option>
-              <option value="general">General</option>
-              <option value="personal">{dict.scopes.personal}</option>
               <option value="business">{dict.scopes.business}</option>
+              <option value="personal">{dict.scopes.personal}</option>
               <option value="family">{dict.scopes.family}</option>
+              <option value="general">General</option>
             </Select>
             <SortSelect
               label={dict.common.sortBy}
@@ -2274,10 +2299,10 @@ export function NotesView({
               className="w-auto h-9 text-xs"
               aria-label="Note Scope"
             >
-              <option value="general">General</option>
-              <option value="personal">{dict.scopes.personal}</option>
               <option value="business">{dict.scopes.business}</option>
+              <option value="personal">{dict.scopes.personal}</option>
               <option value="family">{dict.scopes.family}</option>
+              <option value="general">General</option>
             </Select>
 
             {/* Templates Selector */}
@@ -2714,10 +2739,10 @@ export function NotesView({
               onChange={(e) => setBulkScope(e.target.value as NoteScope)}
               className="rounded-lg bg-slate-800 border border-slate-700 px-2 py-1 text-xs text-white focus:outline-none"
             >
-              <option value="general">General</option>
-              <option value="personal">{dict.scopes.personal}</option>
               <option value="business">{dict.scopes.business}</option>
+              <option value="personal">{dict.scopes.personal}</option>
               <option value="family">{dict.scopes.family}</option>
+              <option value="general">General</option>
             </select>
             <Button
               variant="secondary"

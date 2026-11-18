@@ -19,27 +19,27 @@ export function buildWhatsAppLink(phone: string, message: string): string {
 export const SCOPE_META = {
   personal: {
     label: 'Personal',
-    badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
-    dotClass: 'bg-blue-600',
-    hex: '#2563eb',
-  },
-  business: {
-    label: 'Business',
-    badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
-    dotClass: 'bg-amber-600',
-    hex: '#d97706',
-  },
-  family: {
-    label: 'Family',
-    badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    badgeClass: 'bg-emerald-50/90 text-emerald-800 border-emerald-200',
     dotClass: 'bg-emerald-600',
     hex: '#059669',
   },
+  business: {
+    label: 'Business',
+    badgeClass: 'bg-amber-50/90 text-amber-900 border-amber-300/80',
+    dotClass: 'bg-[#C59B27]',
+    hex: '#C59B27',
+  },
+  family: {
+    label: 'Family',
+    badgeClass: 'bg-[#F3EFEA] text-[#111318] border-[#D6CFC2]',
+    dotClass: 'bg-[#111318]',
+    hex: '#111318',
+  },
   general: {
     label: 'General',
-    badgeClass: 'bg-slate-100 text-slate-700 border-slate-200',
-    dotClass: 'bg-slate-500',
-    hex: '#475569',
+    badgeClass: 'bg-[#F3EFEA] text-[#52504C] border-[#EAE5DC]',
+    dotClass: 'bg-[#858078]',
+    hex: '#52504C',
   },
 } as const;
 

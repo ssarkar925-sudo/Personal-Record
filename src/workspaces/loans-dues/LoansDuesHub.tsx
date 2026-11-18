@@ -97,21 +97,22 @@ export function LoansDuesHub({
       {/* 1. Header with Total Count & Selection Reset */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-800 flex items-center justify-center">
+          <div className="w-7 h-7 rounded-xl bg-[#111318] text-[#E5C158] flex items-center justify-center">
             <Landmark className="w-4 h-4" />
           </div>
-          <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+          <h3 className="text-sm font-display font-bold text-[#111318] uppercase tracking-wider">
             Loans & Khatabook
           </h3>
-          <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+          <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-[#F3EFEA] text-[#52504C] border border-[#E6E1D6]">
             {totalItemsCount} Total
           </span>
         </div>
 
         {selectedItem && (
           <button
+            type="button"
             onClick={() => onSelectItem(null)}
-            className="text-xs font-semibold text-indigo-700 hover:text-indigo-800 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+            className="text-xs font-semibold text-[#111318] hover:text-[#C59B27] bg-[#F3EFEA] border border-[#E6E1D6] px-2.5 py-1 rounded-xl transition-colors cursor-pointer"
           >
             Clear Selection
           </button>
@@ -119,22 +120,23 @@ export function LoansDuesHub({
       </div>
 
       {/* 2. Controls Card: Search, Triage Chips, Segmented Tabs */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-3 shadow-2xs space-y-2.5">
+      <div className="bg-white rounded-2xl border border-[#E6E1D6] p-3.5 shadow-[0_8px_24px_rgba(17,19,24,0.03)] space-y-3">
         {/* Instant Search Bar & Scope Filter */}
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#52504C]" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder="Search loans, people, banks, notes..."
-              className="w-full h-8 pl-8 pr-7 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white"
+              className="w-full h-8 pl-8 pr-7 text-xs bg-[#FAF8F5] border border-[#E6E1D6] rounded-xl text-[#111318] placeholder:text-[#52504C]/70 focus:outline-none focus:border-[#C59B27]"
             />
             {searchQuery && (
               <button
+                type="button"
                 onClick={() => onSearchChange('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#52504C] hover:text-[#111318]"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -143,12 +145,12 @@ export function LoansDuesHub({
           {onScopeChange && (
             <select
               value={scopeFilter}
-              onChange={(e) => onScopeChange(e.target.value as any)}
-              className="h-8 px-2 text-[11px] bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 capitalize cursor-pointer font-medium"
+              onChange={(e) => onScopeChange(e.target.value as Scope | 'all')}
+              className="h-8 px-2 text-[11px] bg-[#FAF8F5] border border-[#E6E1D6] rounded-xl text-[#111318] focus:outline-none focus:border-[#C59B27] cursor-pointer font-semibold"
             >
               <option value="all">All Scopes</option>
-              <option value="personal">Personal</option>
               <option value="business">Business</option>
+              <option value="personal">Personal</option>
               <option value="family">Family</option>
             </select>
           )}
@@ -159,10 +161,10 @@ export function LoansDuesHub({
           <button
             type="button"
             onClick={() => onTriageChange('all')}
-            className={`px-2 py-1 rounded-lg shrink-0 font-medium transition-all cursor-pointer ${
+            className={`px-2.5 py-1 rounded-xl shrink-0 font-semibold transition-all cursor-pointer ${
               triageFilter === 'all'
-                ? 'bg-slate-900 text-white shadow-2xs font-bold'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-[#111318] text-[#FAF8F5] font-bold'
+                : 'bg-[#F3EFEA] text-[#52504C] hover:text-[#111318]'
             }`}
           >
             All ({totalItemsCount})
@@ -172,10 +174,10 @@ export function LoansDuesHub({
             <button
               type="button"
               onClick={() => onTriageChange('due_soon')}
-              className={`px-2 py-1 rounded-lg shrink-0 font-medium flex items-center gap-1 transition-all cursor-pointer ${
+              className={`px-2.5 py-1 rounded-xl shrink-0 font-semibold flex items-center gap-1 transition-all cursor-pointer ${
                 triageFilter === 'due_soon'
-                  ? 'bg-amber-600 text-white shadow-2xs font-bold'
-                  : 'bg-amber-50 text-amber-800 border border-amber-200/80 hover:bg-amber-100'
+                  ? 'bg-[#D97706] text-white font-bold'
+                  : 'bg-[#D97706]/10 text-[#D97706] border border-[#D97706]/25'
               }`}
             >
               <AlertTriangle className="w-3 h-3" />
@@ -186,36 +188,36 @@ export function LoansDuesHub({
           <button
             type="button"
             onClick={() => onTriageChange('you_owe')}
-            className={`px-2 py-1 rounded-lg shrink-0 font-medium flex items-center gap-1 transition-all cursor-pointer ${
+            className={`px-2.5 py-1 rounded-xl shrink-0 font-semibold flex items-center gap-1 transition-all cursor-pointer ${
               triageFilter === 'you_owe'
-                ? 'bg-rose-600 text-white shadow-2xs font-bold'
-                : 'bg-rose-50 text-rose-800 border border-rose-200/80 hover:bg-rose-100'
+                ? 'bg-[#E11D48] text-white font-bold'
+                : 'bg-[#E11D48]/10 text-[#E11D48] border border-[#E11D48]/25'
             }`}
           >
-            <ArrowUpRight className="w-3 h-3 text-rose-600" />
+            <ArrowUpRight className="w-3 h-3" />
             <span>You Owe ({totalYouOweCount})</span>
           </button>
 
           <button
             type="button"
             onClick={() => onTriageChange('you_are_owed')}
-            className={`px-2 py-1 rounded-lg shrink-0 font-medium flex items-center gap-1 transition-all cursor-pointer ${
+            className={`px-2.5 py-1 rounded-xl shrink-0 font-semibold flex items-center gap-1 transition-all cursor-pointer ${
               triageFilter === 'you_are_owed'
-                ? 'bg-emerald-600 text-white shadow-2xs font-bold'
-                : 'bg-emerald-50 text-emerald-800 border border-emerald-200/80 hover:bg-emerald-100'
+                ? 'bg-[#059669] text-white font-bold'
+                : 'bg-[#059669]/10 text-[#059669] border border-[#059669]/25'
             }`}
           >
-            <ArrowDownLeft className="w-3 h-3 text-emerald-600" />
+            <ArrowDownLeft className="w-3 h-3" />
             <span>Owed to You ({totalOwedToYouCount})</span>
           </button>
 
           <button
             type="button"
             onClick={() => onTriageChange('bank_loans')}
-            className={`px-2 py-1 rounded-lg shrink-0 font-medium flex items-center gap-1 transition-all cursor-pointer ${
+            className={`px-2.5 py-1 rounded-xl shrink-0 font-semibold flex items-center gap-1 transition-all cursor-pointer ${
               triageFilter === 'bank_loans'
-                ? 'bg-blue-600 text-white shadow-2xs font-bold'
-                : 'bg-blue-50 text-blue-800 border border-blue-200/80 hover:bg-blue-100'
+                ? 'bg-[#111318] text-[#E5C158] font-bold'
+                : 'bg-[#F3EFEA] text-[#52504C] hover:text-[#111318]'
             }`}
           >
             <Landmark className="w-3 h-3" />
@@ -225,10 +227,10 @@ export function LoansDuesHub({
           <button
             type="button"
             onClick={() => onTriageChange('settled')}
-            className={`px-2 py-1 rounded-lg shrink-0 font-medium flex items-center gap-1 transition-all cursor-pointer ${
+            className={`px-2.5 py-1 rounded-xl shrink-0 font-semibold flex items-center gap-1 transition-all cursor-pointer ${
               triageFilter === 'settled'
-                ? 'bg-slate-700 text-white shadow-2xs font-bold'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-[#111318] text-white font-bold'
+                : 'bg-[#F3EFEA] text-[#52504C] hover:text-[#111318]'
             }`}
           >
             <CheckCircle2 className="w-3 h-3" />
@@ -237,8 +239,8 @@ export function LoansDuesHub({
         </div>
 
         {/* Segmented Module Tabs & Layout Switcher */}
-        <div className="flex items-center justify-between pt-1 border-t border-slate-100">
-          <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-xl text-[11px] font-semibold">
+        <div className="flex items-center justify-between pt-2 border-t border-[#E6E1D6]/70">
+          <div className="flex items-center gap-1 p-0.5 bg-[#F3EFEA] rounded-xl text-[11px] font-semibold">
             {(
               [
                 ['all', `All (${totalItemsCount})`],
@@ -253,8 +255,8 @@ export function LoansDuesHub({
                 onClick={() => onTabChange(tabKey)}
                 className={`py-1 px-2.5 rounded-lg transition-all text-center cursor-pointer ${
                   activeTab === tabKey
-                    ? 'bg-white text-slate-900 shadow-2xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white text-[#111318] shadow-2xs font-bold'
+                    : 'text-[#52504C] hover:text-[#111318]'
                 }`}
               >
                 {label}
@@ -277,40 +279,38 @@ export function LoansDuesHub({
               />
             )}
 
-            {/* View Mode Toggle: Split Workstation vs Bento Grid */}
-            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg">
-              <button
-                type="button"
-                onClick={() => onLayoutChange('split')}
-                className={`p-1 rounded transition-colors cursor-pointer ${
-                  workstationLayout === 'split'
-                    ? 'bg-white text-slate-900 shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
-                title="Split Dual-Pane Workstation"
-              >
-                <Split className="w-3.5 h-3.5" />
-              </button>
+            <div className="flex items-center gap-1 bg-[#F3EFEA] p-0.5 rounded-lg border border-[#E6E1D6]">
               <button
                 type="button"
                 onClick={() => onLayoutChange('bento')}
                 className={`p-1 rounded transition-colors cursor-pointer ${
                   workstationLayout === 'bento'
-                    ? 'bg-white text-slate-900 shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-900'
+                    ? 'bg-[#111318] text-[#E5C158] shadow-2xs'
+                    : 'text-[#52504C] hover:text-[#111318]'
                 }`}
-                title="Executive Bento Grid"
+                title="3D Metallic Bento Cards"
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onLayoutChange('split')}
+                className={`p-1 rounded transition-colors cursor-pointer ${
+                  workstationLayout === 'split'
+                    ? 'bg-[#111318] text-[#E5C158] shadow-2xs'
+                    : 'text-[#52504C] hover:text-[#111318]'
+                }`}
+                title="Split Dual-Pane Workstation"
+              >
+                <Split className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 3. High-Density Scalable List (Handles 15-30+ items effortlessly) */}
+      {/* 3. High-Density Scalable List */}
       <div className="space-y-2 max-h-[640px] overflow-y-auto pr-1">
-        {/* Render Loans */}
         {(activeTab === 'all' || activeTab === 'loans') &&
           filteredLoans.map((loan) => {
             const isSelected = selectedItem?.kind === 'loan' && selectedItem.data.id === loan.id;
@@ -321,81 +321,86 @@ export function LoansDuesHub({
               <div
                 key={`loan-${loan.id}`}
                 onClick={() => onSelectItem(isSelected ? null : { kind: 'loan', data: loan })}
-                className={`group relative rounded-xl p-3 border transition-all cursor-pointer ${
+                className={`group relative rounded-2xl p-3.5 border transition-all cursor-pointer ${
                   isSelected
-                    ? 'bg-indigo-50/50 border-indigo-600 shadow-xs ring-1 ring-indigo-500/20'
-                    : 'bg-white border-slate-200/90 hover:border-slate-300 shadow-2xs'
+                    ? 'bg-[#FAF8F5] border-[#111318] shadow-xs ring-1 ring-[#C59B27]/40'
+                    : 'bg-white border-[#E6E1D6] hover:border-[#C59B27]'
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                      className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
                         isClosed
-                          ? 'bg-slate-100 text-slate-500'
+                          ? 'bg-[#F3EFEA] text-[#52504C]'
                           : isLent
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-blue-100 text-blue-800'
+                            ? 'bg-[#059669]/12 text-[#059669]'
+                            : 'bg-[#111318] text-[#E5C158]'
                       }`}
                     >
                       <Landmark className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-semibold text-xs text-slate-900 truncate">{loan.name}</span>
+                        <span className="font-semibold text-xs text-[#111318] truncate">
+                          {loan.name}
+                        </span>
                         <span
-                          className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase ${
+                          className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded uppercase ${
                             isClosed
-                              ? 'bg-slate-100 text-slate-600'
+                              ? 'bg-[#F3EFEA] text-[#52504C]'
                               : isLent
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                : 'bg-blue-50 text-blue-700 border border-blue-200'
+                                ? 'bg-[#059669]/10 text-[#059669] border border-[#059669]/25'
+                                : 'bg-[#C59B27]/15 text-[#111318] border border-[#C59B27]/35'
                           }`}
                         >
                           {isClosed ? 'Closed' : isLent ? 'Lent Assist' : 'Bank Loan'}
                         </span>
                       </div>
-                      <div className="text-[11px] text-slate-500 truncate mt-0.5">
-                        {loan.counterparty} · {(loan.annualRateBps / 100).toFixed(2)}% APR · Next EMI: {loan.nextDueDate}
+                      <div className="text-[11px] text-[#52504C] truncate mt-0.5">
+                        {loan.counterparty} · {(loan.annualRateBps / 100).toFixed(2)}% APR · Next:{' '}
+                        {loan.nextDueDate}
                       </div>
                     </div>
                   </div>
 
                   <div className="text-right shrink-0 ml-2">
-                    <div className="font-mono text-xs font-bold text-slate-900">
+                    <div className="font-mono text-xs font-bold text-[#111318]">
                       {formatINR(loan.remainingMinor)}
                     </div>
-                    <div className="text-[10px] text-slate-500 font-mono">
+                    <div className="text-[10px] text-[#52504C] font-mono">
                       EMI: {formatINR(loan.emiMinor)}
                     </div>
                   </div>
                 </div>
 
-                {/* Inline Action Triggers on Hover */}
-                <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                  <span className="text-[11px] text-slate-400">
-                    Tenure: {loan.tenureMonths} mo
+                <div className="mt-2.5 pt-2 border-t border-[#E6E1D6]/70 flex items-center justify-between text-xs">
+                  <span className="text-[11px] text-[#52504C]">
+                    Tenure: {loan.tenureMonths} mo · {loan.scope}
                   </span>
 
                   <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                     {!isClosed && (
                       <button
+                        type="button"
                         onClick={() => onOpenPayEmi(loan)}
-                        className="px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-medium rounded-md shadow-2xs transition-colors cursor-pointer"
+                        className="px-2.5 py-0.5 bg-[#111318] hover:bg-[#232730] text-[#FAF8F5] text-[11px] font-semibold rounded-lg transition-colors cursor-pointer"
                       >
                         Pay EMI
                       </button>
                     )}
                     <button
+                      type="button"
                       onClick={() => onOpenEditLoan(loan)}
-                      className="p-1 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+                      className="p-1 text-[#52504C] hover:text-[#111318] rounded hover:bg-[#F3EFEA] transition-colors cursor-pointer"
                       title="Edit Loan"
                     >
                       <Pencil className="w-3 h-3" />
                     </button>
                     <button
+                      type="button"
                       onClick={() => onOpenDeleteConfirm('loan', loan.id, loan.name)}
-                      className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition-colors cursor-pointer"
+                      className="p-1 text-[#52504C] hover:text-[#E11D48] rounded hover:bg-rose-50 transition-colors cursor-pointer"
                       title="Delete Loan"
                     >
                       <Trash2 className="w-3 h-3" />
@@ -406,7 +411,6 @@ export function LoansDuesHub({
             );
           })}
 
-        {/* Render People Dues (Khatabook) */}
         {(activeTab === 'all' || activeTab === 'dues') &&
           filteredDues.map((due) => {
             const isSelected = selectedItem?.kind === 'due' && selectedItem.data.id === due.id;
@@ -417,41 +421,43 @@ export function LoansDuesHub({
               <div
                 key={`due-${due.id}`}
                 onClick={() => onSelectItem(isSelected ? null : { kind: 'due', data: due })}
-                className={`group relative rounded-xl p-3 border transition-all cursor-pointer ${
+                className={`group relative rounded-2xl p-3.5 border transition-all cursor-pointer ${
                   isSelected
-                    ? 'bg-emerald-50/50 border-emerald-600 shadow-xs ring-1 ring-emerald-500/20'
-                    : 'bg-white border-slate-200/90 hover:border-slate-300 shadow-2xs'
+                    ? 'bg-[#FAF8F5] border-[#059669] shadow-xs ring-1 ring-[#059669]/30'
+                    : 'bg-white border-[#E6E1D6] hover:border-[#C59B27]'
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                      className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
                         isSettled
-                          ? 'bg-slate-100 text-slate-500'
+                          ? 'bg-[#F3EFEA] text-[#52504C]'
                           : isNeed
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-rose-100 text-rose-800'
+                            ? 'bg-[#059669]/12 text-[#059669]'
+                            : 'bg-[#E11D48]/12 text-[#E11D48]'
                       }`}
                     >
                       <Users className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-semibold text-xs text-slate-900 truncate">{due.personName}</span>
+                        <span className="font-semibold text-xs text-[#111318] truncate">
+                          {due.personName}
+                        </span>
                         <span
-                          className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase ${
+                          className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded uppercase ${
                             isSettled
-                              ? 'bg-slate-100 text-slate-600'
+                              ? 'bg-[#F3EFEA] text-[#52504C]'
                               : isNeed
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                ? 'bg-[#059669]/10 text-[#059669] border border-[#059669]/25'
+                                : 'bg-[#E11D48]/10 text-[#E11D48] border border-[#E11D48]/25'
                           }`}
                         >
-                          {isSettled ? 'Settled' : isNeed ? 'Need (Asset)' : 'Give (Liability)'}
+                          {isSettled ? 'Settled' : isNeed ? 'Owed to You' : 'You Owe'}
                         </span>
                       </div>
-                      <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                      <div className="text-[11px] text-[#52504C] truncate mt-0.5">
                         {due.phone ? `${due.phone} · ` : ''}
                         {due.note || 'No notes'}
                         {due.dueDate ? ` · Due: ${due.dueDate}` : ''}
@@ -462,42 +468,52 @@ export function LoansDuesHub({
                   <div className="text-right shrink-0 ml-2">
                     <div
                       className={`font-mono text-xs font-bold ${
-                        isSettled ? 'text-slate-400 line-through' : isNeed ? 'text-emerald-700' : 'text-rose-700'
+                        isSettled
+                          ? 'text-[#52504C] line-through'
+                          : isNeed
+                            ? 'text-[#059669]'
+                            : 'text-[#E11D48]'
                       }`}
                     >
                       {formatINR(due.remainingMinor)}
                     </div>
-                    <div className="text-[10px] text-slate-400 font-mono">
+                    <div className="text-[10px] text-[#52504C] font-mono">
                       of {formatINR(due.amountMinor)}
                     </div>
                   </div>
                 </div>
 
-                {/* Inline Action Triggers on Hover */}
-                <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                  <span className="text-[11px] text-slate-400 capitalize">
-                    Scope: {due.scope}
-                  </span>
+                <div className="mt-2.5 pt-2 border-t border-[#E6E1D6]/70 flex items-center justify-between text-xs">
+                  <span className="text-[11px] text-[#52504C] capitalize">Scope: {due.scope}</span>
 
                   <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                     {!isSettled && (
                       <button
+                        type="button"
                         onClick={() => onOpenSettleDue(due)}
-                        className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-medium rounded-md shadow-2xs transition-colors cursor-pointer"
+                        className="px-2.5 py-0.5 bg-[#059669] hover:bg-[#047857] text-white text-[11px] font-semibold rounded-lg transition-colors cursor-pointer"
                       >
                         Settle
                       </button>
                     )}
                     <button
+                      type="button"
                       onClick={() => onOpenEditDue(due)}
-                      className="p-1 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+                      className="p-1 text-[#52504C] hover:text-[#111318] rounded hover:bg-[#F3EFEA] transition-colors cursor-pointer"
                       title="Edit Due"
                     >
                       <Pencil className="w-3 h-3" />
                     </button>
                     <button
-                      onClick={() => onOpenDeleteConfirm('due', due.id, `${due.personName} (${formatINR(due.amountMinor)})`)}
-                      className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition-colors cursor-pointer"
+                      type="button"
+                      onClick={() =>
+                        onOpenDeleteConfirm(
+                          'due',
+                          due.id,
+                          `${due.personName} (${formatINR(due.amountMinor)})`,
+                        )
+                      }
+                      className="p-1 text-[#52504C] hover:text-[#E11D48] rounded hover:bg-rose-50 transition-colors cursor-pointer"
                       title="Delete Due"
                     >
                       <Trash2 className="w-3 h-3" />
@@ -508,60 +524,66 @@ export function LoansDuesHub({
             );
           })}
 
-        {/* Render Savings Goals */}
         {(activeTab === 'all' || activeTab === 'goals') &&
           filteredGoals.map((g) => {
             const isSelected = selectedItem?.kind === 'goal' && selectedItem.data.id === g.id;
-            const pct = g.targetMinor > 0 ? Math.min(100, Math.round((g.currentMinor / g.targetMinor) * 100)) : 0;
+            const pct =
+              g.targetMinor > 0
+                ? Math.min(100, Math.round((g.currentMinor / g.targetMinor) * 100))
+                : 0;
 
             return (
               <div
                 key={`goal-${g.id}`}
                 onClick={() => onSelectItem(isSelected ? null : { kind: 'goal', data: g })}
-                className={`group relative rounded-xl p-3 border transition-all cursor-pointer ${
+                className={`group relative rounded-2xl p-3.5 border transition-all cursor-pointer ${
                   isSelected
-                    ? 'bg-emerald-50/50 border-emerald-600 shadow-xs ring-1 ring-emerald-500/20'
-                    : 'bg-white border-slate-200/90 hover:border-slate-300 shadow-2xs'
+                    ? 'bg-[#FAF8F5] border-[#C59B27] shadow-xs ring-1 ring-[#C59B27]/30'
+                    : 'bg-white border-[#E6E1D6] hover:border-[#C59B27]'
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                      <Target className="w-4 h-4" />
+                    <div className="w-8 h-8 rounded-xl bg-[#C59B27]/15 text-[#111318] flex items-center justify-center shrink-0">
+                      <Target className="w-4 h-4 text-[#C59B27]" />
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-semibold text-xs text-slate-900 truncate">{g.title}</span>
-                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span className="font-semibold text-xs text-[#111318] truncate">
+                          {g.title}
+                        </span>
+                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded uppercase bg-[#F3EFEA] text-[#52504C] border border-[#E6E1D6]">
                           {g.kind}
                         </span>
                       </div>
-                      <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                      <div className="text-[11px] text-[#52504C] truncate mt-0.5">
                         Target: {formatINR(g.targetMinor)} · {pct}% funded
                       </div>
                     </div>
                   </div>
 
                   <div className="text-right shrink-0 ml-2">
-                    <div className="font-mono text-xs font-bold text-emerald-700">
+                    <div className="font-mono text-xs font-bold text-[#059669]">
                       {formatINR(g.currentMinor)}
                     </div>
-                    <div className="text-[10px] text-slate-400">
+                    <div className="text-[10px] text-[#52504C]">
                       {g.targetDate ? `Due ${g.targetDate}` : 'Ongoing'}
                     </div>
                   </div>
                 </div>
 
-                {/* Progress bar */}
-                <div className="w-full bg-slate-100 h-1 rounded-full mt-2 overflow-hidden">
-                  <div className="h-full bg-emerald-600 transition-all duration-300" style={{ width: `${pct}%` }} />
+                <div className="w-full bg-[#F3EFEA] h-1.5 rounded-full mt-2.5 overflow-hidden">
+                  <div
+                    className="h-full bg-[#059669] transition-all duration-300"
+                    style={{ width: `${pct}%` }}
+                  />
                 </div>
               </div>
             );
           })}
 
         {filteredLoans.length === 0 && filteredDues.length === 0 && filteredGoals.length === 0 && (
-          <div className="p-8 text-center rounded-xl border border-dashed border-slate-200 bg-white text-xs text-slate-500">
+          <div className="p-8 text-center rounded-2xl border border-dashed border-[#E6E1D6] bg-white text-xs text-[#52504C]">
             No loans, people dues, or goals matching this filter or search query.
           </div>
         )}

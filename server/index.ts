@@ -108,6 +108,12 @@ import {
   upsertNote,
 } from './db/notes-repo.ts';
 import {
+  createJobSheet,
+  deleteJobSheet,
+  listJobSheets,
+  updateJobSheet,
+} from './db/job-sheets-repo.ts';
+import {
   deleteVaultEntry,
   getVaultMeta,
   listVaultEntries,
@@ -901,6 +907,54 @@ export function createAppServer(opts: {
         }
       }
 
+      // Multi-Tab Job Sheets Workbook
+      if (method === 'GET' && pathname === '/api/job-sheets') {
+        return sendJson(res, 200, { data: listJobSheets(db) });
+      }
+      if (method === 'POST' && pathname === '/api/job-sheets') {
+        const body = (await readJsonBody(req, 25_000_000)) as {
+          name?: string;
+          scope?: Scope;
+          color?: 'gold' | 'emerald' | 'obsidian' | 'rose' | 'slate';
+          columns?: any[];
+          rows?: any[];
+          settings?: any;
+          orderIndex?: number;
+        };
+        const created = createJobSheet(db, {
+          name: body.name || 'New Job Sheet',
+          scope: body.scope && (SCOPES as readonly string[]).includes(body.scope) ? body.scope : 'business',
+          color: body.color || 'gold',
+          columns: Array.isArray(body.columns) ? body.columns : [],
+          rows: Array.isArray(body.rows) ? body.rows : [],
+          settings: body.settings,
+          orderIndex: typeof body.orderIndex === 'number' ? body.orderIndex : undefined,
+        });
+        return sendJson(res, 201, { data: created });
+      }
+      const sheetIdMatch = pathname.match(/^\/api\/job-sheets\/([^/]+)$/);
+      if (sheetIdMatch) {
+        const sheetId = sheetIdMatch[1];
+        if (method === 'PUT' || method === 'PATCH') {
+          const body = (await readJsonBody(req, 25_000_000)) as {
+            name?: string;
+            scope?: Scope;
+            color?: 'gold' | 'emerald' | 'obsidian' | 'rose' | 'slate';
+            columns?: any[];
+            rows?: any[];
+            settings?: any;
+            orderIndex?: number;
+          };
+          const updated = updateJobSheet(db, sheetId, body);
+          if (!updated) return sendError(res, 404, 'NOT_FOUND', 'Job sheet not found');
+          return sendJson(res, 200, { data: updated });
+        }
+        if (method === 'DELETE') {
+          if (!deleteJobSheet(db, sheetId)) return sendError(res, 404, 'NOT_FOUND', 'Job sheet not found');
+          return sendJson(res, 200, { ok: true });
+        }
+      }
+
       // Vault (Ciphertext + Security Metadata ONLY)
       if (method === 'GET' && pathname === '/api/vault/meta') {
         return sendJson(res, 200, { data: getVaultMeta(db) });
@@ -1453,6 +1507,7 @@ export function createAppServer(opts: {
         if (fs.existsSync(safePath)) {
           const ext = path.extname(safePath);
           setSecurityHeaders(res);
+          res.removeHeader('X-Frame-Options');
           res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] ?? 'application/octet-stream' });
           return fs.createReadStream(safePath).pipe(res);
         }
@@ -1494,7 +1549,11 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(thisFile))
     void bridge.connect();
   }
 
-  const port = Number(process.env.PORT || 4173);
+  const argv = process.argv.slice(2);
+  const portArgIdx = argv.indexOf('--port');
+  const hostArgIdx = argv.indexOf('--host');
+  const port = Number((portArgIdx !== -1 && argv[portArgIdx + 1]) || process.env.PORT || 3000);
+  const host = (hostArgIdx !== -1 && argv[hostArgIdx + 1]) || process.env.HOST || '0.0.0.0';
   const server = createAppServer({ db, transport: bridge, staticDir: distDir });
 
   // Evaluate alerts immediately on boot/wakeup, then every 60s
@@ -1518,8 +1577,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(thisFile))
     },
   });
 
-  server.listen(port, '127.0.0.1', () => {
-    console.log(`Personal Ledger running at http://127.0.0.1:${port}`);
+  server.listen(port, host, () => {
+    console.log(`Personal Ledger running at http://${host}:${port}`);
   });
 
   const shutdown = async () => {

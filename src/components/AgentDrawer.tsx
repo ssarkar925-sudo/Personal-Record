@@ -302,7 +302,7 @@ export function AgentDrawer({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex justify-end bg-slate-900/25 backdrop-blur-[1px]"
+      className="fixed inset-0 z-50 flex justify-end bg-slate-900/30"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

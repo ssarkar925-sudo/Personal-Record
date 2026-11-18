@@ -1,11 +1,12 @@
 import React from 'react';
 import { Calculator } from 'lucide-react';
-import { Badge, Card, SortSelect } from '../../components/ui/Primitives.tsx';
+import { Badge, SortSelect } from '../../components/ui/Primitives.tsx';
 import { MeterBar } from '../../components/charts/AnimatedCharts.tsx';
 import { formatINR, SCOPE_META } from '../../lib/format.ts';
 import type { DetailedReports } from '../../lib/api.ts';
 import type { Scope } from '../../../shared/ledger-core.ts';
 import type { CatSortOption } from './types.ts';
+import { computeBudgetVarianceRows } from './reportsAnalytics.ts';
 
 interface CategoryBudgetsWorkstationProps {
   data: DetailedReports;
@@ -32,9 +33,14 @@ export const CategoryBudgetsWorkstation: React.FC<CategoryBudgetsWorkstationProp
   const expenseCategories = sortCats(data.categories.filter((c) => c.kind === 'expense'));
   const incomeCategories = sortCats(data.categories.filter((c) => c.kind === 'income'));
   const topExpenseCatMinor = Math.max(100, ...expenseCategories.map((c) => c.totalMinor));
+  const varianceRows = computeBudgetVarianceRows(
+    data.categories,
+    data.categoryBudgets ?? [],
+    today,
+  );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Top Sort Controls */}
       <div className="flex justify-end">
         <SortSelect
@@ -50,139 +56,153 @@ export const CategoryBudgetsWorkstation: React.FC<CategoryBudgetsWorkstationProp
       </div>
 
       {/* Budget vs Actual Variance Table */}
-      {(data.categoryBudgets ?? []).length > 0 && (
-        <Card className="p-4 border-slate-200/90 bg-white shadow-2xs">
-          <div className="flex items-center justify-between mb-3">
+      {varianceRows.length > 0 && (
+        <div className="rounded-3xl p-5 border border-[#E6E1D6] bg-white shadow-[0_8px_24px_rgba(17,19,24,0.03)]">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-1.5">
-                <Calculator className="h-4 w-4 text-indigo-600" />
+              <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[#C59B27] font-bold block">
+                ENVELOPE BURN-RATE TELEMETRY
+              </span>
+              <h3 className="font-display text-sm font-bold text-[#111318] flex items-center gap-1.5 mt-0.5">
+                <Calculator className="h-4 w-4 text-[#C59B27]" />
                 Budget vs Actual Variance &amp; Month-End Run-Rate Forecast
               </h3>
-              <p className="text-xs text-slate-500">
-                Live burn-rate projections based on elapsed days in current month
-              </p>
             </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs tabular-nums">
               <thead>
-                <tr className="border-b border-slate-200 text-slate-500">
-                  <th className="py-2.5 pr-3 font-medium">Category</th>
-                  <th className="py-2.5 pr-3 font-medium">Scope</th>
-                  <th className="py-2.5 pr-3 font-medium text-right">Monthly Cap</th>
-                  <th className="py-2.5 pr-3 font-medium text-right">Actual Spend</th>
-                  <th className="py-2.5 pr-3 font-medium text-right">Variance</th>
-                  <th className="py-2.5 pr-3 font-medium text-right">Projected EOM</th>
-                  <th className="py-2.5 font-medium text-right">Status</th>
-                  <th className="py-2.5 font-medium text-right">Action</th>
+                <tr className="border-b border-[#E6E1D6] text-[#52504C] font-mono uppercase text-[10px] tracking-wider">
+                  <th className="py-2.5 pr-3 font-bold">Category</th>
+                  <th className="py-2.5 pr-3 font-bold">Scope</th>
+                  <th className="py-2.5 pr-3 font-bold text-right">Monthly Cap</th>
+                  <th className="py-2.5 pr-3 font-bold text-right">Actual Spend</th>
+                  <th className="py-2.5 pr-3 font-bold text-right">Variance</th>
+                  <th className="py-2.5 pr-3 font-bold text-right">Projected EOM</th>
+                  <th className="py-2.5 font-bold text-right">Status</th>
+                  <th className="py-2.5 font-bold text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {(data.categoryBudgets ?? []).map((b) => {
-                  const spentMinor =
-                    expenseCategories.find(
-                      (c) => c.scope === b.scope && c.category.toLowerCase() === b.category.toLowerCase(),
-                    )?.totalMinor ?? 0;
-                  const varianceMinor = b.monthlyLimitMinor - spentMinor;
-                  const pct = Math.round((spentMinor / b.monthlyLimitMinor) * 100);
-                  const dayOfMonth = Math.max(1, Number(today.slice(8, 10)));
-                  const daysInMonth = new Date(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0).getDate();
-                  const projectedMinor = Math.round((spentMinor / dayOfMonth) * daysInMonth);
-
-                  return (
-                    <tr key={b.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-2.5 pr-3 font-semibold text-slate-900">{b.category}</td>
-                      <td className="py-2.5 pr-3">
-                        <Badge className={SCOPE_META[b.scope].badgeClass}>{SCOPE_META[b.scope].label}</Badge>
-                      </td>
-                      <td className="py-2.5 pr-3 text-right">{formatINR(b.monthlyLimitMinor)}</td>
-                      <td className="py-2.5 pr-3 text-right font-medium">{formatINR(spentMinor)}</td>
-                      <td
-                        className={`py-2.5 pr-3 text-right font-semibold ${
-                          varianceMinor < 0 ? 'text-rose-700' : 'text-emerald-700'
+              <tbody className="divide-y divide-[#E6E1D6]/60 font-mono">
+                {varianceRows.map((row) => (
+                  <tr key={row.id} className="hover:bg-[#FAF8F5] transition-colors">
+                    <td className="py-3 pr-3 font-sans font-semibold text-[#111318]">
+                      {row.category}
+                    </td>
+                    <td className="py-3 pr-3 font-sans">
+                      <Badge className={SCOPE_META[row.scope].badgeClass}>
+                        {SCOPE_META[row.scope].label}
+                      </Badge>
+                    </td>
+                    <td className="py-3 pr-3 text-right text-[#111318]">
+                      {formatINR(row.monthlyLimitMinor)}
+                    </td>
+                    <td className="py-3 pr-3 text-right font-semibold text-[#111318]">
+                      {formatINR(row.spentMinor)}
+                    </td>
+                    <td
+                      className={`py-3 pr-3 text-right font-bold ${
+                        row.varianceMinor < 0 ? 'text-[#E11D48]' : 'text-[#059669]'
+                      }`}
+                    >
+                      {row.varianceMinor < 0
+                        ? `+${formatINR(Math.abs(row.varianceMinor))} Over`
+                        : `${formatINR(row.varianceMinor)} Left`}
+                    </td>
+                    <td className="py-3 pr-3 text-right text-[#52504C]">
+                      ~{formatINR(row.projectedEomMinor)}
+                    </td>
+                    <td className="py-3 text-right font-sans">
+                      <span
+                        className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                          row.status === 'over_cap'
+                            ? 'bg-[#E11D48]/10 text-[#E11D48] border-[#E11D48]/25'
+                            : row.status === 'caution'
+                              ? 'bg-[#D97706]/10 text-[#D97706] border-[#D97706]/25'
+                              : 'bg-[#059669]/10 text-[#059669] border-[#059669]/25'
                         }`}
                       >
-                        {varianceMinor < 0
-                          ? `+${formatINR(Math.abs(varianceMinor))} Over`
-                          : `${formatINR(varianceMinor)} Left`}
-                      </td>
-                      <td className="py-2.5 pr-3 text-right text-slate-700 font-medium">
-                        ~{formatINR(projectedMinor)}
-                      </td>
-                      <td className="py-2.5 text-right">
-                        <Badge
-                          className={
-                            pct >= 100
-                              ? 'bg-rose-50 text-rose-700 border-rose-200'
-                              : pct >= 80
-                                ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          }
-                        >
-                          {pct >= 100 ? 'Over Cap' : pct >= 80 ? 'Caution' : 'On Track'} ({pct}%)
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 text-right">
-                        <button
-                          type="button"
-                          onClick={() => onOpenBudgetModal(b.scope, b.category)}
-                          className="text-[11px] font-medium text-indigo-600 hover:underline cursor-pointer"
-                        >
-                          Edit
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                        {row.status === 'over_cap'
+                          ? 'Over Cap'
+                          : row.status === 'caution'
+                            ? 'Caution'
+                            : 'On Track'}{' '}
+                        ({row.utilizationPct}%)
+                      </span>
+                    </td>
+                    <td className="py-3 text-right font-sans">
+                      <button
+                        type="button"
+                        onClick={() => onOpenBudgetModal(row.scope, row.category)}
+                        className="text-[11px] font-semibold text-[#111318] hover:text-[#C59B27] underline cursor-pointer"
+                      >
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
-        </Card>
+        </div>
       )}
 
       {/* Grid: Expense Categories & Income Sources */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Top Expense Categories */}
-        <Card className="p-4 border-slate-200/90 bg-white shadow-2xs">
-          <div className="flex items-center justify-between mb-3">
+        <div className="rounded-3xl p-5 border border-[#E6E1D6] bg-white shadow-[0_8px_24px_rgba(17,19,24,0.03)]">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Top Expense Categories</h2>
-              <p className="text-xs text-slate-500">Visual envelope limits and volume breakdown</p>
+              <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[#C59B27] font-bold block">
+                OUTFLOW ENVELOPES
+              </span>
+              <h2 className="font-display text-sm font-bold text-[#111318]">
+                Top Expense Categories
+              </h2>
             </div>
-            <span className="text-xs text-slate-400 font-medium">{expenseCategories.length} categories</span>
+            <span className="text-xs font-mono text-[#52504C] font-semibold">
+              {expenseCategories.length} categories
+            </span>
           </div>
           <div className="space-y-3">
             {expenseCategories.length === 0 ? (
-              <p className="text-xs text-slate-500 py-6 text-center">No expense entries in range.</p>
+              <p className="text-xs text-[#52504C] py-6 text-center">No expense entries in range.</p>
             ) : (
               expenseCategories.map((c) => {
                 const catBudget = (data.categoryBudgets ?? []).find(
-                  (b) => b.scope === c.scope && b.category.toLowerCase() === c.category.toLowerCase(),
+                  (b) =>
+                    b.scope === c.scope &&
+                    b.category.toLowerCase() === c.category.toLowerCase(),
                 );
                 const budgetLimitMinor = catBudget?.monthlyLimitMinor;
-                const budgetPct = budgetLimitMinor ? Math.round((c.totalMinor / budgetLimitMinor) * 100) : null;
+                const budgetPct = budgetLimitMinor
+                  ? Math.round((c.totalMinor / budgetLimitMinor) * 100)
+                  : null;
                 return (
                   <div
                     key={`${c.scope}-${c.category}`}
-                    className="space-y-1.5 rounded-lg border border-slate-100 p-2.5 hover:bg-slate-50/70 transition-colors"
+                    className="space-y-1.5 rounded-2xl border border-[#E6E1D6] bg-[#FAF8F5] p-3 hover:border-[#C59B27] transition-colors"
                   >
                     <div className="flex items-center justify-between text-xs">
-                      <span className="inline-flex items-center gap-2 font-medium text-slate-800">
+                      <span className="inline-flex items-center gap-2 font-semibold text-[#111318]">
                         {c.category}
-                        <Badge className={SCOPE_META[c.scope].badgeClass}>{SCOPE_META[c.scope].label}</Badge>
+                        <Badge className={SCOPE_META[c.scope].badgeClass}>
+                          {SCOPE_META[c.scope].label}
+                        </Badge>
                       </span>
                       <div className="flex items-center gap-2">
-                        <span className="tabular-nums font-semibold text-slate-900">
-                          {formatINR(c.totalMinor)} <span className="text-slate-400 font-normal">({c.count})</span>
+                        <span className="font-mono tabular-nums font-bold text-[#111318]">
+                          {formatINR(c.totalMinor)}{' '}
+                          <span className="text-[#52504C] font-normal">({c.count})</span>
                         </span>
                         <button
                           type="button"
                           onClick={() => onOpenBudgetModal(c.scope, c.category)}
-                          className={`text-[11px] font-medium hover:underline cursor-pointer ${
-                            catBudget ? 'text-indigo-600' : 'text-slate-400 hover:text-indigo-600'
+                          className={`text-[11px] font-semibold hover:underline cursor-pointer ${
+                            catBudget ? 'text-[#C59B27]' : 'text-[#52504C] hover:text-[#111318]'
                           }`}
                         >
-                          {catBudget ? 'Edit Budget' : '+ Budget'}
+                          {catBudget ? 'Edit Cap' : '+ Cap'}
                         </button>
                       </div>
                     </div>
@@ -192,15 +212,15 @@ export const CategoryBudgetsWorkstation: React.FC<CategoryBudgetsWorkstationProp
                       heightClass="h-1.5"
                     />
                     {catBudget && (
-                      <div className="flex justify-between text-[11px] text-slate-500 pt-0.5 tabular-nums">
+                      <div className="flex justify-between text-[11px] text-[#52504C] pt-0.5 font-mono tabular-nums">
                         <span>Cap: {formatINR(catBudget.monthlyLimitMinor)}</span>
                         <span
                           className={
                             (budgetPct ?? 0) >= 100
-                              ? 'text-rose-700 font-semibold'
+                              ? 'text-[#E11D48] font-bold'
                               : (budgetPct ?? 0) >= 80
-                                ? 'text-amber-700 font-semibold'
-                                : 'text-slate-600'
+                                ? 'text-[#D97706] font-bold'
+                                : 'text-[#059669] font-semibold'
                           }
                         >
                           {budgetPct}% utilized
@@ -212,38 +232,47 @@ export const CategoryBudgetsWorkstation: React.FC<CategoryBudgetsWorkstationProp
               })
             )}
           </div>
-        </Card>
+        </div>
 
         {/* Income Sources */}
-        <Card className="p-4 border-slate-200/90 bg-white shadow-2xs">
-          <div className="flex items-center justify-between mb-3">
+        <div className="rounded-3xl p-5 border border-[#E6E1D6] bg-white shadow-[0_8px_24px_rgba(17,19,24,0.03)]">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Income Inflow Sources</h2>
-              <p className="text-xs text-slate-500">Revenue lines, salary deposits, and client settlements</p>
+              <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[#059669] font-bold block">
+                INFLOW STREAMS
+              </span>
+              <h2 className="font-display text-sm font-bold text-[#111318]">
+                Income Inflow Sources
+              </h2>
             </div>
-            <span className="text-xs text-slate-400 font-medium">{incomeCategories.length} sources</span>
+            <span className="text-xs font-mono text-[#52504C] font-semibold">
+              {incomeCategories.length} sources
+            </span>
           </div>
           <div className="space-y-2.5">
             {incomeCategories.length === 0 ? (
-              <p className="text-xs text-slate-500 py-6 text-center">No income entries in range.</p>
+              <p className="text-xs text-[#52504C] py-6 text-center">No income entries in range.</p>
             ) : (
               incomeCategories.map((c) => (
                 <div
                   key={`${c.scope}-${c.category}`}
-                  className="flex items-center justify-between rounded-lg border border-slate-100 p-2.5 text-xs hover:bg-slate-50/70 transition-colors"
+                  className="flex items-center justify-between rounded-2xl border border-[#E6E1D6] bg-[#FAF8F5] p-3 text-xs hover:border-[#059669] transition-colors"
                 >
-                  <span className="inline-flex items-center gap-2 font-medium text-slate-800">
+                  <span className="inline-flex items-center gap-2 font-semibold text-[#111318]">
                     {c.category}
-                    <Badge className={SCOPE_META[c.scope].badgeClass}>{SCOPE_META[c.scope].label}</Badge>
+                    <Badge className={SCOPE_META[c.scope].badgeClass}>
+                      {SCOPE_META[c.scope].label}
+                    </Badge>
                   </span>
-                  <span className="font-semibold text-emerald-700 tabular-nums">
-                    +{formatINR(c.totalMinor)} <span className="text-slate-400 font-normal">({c.count})</span>
+                  <span className="font-mono font-bold text-[#059669] tabular-nums">
+                    +{formatINR(c.totalMinor)}{' '}
+                    <span className="text-[#52504C] font-normal">({c.count})</span>
                   </span>
                 </div>
               ))
             )}
           </div>
-        </Card>
+        </div>
       </div>
     </div>
   );

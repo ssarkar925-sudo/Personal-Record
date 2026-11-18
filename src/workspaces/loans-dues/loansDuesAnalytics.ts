@@ -1,0 +1,336 @@
+import type {
+  LoanRecord,
+  PersonDueRecord,
+  SavingsGoalRecord,
+} from '../../lib/api.ts';
+import type { SelectedLoansItem } from './types.ts';
+
+export type LoanFoilFinish = 'auto' | 'obsidian' | 'gold' | 'emerald' | 'platinum' | 'crimson';
+
+export interface LoansDuesPortfolioMetrics {
+  totalBorrowedPrincipalMinor: number;
+  totalBorrowedRemainingMinor: number;
+  totalKhatabookGiveMinor: number;
+  totalBorrowingsMinor: number;
+  totalLentRemainingMinor: number;
+  totalKhatabookNeedMinor: number;
+  totalReceivablesMinor: number;
+  netDebtPositionMinor: number;
+  monthlyEmiCommitmentMinor: number;
+  weightedAvgAprBps: number;
+  principalClearedPct: number;
+  activeLoansCount: number;
+  openDuesCount: number;
+  urgentDueCount: number;
+  nextEmiLoan: LoanRecord | null;
+}
+
+export interface AmortizationProjectionPoint {
+  monthIndex: number;
+  monthLabel: string;
+  baselineMinor: number;
+  acceleratedMinor: number;
+  cumulativeInterestSavedMinor: number;
+}
+
+export interface LiabilityReceivableSlice {
+  id: 'bank_loans' | 'khatabook_give' | 'receivables_need' | 'savings_reserves';
+  label: string;
+  amountMinor: number;
+  sharePct: number;
+  color: string;
+  count: number;
+}
+
+export interface LoanCardMetallicTheme {
+  id: Exclude<LoanFoilFinish, 'auto'>;
+  label: string;
+  background: string;
+  border: string;
+  accentText: string;
+  badgeBg: string;
+  badgeText: string;
+  progressColor: string;
+}
+
+export function isDueWithinWindow(dateStr: string | null | undefined, currentDayOfMonth: number): boolean {
+  if (!dateStr) return false;
+  const parts = dateStr.split('-');
+  const dueDay = Number(parts[2]);
+  if (!Number.isFinite(dueDay) || dueDay <= 0) return false;
+  const diff = dueDay - currentDayOfMonth;
+  return (diff >= 0 && diff <= 7) || (diff < 0 && diff >= -3);
+}
+
+export function computeLoansDuesPortfolioMetrics(
+  loans: LoanRecord[],
+  dues: PersonDueRecord[],
+  currentDayOfMonth = new Date().getDate(),
+): LoansDuesPortfolioMetrics {
+  const activeBorrowedLoans = loans.filter((l) => l.direction === 'borrowed' && l.status === 'active');
+  const activeLentLoans = loans.filter((l) => l.direction === 'lent' && l.status === 'active');
+  const openGiveDues = dues.filter((d) => d.direction === 'give' && d.status !== 'settled');
+  const openNeedDues = dues.filter((d) => d.direction === 'need' && d.status !== 'settled');
+
+  const totalBorrowedPrincipalMinor = activeBorrowedLoans.reduce((sum, l) => sum + Math.max(0, l.principalMinor), 0);
+  const totalBorrowedRemainingMinor = activeBorrowedLoans.reduce((sum, l) => sum + Math.max(0, l.remainingMinor), 0);
+  const totalKhatabookGiveMinor = openGiveDues.reduce((sum, d) => sum + Math.max(0, d.remainingMinor), 0);
+  const totalBorrowingsMinor = totalBorrowedRemainingMinor + totalKhatabookGiveMinor;
+
+  const totalLentRemainingMinor = activeLentLoans.reduce((sum, l) => sum + Math.max(0, l.remainingMinor), 0);
+  const totalKhatabookNeedMinor = openNeedDues.reduce((sum, d) => sum + Math.max(0, d.remainingMinor), 0);
+  const totalReceivablesMinor = totalLentRemainingMinor + totalKhatabookNeedMinor;
+
+  const netDebtPositionMinor = totalBorrowingsMinor - totalReceivablesMinor;
+  const monthlyEmiCommitmentMinor = activeBorrowedLoans.reduce((sum, l) => sum + Math.max(0, l.emiMinor), 0);
+
+  const weightedNumer = activeBorrowedLoans.reduce(
+    (sum, l) => sum + Math.max(0, l.remainingMinor) * Math.max(0, l.annualRateBps),
+    0,
+  );
+  const weightedAvgAprBps =
+    totalBorrowedRemainingMinor > 0 ? Math.round(weightedNumer / totalBorrowedRemainingMinor) : 0;
+
+  const clearedMinor = Math.max(0, totalBorrowedPrincipalMinor - totalBorrowedRemainingMinor);
+  const principalClearedPct =
+    totalBorrowedPrincipalMinor > 0
+      ? Math.min(100, Math.round((clearedMinor / totalBorrowedPrincipalMinor) * 100))
+      : 100;
+
+  let urgentDueCount = 0;
+  for (const l of activeBorrowedLoans) {
+    if (isDueWithinWindow(l.nextDueDate, currentDayOfMonth)) urgentDueCount++;
+  }
+  for (const d of dues) {
+    if (d.status !== 'settled' && isDueWithinWindow(d.dueDate, currentDayOfMonth)) {
+      urgentDueCount++;
+    }
+  }
+
+  const nextEmiLoan =
+    activeBorrowedLoans
+      .slice()
+      .sort((a, b) => (a.nextDueDate || '9999').localeCompare(b.nextDueDate || '9999'))[0] || null;
+
+  return {
+    totalBorrowedPrincipalMinor,
+    totalBorrowedRemainingMinor,
+    totalKhatabookGiveMinor,
+    totalBorrowingsMinor,
+    totalLentRemainingMinor,
+    totalKhatabookNeedMinor,
+    totalReceivablesMinor,
+    netDebtPositionMinor,
+    monthlyEmiCommitmentMinor,
+    weightedAvgAprBps,
+    principalClearedPct,
+    activeLoansCount: activeBorrowedLoans.length,
+    openDuesCount: openGiveDues.length + openNeedDues.length,
+    urgentDueCount,
+    nextEmiLoan,
+  };
+}
+
+export function buildAmortizationProjectionSeries(
+  loans: LoanRecord[],
+  extraMonthlyMinor = 0,
+  horizonMonths = 12,
+): AmortizationProjectionPoint[] {
+  const activeBorrowed = loans
+    .filter((l) => l.direction === 'borrowed' && l.status === 'active' && l.remainingMinor > 0)
+    .sort((a, b) => b.annualRateBps - a.annualRateBps);
+
+  const baseBalances = activeBorrowed.map((l) => l.remainingMinor);
+  const accelBalances = activeBorrowed.map((l) => l.remainingMinor);
+
+  const initialTotal = baseBalances.reduce((sum, b) => sum + b, 0);
+  const points: AmortizationProjectionPoint[] = [
+    {
+      monthIndex: 0,
+      monthLabel: 'Now',
+      baselineMinor: initialTotal,
+      acceleratedMinor: initialTotal,
+      cumulativeInterestSavedMinor: 0,
+    },
+  ];
+
+  let cumBaseInterest = 0;
+  let cumAccelInterest = 0;
+
+  for (let m = 1; m <= horizonMonths; m++) {
+    // 1. Step Baseline
+    for (let i = 0; i < activeBorrowed.length; i++) {
+      const bal = baseBalances[i];
+      if (bal <= 0) continue;
+      const monthlyRate = activeBorrowed[i].annualRateBps / 10000 / 12;
+      const interest = Math.round(bal * monthlyRate);
+      cumBaseInterest += interest;
+      const emi = Math.max(interest + 100, activeBorrowed[i].emiMinor);
+      baseBalances[i] = Math.max(0, bal + interest - emi);
+    }
+
+    // 2. Step Accelerated (Avalanche extra allocation)
+    let extraPool = Math.max(0, extraMonthlyMinor);
+    for (let i = 0; i < activeBorrowed.length; i++) {
+      const bal = accelBalances[i];
+      if (bal <= 0) continue;
+      const monthlyRate = activeBorrowed[i].annualRateBps / 10000 / 12;
+      const interest = Math.round(bal * monthlyRate);
+      cumAccelInterest += interest;
+      const emi = Math.max(interest + 100, activeBorrowed[i].emiMinor);
+      const afterRegular = Math.max(0, bal + interest - emi);
+      const extraApplied = Math.min(afterRegular, extraPool);
+      accelBalances[i] = afterRegular - extraApplied;
+      extraPool -= extraApplied;
+    }
+
+    const baseSum = baseBalances.reduce((s, b) => s + b, 0);
+    const accelSum = accelBalances.reduce((s, b) => s + b, 0);
+
+    points.push({
+      monthIndex: m,
+      monthLabel: `M${m}`,
+      baselineMinor: baseSum,
+      acceleratedMinor: accelSum,
+      cumulativeInterestSavedMinor: Math.max(0, cumBaseInterest - cumAccelInterest),
+    });
+  }
+
+  return points;
+}
+
+export function computeLiabilityReceivableMix(
+  loans: LoanRecord[],
+  dues: PersonDueRecord[],
+  goals: SavingsGoalRecord[],
+): LiabilityReceivableSlice[] {
+  const borrowedLoans = loans.filter((l) => l.direction === 'borrowed' && l.status === 'active');
+  const lentLoans = loans.filter((l) => l.direction === 'lent' && l.status === 'active');
+  const giveDues = dues.filter((d) => d.direction === 'give' && d.status !== 'settled');
+  const needDues = dues.filter((d) => d.direction === 'need' && d.status !== 'settled');
+
+  const bankLoansMinor = borrowedLoans.reduce((s, l) => s + Math.max(0, l.remainingMinor), 0);
+  const khatabookGiveMinor = giveDues.reduce((s, d) => s + Math.max(0, d.remainingMinor), 0);
+  const receivablesNeedMinor =
+    lentLoans.reduce((s, l) => s + Math.max(0, l.remainingMinor), 0) +
+    needDues.reduce((s, d) => s + Math.max(0, d.remainingMinor), 0);
+  const savingsReservesMinor = goals.reduce((s, g) => s + Math.max(0, g.currentMinor), 0);
+
+  const totalMinor = Math.max(
+    1,
+    bankLoansMinor + khatabookGiveMinor + receivablesNeedMinor + savingsReservesMinor,
+  );
+
+  const raw: Omit<LiabilityReceivableSlice, 'sharePct'>[] = [
+    {
+      id: 'bank_loans',
+      label: 'Bank Loans (EMI)',
+      amountMinor: bankLoansMinor,
+      color: '#E11D48',
+      count: borrowedLoans.length,
+    },
+    {
+      id: 'khatabook_give',
+      label: 'You Owe (Khatabook)',
+      amountMinor: khatabookGiveMinor,
+      color: '#C59B27',
+      count: giveDues.length,
+    },
+    {
+      id: 'receivables_need',
+      label: 'Owed to You (Asset)',
+      amountMinor: receivablesNeedMinor,
+      color: '#059669',
+      count: needDues.length + lentLoans.length,
+    },
+    {
+      id: 'savings_reserves',
+      label: 'Funded Reserves',
+      amountMinor: savingsReservesMinor,
+      color: '#111318',
+      count: goals.length,
+    },
+  ];
+
+  return raw.map((slice) => ({
+    ...slice,
+    sharePct: Math.round((slice.amountMinor / totalMinor) * 100),
+  }));
+}
+
+export function resolveLoanCardTheme(
+  item: SelectedLoansItem,
+  overrideFoil: LoanFoilFinish = 'auto',
+): LoanCardMetallicTheme {
+  let target: Exclude<LoanFoilFinish, 'auto'> = 'obsidian';
+
+  if (overrideFoil !== 'auto') {
+    target = overrideFoil;
+  } else if (item?.kind === 'loan') {
+    if (item.data.status === 'closed') target = 'platinum';
+    else if (item.data.direction === 'lent') target = 'emerald';
+    else if (item.data.scope === 'business') target = 'obsidian';
+    else target = 'gold';
+  } else if (item?.kind === 'due') {
+    if (item.data.status === 'settled') target = 'platinum';
+    else if (item.data.direction === 'need') target = 'emerald';
+    else target = 'crimson';
+  } else if (item?.kind === 'goal') {
+    target = 'gold';
+  }
+
+  const themes: Record<Exclude<LoanFoilFinish, 'auto'>, LoanCardMetallicTheme> = {
+    obsidian: {
+      id: 'obsidian',
+      label: 'Obsidian Covenant',
+      background: 'linear-gradient(135deg, #111318 0%, #1F242D 52%, #0B0D11 100%)',
+      border: 'rgba(229, 193, 88, 0.35)',
+      accentText: '#E5C158',
+      badgeBg: 'rgba(229, 193, 88, 0.14)',
+      badgeText: '#F5D97E',
+      progressColor: '#E5C158',
+    },
+    gold: {
+      id: 'gold',
+      label: 'Champagne Sovereign',
+      background: 'linear-gradient(135deg, #2A2111 0%, #4A3818 50%, #1B150A 100%)',
+      border: 'rgba(229, 193, 88, 0.5)',
+      accentText: '#F5D97E',
+      badgeBg: 'rgba(229, 193, 88, 0.2)',
+      badgeText: '#FFF3C4',
+      progressColor: '#E5C158',
+    },
+    emerald: {
+      id: 'emerald',
+      label: 'Emerald Receivable',
+      background: 'linear-gradient(135deg, #062E22 0%, #0A4B37 52%, #041D15 100%)',
+      border: 'rgba(52, 211, 153, 0.4)',
+      accentText: '#6EE7B7',
+      badgeBg: 'rgba(16, 185, 129, 0.2)',
+      badgeText: '#A7F3D0',
+      progressColor: '#10B981',
+    },
+    crimson: {
+      id: 'crimson',
+      label: 'Crimson Liability',
+      background: 'linear-gradient(135deg, #310B15 0%, #4C1122 52%, #1D060C 100%)',
+      border: 'rgba(251, 113, 133, 0.4)',
+      accentText: '#FDA4AF',
+      badgeBg: 'rgba(225, 29, 72, 0.22)',
+      badgeText: '#FECDD3',
+      progressColor: '#F43F5E',
+    },
+    platinum: {
+      id: 'platinum',
+      label: 'Brushed Platinum',
+      background: 'linear-gradient(135deg, #27272A 0%, #3F3F46 50%, #18181B 100%)',
+      border: 'rgba(212, 212, 216, 0.4)',
+      accentText: '#E4E4E7',
+      badgeBg: 'rgba(255, 255, 255, 0.14)',
+      badgeText: '#F4F4F5',
+      progressColor: '#A1A1AA',
+    },
+  };
+
+  return themes[target];
+}

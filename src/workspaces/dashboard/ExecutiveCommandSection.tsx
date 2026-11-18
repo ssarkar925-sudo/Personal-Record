@@ -1,7 +1,12 @@
+import { useState } from 'react';
 import {
   AlertTriangle,
+  ArrowDownLeft,
   ArrowRight,
+  ArrowRightLeft,
+  ArrowUpRight,
   Bot,
+  CheckCircle2,
   CreditCard,
   FileSpreadsheet,
   KeyRound,
@@ -9,8 +14,9 @@ import {
   Plus,
   Zap,
 } from 'lucide-react';
-import { formatINR } from '../../lib/format.ts';
+import { formatDisplayDateShort, formatINR } from '../../lib/format.ts';
 import type { DashboardSummary } from '../../lib/api.ts';
+import type { DrillDownFilterSpec } from './LedgerDrillDownDrawer.tsx';
 import type { WorkspaceId } from './types.ts';
 
 export interface ExecutiveCommandSectionProps {
@@ -18,6 +24,7 @@ export interface ExecutiveCommandSectionProps {
   onNavigate: (tab: WorkspaceId) => void;
   onOpenQuickAdd: () => void;
   onOpenAgent: (commandText?: string) => void;
+  onInspectDrillDown?: (spec: DrillDownFilterSpec) => void;
 }
 
 export function ExecutiveCommandSection({
@@ -25,41 +32,78 @@ export function ExecutiveCommandSection({
   onNavigate,
   onOpenQuickAdd,
   onOpenAgent,
+  onInspectDrillDown,
 }: ExecutiveCommandSectionProps) {
+  const [activeSubTab, setActiveSubTab] = useState<'queue' | 'ledger'>('queue');
   const queue = data.attentionQueue;
+  const recentTxs = data.recentTransactions ?? [];
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-      {/* 1. Action Needed Radar Queue (col-span-7) */}
-      <div className="xl:col-span-7 bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 flex flex-col justify-between">
-        <div>
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">
-                  Financial Command Radar & Action Queue
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Prioritized triage items requiring immediate settlement, review, or payment.
-                </p>
-              </div>
+    <section className="bento-card rounded-2xl p-5 flex flex-col justify-between h-full">
+      <div>
+        {/* Header with Segmented Switcher: Priority Queue vs Live Ledger */}
+        <div className="flex items-center justify-between gap-2 pb-3.5 border-b border-[#EAE5DC]">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-[#111318] text-[#E5C158] flex items-center justify-center shrink-0">
+              <Zap className="w-4 h-4" />
             </div>
-
-            <span className="font-mono text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200/80">
-              {queue.length} Pending
-            </span>
+            <div className="min-w-0">
+              <span className="text-[10px] font-mono-data uppercase tracking-widest text-[#858078] block font-semibold">
+                Triage &amp; Stream
+              </span>
+              <h3 className="font-display text-sm font-bold text-[#111318] truncate">
+                {activeSubTab === 'queue' ? 'Priority Action Queue' : 'Live Double-Entry Stream'}
+              </h3>
+            </div>
           </div>
 
-          <div className="mt-3 space-y-2 max-h-64 overflow-y-auto pr-1">
+          <div
+            role="tablist"
+            aria-label="Action Queue or Live Ledger"
+            className="inline-flex items-center rounded-xl bg-[#F3EFEA] p-0.5 border border-[#EAE5DC] text-[11px] shrink-0"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeSubTab === 'queue'}
+              onClick={() => setActiveSubTab('queue')}
+              className={`rounded-lg px-2 py-1 font-semibold transition-all cursor-pointer ${
+                activeSubTab === 'queue'
+                  ? 'bg-[#111318] text-[#FAF8F5]'
+                  : 'text-[#52504C] hover:text-[#111318]'
+              }`}
+            >
+              Queue ({queue.length})
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeSubTab === 'ledger'}
+              onClick={() => setActiveSubTab('ledger')}
+              className={`rounded-lg px-2 py-1 font-semibold transition-all cursor-pointer ${
+                activeSubTab === 'ledger'
+                  ? 'bg-[#111318] text-[#FAF8F5]'
+                  : 'text-[#52504C] hover:text-[#111318]'
+              }`}
+            >
+              Ledger ({recentTxs.length})
+            </button>
+          </div>
+        </div>
+
+        {/* Stream Content */}
+        {activeSubTab === 'queue' ? (
+          <div className="mt-3.5 space-y-2 max-h-[240px] overflow-y-auto pr-1">
             {queue.length === 0 ? (
-              <div className="p-8 text-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 text-xs text-slate-500">
-                All bills, credit card statements, and loan EMIs are settled and current. No actions required.
+              <div className="p-6 text-center rounded-xl border border-dashed border-[#D6CFC2] bg-[#FAF8F5] space-y-1.5">
+                <CheckCircle2 className="w-6 h-6 text-[#059669] mx-auto" />
+                <div className="text-xs font-semibold text-[#111318]">All Settlements Current</div>
+                <p className="text-[11px] text-[#52504C]">
+                  Card cycles, recurring bills, and EMIs are reconciled.
+                </p>
               </div>
             ) : (
-              queue.map((item) => {
+              queue.slice(0, 4).map((item) => {
                 const targetTab: WorkspaceId =
                   item.module === 'credit_cards'
                     ? 'cards'
@@ -70,177 +114,218 @@ export function ExecutiveCommandSection({
                         : 'notes';
 
                 const isUrgent = item.severity === 'urgent';
-                const isWarning = item.severity === 'warning';
 
                 return (
                   <div
                     key={item.id}
                     onClick={() => onNavigate(targetTab)}
-                    className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onNavigate(targetTab);
+                      }
+                    }}
+                    className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2 ${
                       isUrgent
-                        ? 'border-rose-200 bg-rose-50/60 hover:bg-rose-50'
-                        : isWarning
-                          ? 'border-amber-200 bg-amber-50/60 hover:bg-amber-50'
-                          : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100/70'
+                        ? 'border-rose-200 bg-rose-50/50 hover:bg-rose-50'
+                        : 'border-[#EAE5DC] bg-[#FAF8F5] hover:bg-[#F3EFEA]'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                          isUrgent
-                            ? 'bg-rose-100 text-rose-700'
-                            : isWarning
-                              ? 'bg-amber-100 text-amber-700'
-                              : 'bg-slate-200 text-slate-700'
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <AlertTriangle
+                        className={`w-4 h-4 shrink-0 mt-0.5 ${
+                          isUrgent ? 'text-[#E11D48]' : 'text-[#C59B27]'
                         }`}
-                      >
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                      </div>
-                      <div>
-                        <div className="font-semibold text-xs text-slate-900 flex items-center gap-1.5">
-                          <span>{item.title}</span>
-                          <span
-                            className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase ${
-                              isUrgent
-                                ? 'bg-rose-100 text-rose-800'
-                                : isWarning
-                                  ? 'bg-amber-100 text-amber-800'
-                                  : 'bg-slate-200 text-slate-700'
-                            }`}
-                          >
-                            {item.severity}
-                          </span>
+                      />
+                      <div className="min-w-0">
+                        <div className="font-semibold text-xs text-[#111318] truncate">
+                          {item.title}
                         </div>
-                        <div className="text-[11px] text-slate-500 mt-0.5">{item.subtitle}</div>
+                        <div className="text-[11px] text-[#52504C] truncate mt-0.5">
+                          {item.subtitle}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 shrink-0">
                       {item.amountMinor !== undefined && (
-                        <span className="font-mono text-xs font-bold text-slate-900">
-                          {formatINR(item.amountMinor, { decimals: false })}
+                        <span className="font-mono-data text-xs font-bold text-[#111318] tabular-nums">
+                          {formatINR(item.amountMinor, { compact: true })}
                         </span>
                       )}
-                      <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowRight className="w-3.5 h-3.5 text-[#858078]" />
                     </div>
                   </div>
                 );
               })
             )}
           </div>
-        </div>
-
-        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-          <span>Click any item to resolve directly in its workspace</span>
-          <button
-            onClick={() => onNavigate('money')}
-            className="text-xs font-semibold text-blue-600 hover:text-blue-700 cursor-pointer"
-          >
-            Open Banking Hub →
-          </button>
-        </div>
-      </div>
-
-      {/* 2. Quick Action Launchpad (col-span-5) */}
-      <div className="xl:col-span-5 bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 flex flex-col justify-between">
-        <div>
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center">
-                <Zap className="w-4 h-4" />
+        ) : (
+          /* Live Double-Entry Ledger Stream */
+          <div className="mt-3.5 space-y-2 max-h-[240px] overflow-y-auto pr-1">
+            {recentTxs.length === 0 ? (
+              <div className="p-6 text-center rounded-xl border border-dashed border-[#D6CFC2] bg-[#FAF8F5] space-y-1.5">
+                <div className="text-xs font-semibold text-[#111318]">No Recent Entries</div>
+                <p className="text-[11px] text-[#52504C]">
+                  Record an income, expense, or transfer to populate the live stream.
+                </p>
               </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Quick Actions Launchpad</h3>
-                <p className="text-xs text-slate-500">Fast shortcuts for daily financial routines.</p>
-              </div>
-            </div>
+            ) : (
+              recentTxs.slice(0, 5).map((tx) => {
+                const isIncome = tx.kind === 'income';
+                const isTransfer = tx.kind === 'transfer';
+                return (
+                  <button
+                    key={tx.id}
+                    type="button"
+                    onClick={() =>
+                      onInspectDrillDown?.({
+                        title: `${tx.category} · Ledger Audit`,
+                        subtitle: `Inspecting recent entries matching ${tx.category}`,
+                        month: tx.occurredAt.slice(0, 7),
+                        category: tx.category,
+                      })
+                    }
+                    className="w-full p-2.5 rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] hover:bg-[#F3EFEA] transition-colors cursor-pointer flex items-center justify-between gap-2 text-left"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                          isIncome
+                            ? 'bg-emerald-50 text-[#059669] border border-emerald-200'
+                            : isTransfer
+                              ? 'bg-[#F3EFEA] text-[#52504C] border border-[#D6CFC2]'
+                              : 'bg-amber-50/80 text-[#9A7B2C] border border-amber-200'
+                        }`}
+                      >
+                        {isIncome ? (
+                          <ArrowDownLeft className="w-3.5 h-3.5" />
+                        ) : isTransfer ? (
+                          <ArrowRightLeft className="w-3.5 h-3.5" />
+                        ) : (
+                          <ArrowUpRight className="w-3.5 h-3.5" />
+                        )}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="font-semibold text-xs text-[#111318] truncate">
+                          {tx.party || tx.category}
+                        </div>
+                        <div className="text-[10px] text-[#858078] truncate">
+                          {tx.accountName} · {formatDisplayDateShort(tx.occurredAt) || tx.occurredAt}
+                        </div>
+                      </div>
+                    </div>
+
+                    <span
+                      className={`font-mono-data text-xs font-bold tabular-nums shrink-0 ${
+                        isIncome ? 'text-[#059669]' : 'text-[#111318]'
+                      }`}
+                    >
+                      {isIncome ? '+' : isTransfer ? '' : '-'}
+                      {formatINR(tx.amountMinor, { compact: true })}
+                    </span>
+                  </button>
+                );
+              })
+            )}
           </div>
+        )}
 
-          <div className="mt-3 grid grid-cols-2 gap-2.5">
+        {/* Rapid Execution Shortcuts */}
+        <div className="mt-4 pt-3.5 border-t border-[#EAE5DC]">
+          <div className="text-[10px] font-mono-data uppercase tracking-widest text-[#858078] font-semibold mb-2.5">
+            Direct Desk Shortcuts
+          </div>
+          <div className="grid grid-cols-2 gap-2">
             <button
+              type="button"
               onClick={onOpenQuickAdd}
-              className="p-3 rounded-xl border border-slate-200/80 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 transition-all text-left flex items-start gap-2.5 cursor-pointer shadow-2xs"
+              className="p-2.5 rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] hover:bg-[#F3EFEA] text-left flex items-center gap-2 transition-colors cursor-pointer"
             >
-              <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                <Plus className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="font-semibold text-xs text-slate-900 block">Record Transaction</span>
-                <span className="text-[10px] text-slate-500">Expense, income, or transfer</span>
-              </div>
+              <span className="w-7 h-7 rounded-lg bg-[#059669]/12 text-[#059669] flex items-center justify-center shrink-0">
+                <Plus className="w-3.5 h-3.5" />
+              </span>
+              <span className="text-xs font-semibold text-[#111318] truncate">Record Entry</span>
             </button>
 
             <button
+              type="button"
               onClick={() => onNavigate('cards')}
-              className="p-3 rounded-xl border border-slate-200/80 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 transition-all text-left flex items-start gap-2.5 cursor-pointer shadow-2xs"
+              className="p-2.5 rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] hover:bg-[#F3EFEA] text-left flex items-center gap-2 transition-colors cursor-pointer"
             >
-              <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-800 flex items-center justify-center shrink-0">
-                <CreditCard className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="font-semibold text-xs text-slate-900 block">Pay Card Bill</span>
-                <span className="text-[10px] text-slate-500">Reconcile statement cycle</span>
-              </div>
+              <span className="w-7 h-7 rounded-lg bg-[#111318]/10 text-[#111318] flex items-center justify-center shrink-0">
+                <CreditCard className="w-3.5 h-3.5" />
+              </span>
+              <span className="text-xs font-semibold text-[#111318] truncate">Settle Card</span>
             </button>
 
             <button
+              type="button"
               onClick={() => onNavigate('loans_dues')}
-              className="p-3 rounded-xl border border-slate-200/80 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 transition-all text-left flex items-start gap-2.5 cursor-pointer shadow-2xs"
+              className="p-2.5 rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] hover:bg-[#F3EFEA] text-left flex items-center gap-2 transition-colors cursor-pointer"
             >
-              <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-800 flex items-center justify-center shrink-0">
-                <Landmark className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="font-semibold text-xs text-slate-900 block">Record EMI / Due</span>
-                <span className="text-[10px] text-slate-500">Settle Khatabook borrowing</span>
-              </div>
+              <span className="w-7 h-7 rounded-lg bg-[#C59B27]/15 text-[#9A7B2C] flex items-center justify-center shrink-0">
+                <Landmark className="w-3.5 h-3.5" />
+              </span>
+              <span className="text-xs font-semibold text-[#111318] truncate">Log Udhar / EMI</span>
             </button>
 
             <button
+              type="button"
               onClick={() => onNavigate('reports')}
-              className="p-3 rounded-xl border border-slate-200/80 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 transition-all text-left flex items-start gap-2.5 cursor-pointer shadow-2xs"
+              className="p-2.5 rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] hover:bg-[#F3EFEA] text-left flex items-center gap-2 transition-colors cursor-pointer"
             >
-              <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
-                <FileSpreadsheet className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="font-semibold text-xs text-slate-900 block">CA Tax Pack</span>
-                <span className="text-[10px] text-slate-500">Export audit spreadsheet</span>
-              </div>
+              <span className="w-7 h-7 rounded-lg bg-[#059669]/12 text-[#059669] flex items-center justify-center shrink-0">
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+              </span>
+              <span className="text-xs font-semibold text-[#111318] truncate">CA Tax Pack</span>
             </button>
 
             <button
+              type="button"
               onClick={() => onOpenAgent('Give me a full financial audit summary')}
-              className="p-3 rounded-xl border border-slate-200/80 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 transition-all text-left flex items-start gap-2.5 cursor-pointer shadow-2xs"
+              className="p-2.5 rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] hover:bg-[#F3EFEA] text-left flex items-center gap-2 transition-colors cursor-pointer"
             >
-              <div className="w-7 h-7 rounded-lg bg-teal-100 text-teal-800 flex items-center justify-center shrink-0">
-                <Bot className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="font-semibold text-xs text-slate-900 block">AI Advisor Audit</span>
-                <span className="text-[10px] text-slate-500">Diagnose cash flow & leaks</span>
-              </div>
+              <span className="w-7 h-7 rounded-lg bg-[#111318] text-[#E5C158] flex items-center justify-center shrink-0">
+                <Bot className="w-3.5 h-3.5" />
+              </span>
+              <span className="text-xs font-semibold text-[#111318] truncate">Advisor Audit</span>
             </button>
 
             <button
+              type="button"
               onClick={() => onNavigate('vault')}
-              className="p-3 rounded-xl border border-slate-200/80 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 transition-all text-left flex items-start gap-2.5 cursor-pointer shadow-2xs"
+              className="p-2.5 rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] hover:bg-[#F3EFEA] text-left flex items-center gap-2 transition-colors cursor-pointer"
             >
-              <div className="w-7 h-7 rounded-lg bg-rose-100 text-rose-800 flex items-center justify-center shrink-0">
-                <KeyRound className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="font-semibold text-xs text-slate-900 block">Password Vault</span>
-                <span className="text-[10px] text-slate-500">Zero-knowledge secrets</span>
-              </div>
+              <span className="w-7 h-7 rounded-lg bg-[#F3EFEA] text-[#52504C] border border-[#D6CFC2] flex items-center justify-center shrink-0">
+                <KeyRound className="w-3.5 h-3.5" />
+              </span>
+              <span className="text-xs font-semibold text-[#111318] truncate">Crypto Vault</span>
             </button>
           </div>
         </div>
-
-        <div className="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500">
-          Keyboard shortcut: press <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-slate-700 font-mono font-bold">Q</kbd> anywhere for Quick Add
-        </div>
       </div>
-    </div>
+
+      <div className="mt-3.5 pt-2.5 border-t border-[#EAE5DC] flex items-center justify-between text-[11px] text-[#858078]">
+        <span>Shortcut: Ctrl+Q for Quick Capture</span>
+        <button
+          type="button"
+          onClick={() =>
+            onInspectDrillDown
+              ? onInspectDrillDown({
+                  title: 'Full Current Month Ledger',
+                  subtitle: `All transactions recorded in ${data.referenceDate.slice(0, 7)}`,
+                  month: data.referenceDate.slice(0, 7),
+                })
+              : onNavigate('money')
+          }
+          className="font-semibold text-[#111318] hover:underline cursor-pointer"
+        >
+          Inspect Month Ledger →
+        </button>
+      </div>
+    </section>
   );
 }

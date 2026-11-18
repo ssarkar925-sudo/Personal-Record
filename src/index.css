@@ -1,18 +1,27 @@
 @import "tailwindcss";
 
 :root {
-  --bg-canvas: #f4f7fb;
-  --bg-surface: rgba(255, 255, 255, 0.96);
-  --bg-subtle: #eff4fa;
-  --border-hairline: #d8e1ee;
-  --border-strong: #c4d1e4;
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #64748b;
-  --accent-primary: #2563eb;
-  --accent-primary-hover: #1d4ed8;
+  --bg-canvas: #faf8f5;
+  --bg-surface: #ffffff;
+  --bg-subtle: #f3efea;
+  --bg-obsidian: #111318;
+  --bg-obsidian-elevated: #191c24;
+  --border-hairline: #eae5dc;
+  --border-strong: #d6cfc2;
+  --border-obsidian: rgba(255, 255, 255, 0.11);
+  --text-primary: #111318;
+  --text-secondary: #52504c;
+  --text-muted: #858078;
+  --accent-primary: #111318;
+  --accent-primary-hover: #222630;
+  --accent-emerald: #059669;
+  --accent-gold: #c59b27;
+  --accent-gold-light: #e5c158;
+  --accent-rose: #e11d48;
+  --accent-amber: #d97706;
+  --accent-teal: #0d9488;
   --status-positive: #047857;
-  --status-negative: #dc2626;
+  --status-negative: #be123c;
   --status-warning: #b45309;
 }
 
@@ -21,14 +30,23 @@
   body {
     background-color: var(--bg-canvas);
     color: var(--text-primary);
-    font-family: "IBM Plex Sans", "Noto Sans Devanagari", "Noto Sans Bengali", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: "DM Sans", "Noto Sans Devanagari", "Noto Sans Bengali", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-feature-settings: "cv02", "cv03", "cv04";
     -webkit-font-smoothing: antialiased;
   }
 
+  h1,
+  h2,
+  h3,
+  h4,
+  .font-display {
+    font-family: "Bricolage Grotesque", "Plus Jakarta Sans", "DM Sans", "Noto Sans Devanagari", "Noto Sans Bengali", system-ui, sans-serif;
+    letter-spacing: -0.025em;
+  }
+
   ::selection {
-    background-color: #dbeafe;
-    color: #1e3a8a;
+    background-color: #f3ead3;
+    color: #111318;
   }
 
   * {
@@ -36,34 +54,119 @@
   }
 }
 
+/* Warm Alabaster Architectural Canvas */
 .canvas-studio {
-  background-color: #f4f7fb;
+  background-color: #faf8f5;
   background-image:
-    radial-gradient(circle at 10% 0%, rgba(37, 99, 235, 0.11), transparent 38%),
-    radial-gradient(circle at 90% 4%, rgba(14, 165, 233, 0.09), transparent 34%),
-    radial-gradient(rgba(148, 163, 184, 0.24) 1px, transparent 1px);
-  background-size: 100% 100%, 100% 100%, 18px 18px;
+    radial-gradient(ellipse 72% 46% at 10% 0%, rgba(197, 155, 39, 0.08), transparent 62%),
+    radial-gradient(ellipse 60% 42% at 92% 4%, rgba(5, 150, 105, 0.065), transparent 60%),
+    radial-gradient(ellipse 50% 38% at 50% 100%, rgba(17, 19, 24, 0.035), transparent 65%),
+    linear-gradient(to right, rgba(133, 128, 120, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(133, 128, 120, 0.055) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 48px 48px, 48px 48px;
 }
 
-.studio-card {
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid #d8e1ee;
-  box-shadow: 0 10px 26px -16px rgba(30, 41, 59, 0.14), 0 1px 3px rgba(15, 23, 42, 0.04);
-  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms ease, border-color 180ms ease;
+/* Crisp Warm Ivory Bento Surface */
+.studio-card,
+.bento-card {
+  background: #ffffff;
+  border: 1px solid #eae5dc;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 1px 2px rgba(17, 19, 24, 0.03),
+    0 14px 32px -20px rgba(17, 19, 24, 0.09);
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms ease, border-color 200ms ease;
 }
 
-.studio-card-hover:hover {
+.studio-card-hover:hover,
+.bento-card-hover:hover {
   transform: translateY(-2px);
-  border-color: #c2d1e5;
-  box-shadow: 0 16px 30px -16px rgba(37, 99, 235, 0.18), 0 2px 6px rgba(15, 23, 42, 0.05);
+  border-color: #d6cfc2;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    0 6px 16px -4px rgba(17, 19, 24, 0.06),
+    0 20px 38px -20px rgba(17, 19, 24, 0.14);
+}
+
+/* Deep Obsidian Luxury Bento Surface */
+.bento-obsidian {
+  background: linear-gradient(155deg, #161922 0%, #101217 55%, #0c0e12 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #faf8f5;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 16px 36px -16px rgba(10, 12, 16, 0.45);
+}
+
+/* Floating Glass Command Dock */
+.floating-dock {
+  background: rgba(17, 19, 24, 0.88);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 20px 44px -12px rgba(17, 19, 24, 0.45),
+    0 4px 12px rgba(17, 19, 24, 0.2);
+}
+
+/* Physical 3D Metallic Card Finishes */
+.metallic-card-stage {
+  perspective: 1200px;
+}
+
+.metallic-card-body {
+  transform-style: preserve-3d;
+  will-change: transform;
+  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 220ms ease;
+}
+
+.metallic-finish-obsidian {
+  background:
+    radial-gradient(circle at 82% 18%, rgba(212, 175, 55, 0.22), transparent 48%),
+    linear-gradient(135deg, #232733 0%, #14171f 45%, #0b0d12 100%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 22px 44px -18px rgba(11, 13, 18, 0.6);
+}
+
+.metallic-finish-gold {
+  background:
+    radial-gradient(circle at 80% 15%, rgba(255, 250, 230, 0.35), transparent 50%),
+    linear-gradient(135deg, #3c3118 0%, #785d22 35%, #b89130 72%, #5c4617 100%);
+  border: 1px solid rgba(246, 224, 148, 0.38);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 204, 0.4),
+    0 22px 44px -18px rgba(92, 70, 23, 0.52);
+}
+
+.metallic-finish-emerald {
+  background:
+    radial-gradient(circle at 85% 20%, rgba(52, 211, 153, 0.24), transparent 50%),
+    linear-gradient(135deg, #06392c 0%, #052920 52%, #031712 100%);
+  border: 1px solid rgba(110, 231, 183, 0.24);
+  box-shadow:
+    inset 0 1px 0 rgba(167, 243, 208, 0.25),
+    0 22px 44px -18px rgba(3, 23, 18, 0.58);
+}
+
+.metallic-finish-platinum {
+  background:
+    radial-gradient(circle at 20% 15%, rgba(255, 255, 255, 0.9), transparent 52%),
+    linear-gradient(135deg, #f5f2eb 0%, #e4dfd5 48%, #cfc8ba 100%);
+  border: 1px solid rgba(17, 19, 24, 0.15);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 22px 44px -18px rgba(17, 19, 24, 0.22);
 }
 
 .btn-press {
-  transition: transform 120ms ease, background-color 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+  transition: transform 120ms cubic-bezier(0.22, 1, 0.36, 1), background-color 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
 }
 
 .btn-press:active {
-  transform: scale(0.97);
+  transform: scale(0.98);
 }
 
 .font-mono-data {
@@ -134,13 +237,13 @@ html[data-privacy="masked"] main .tabular-nums:hover {
 
 .animate-line-draw {
   stroke-dasharray: 600;
-  animation: drawLine 800ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: drawLine 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes popupZoomIn {
   0% {
     opacity: 0;
-    transform: scale(0.96) translateY(8px);
+    transform: scale(0.97) translateY(6px);
   }
   100% {
     opacity: 1;
@@ -149,13 +252,13 @@ html[data-privacy="masked"] main .tabular-nums:hover {
 }
 
 .animate-popup-in {
-  animation: popupZoomIn 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: popupZoomIn 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes slideUp {
   0% {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(10px);
   }
   100% {
     opacity: 1;
@@ -164,63 +267,51 @@ html[data-privacy="masked"] main .tabular-nums:hover {
 }
 
 .animate-slide-up {
-  animation: slideUp 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: slideUp 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes moduleCardEnter {
   0% {
     opacity: 0;
-    transform: translateY(16px) scale(0.985);
+    transform: translateY(12px);
   }
   100% {
     opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes pulseSubtle {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.75;
-    transform: scale(1.05);
+    transform: translateY(0);
   }
 }
 
 .animate-module-card {
-  animation: moduleCardEnter 350ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: moduleCardEnter 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.animate-delay-1 { animation-delay: 40ms; }
-.animate-delay-2 { animation-delay: 80ms; }
-.animate-delay-3 { animation-delay: 120ms; }
-.animate-delay-4 { animation-delay: 160ms; }
-.animate-delay-5 { animation-delay: 200ms; }
-.animate-delay-6 { animation-delay: 240ms; }
-
-.animate-pulse-subtle {
-  animation: pulseSubtle 2.5s ease-in-out infinite;
-}
+.animate-delay-1 { animation-delay: 30ms; }
+.animate-delay-2 { animation-delay: 60ms; }
+.animate-delay-3 { animation-delay: 90ms; }
+.animate-delay-4 { animation-delay: 120ms; }
+.animate-delay-5 { animation-delay: 150ms; }
+.animate-delay-6 { animation-delay: 180ms; }
 
 .module-card-interactive {
-  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 220ms ease, border-color 180ms ease;
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms ease, border-color 200ms ease;
 }
 
 .module-card-interactive:hover {
-  transform: translateY(-3px);
-  border-color: #cbd5e1;
-  box-shadow: 0 12px 28px -10px rgba(15, 23, 42, 0.12), 0 4px 10px rgba(15, 23, 42, 0.04);
+  transform: translateY(-2px);
+  border-color: #d6cfc2;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 14px 32px -14px rgba(17, 19, 24, 0.12),
+    0 2px 6px rgba(17, 19, 24, 0.04);
 }
 
 .credit-card-interactive {
-  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 220ms ease, border-color 180ms ease;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms ease, border-color 180ms ease;
 }
 
 .credit-card-interactive:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 14px 28px -10px rgba(15, 23, 42, 0.14), 0 4px 12px rgba(15, 23, 42, 0.04);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px -14px rgba(17, 19, 24, 0.2), 0 4px 10px rgba(17, 19, 24, 0.06);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -229,11 +320,11 @@ html[data-privacy="masked"] main .tabular-nums:hover {
   .animate-line-draw,
   .animate-popup-in,
   .animate-slide-up,
-  .animate-module-card,
-  .animate-pulse-subtle {
+  .animate-module-card {
     animation: none !important;
   }
   .studio-card-hover:hover,
+  .bento-card-hover:hover,
   .module-card-interactive:hover,
   .credit-card-interactive:hover {
     transform: none !important;
@@ -245,6 +336,7 @@ html[data-privacy="masked"] main .tabular-nums:hover {
 
 @media print {
   header,
+  .floating-dock,
   .no-print {
     display: none !important;
   }
@@ -253,7 +345,8 @@ html[data-privacy="masked"] main .tabular-nums:hover {
     background: #ffffff !important;
     background-image: none !important;
   }
-  .studio-card {
+  .studio-card,
+  .bento-card {
     box-shadow: none !important;
     background: #ffffff !important;
   }

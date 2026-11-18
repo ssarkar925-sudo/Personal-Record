@@ -74,8 +74,9 @@ export function AdvisorBillboard({
   // Active Billboard View Tab
   const [activeTab, setActiveTab] = useState<BillboardTab>('predictions');
 
-  // Prediction Scenario Mode
+  // Prediction Scenario Mode & Custom Shock Slider
   const [scenario, setScenario] = useState<ScenarioMode>('baseline');
+  const [customShockPct, setCustomShockPct] = useState<number>(0);
 
   // Notice category filter & dismissed notices
   const [noticeCategory, setNoticeCategory] = useState<'all' | 'urgent' | 'tax' | 'cashflow'>('all');
@@ -135,12 +136,12 @@ export function AdvisorBillboard({
 
   // Scenario calculations
   const scenarioCalculations = useMemo(() => {
+    const shockMult = 1 + customShockPct / 100;
     if (scenario === 'stress') {
-      // 20% higher unexpected expense shock
-      const shockOutflow = Math.round(scheduledOutflow30d * 1.25);
+      const shockOutflow = Math.round(scheduledOutflow30d * 1.25 * shockMult);
       const reducedInflow = Math.round(expectedInflow30d * 0.85);
       const projected = liquidCash + reducedInflow - shockOutflow;
-      const stressMonthlyBurn = Math.round(avgMonthlyExpense * 1.2);
+      const stressMonthlyBurn = Math.round(avgMonthlyExpense * 1.2 * shockMult);
       const runwayMonths = stressMonthlyBurn > 0 ? Number((liquidCash / stressMonthlyBurn).toFixed(1)) : 12;
       return {
         label: 'Stress Test (-15% Inflow, +25% Outflow Shock)',
@@ -154,10 +155,9 @@ export function AdvisorBillboard({
     }
 
     if (scenario === 'aggressive') {
-      // 15% savings optimization / lean burn
-      const optimizedOutflow = Math.round(scheduledOutflow30d * 0.85);
+      const optimizedOutflow = Math.round(scheduledOutflow30d * 0.85 * shockMult);
       const projected = liquidCash + expectedInflow30d - optimizedOutflow;
-      const leanMonthlyBurn = Math.round(avgMonthlyExpense * 0.85);
+      const leanMonthlyBurn = Math.round(avgMonthlyExpense * 0.85 * shockMult);
       const runwayMonths = leanMonthlyBurn > 0 ? Number((liquidCash / leanMonthlyBurn).toFixed(1)) : 12;
       return {
         label: 'Aggressive Wealth Mode (15% Cut to Discretionary Leaks)',
@@ -171,18 +171,20 @@ export function AdvisorBillboard({
     }
 
     // Baseline
-    const projected = briefing?.projected30dBalanceMinor ?? (liquidCash + expectedInflow30d - scheduledOutflow30d);
-    const runwayMonths = briefing?.emergencyRunwayMonths ?? (avgMonthlyExpense > 0 ? Number((liquidCash / avgMonthlyExpense).toFixed(1)) : 12);
+    const adjustedOutflow = Math.round(scheduledOutflow30d * shockMult);
+    const projected = liquidCash + expectedInflow30d - adjustedOutflow;
+    const adjustedBurn = Math.round(avgMonthlyExpense * shockMult);
+    const runwayMonths = adjustedBurn > 0 ? Number((liquidCash / adjustedBurn).toFixed(1)) : 12;
     return {
       label: 'Standard Run-Rate (Current Burn Rate)',
-      badgeClass: 'bg-blue-100 text-blue-800 border-blue-300',
+      badgeClass: 'bg-[#F3EFEA] text-[#111318] border-[#D6CFC2]',
       projectedBalanceMinor: projected,
       runwayMonths,
       inflowMinor: expectedInflow30d,
-      outflowMinor: scheduledOutflow30d,
+      outflowMinor: adjustedOutflow,
       statusNote: 'Based on regular recurring cashflow, active loans, credit card cycles, and people dues.',
     };
-  }, [scenario, liquidCash, scheduledOutflow30d, expectedInflow30d, avgMonthlyExpense, briefing]);
+  }, [scenario, customShockPct, liquidCash, scheduledOutflow30d, expectedInflow30d, avgMonthlyExpense]);
 
   // 90-Day Net Worth Projection
   const netWorth90dForecast = useMemo(() => {
@@ -413,29 +415,22 @@ export function AdvisorBillboard({
   }, [data]);
 
   return (
-    <Card className="p-5 border-slate-200 bg-white shadow-sm overflow-hidden relative">
-      {/* Top Billboard Accent Line */}
-      <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-teal-500" />
-
+    <Card className="p-5 sm:p-6 border-[#EAE5DC] bg-white overflow-hidden relative h-full flex flex-col justify-between">
       {/* Billboard Command Deck Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-[#EAE5DC]">
         <div className="space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200/80 shadow-2xs">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[#111318] text-[#E5C158] shadow-2xs">
               <Sparkles className="h-4 w-4" />
             </span>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-slate-950 tracking-tight">
-                  AI Financial Advisor & Net Worth Billboard
+                <h2 className="font-display text-base font-bold text-[#111318] tracking-tight">
+                  30-Day Stress-Test Simulator &amp; Macro Radar
                 </h2>
-                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Live Billboard HUD
-                </span>
               </div>
-              <p className="text-xs text-slate-500">
-                Continuous macro financial forecasting, advance tax notices, liquidity runway, and strategic wealth optimization.
+              <p className="text-xs text-[#52504C]">
+                Predictive cashflow stress-testing, advance tax schedule, liquidity runway, and debt payoff blueprints.
               </p>
             </div>
           </div>
@@ -446,54 +441,51 @@ export function AdvisorBillboard({
           <Badge
             className={
               (briefing?.healthScore ?? 80) >= 80
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                ? 'bg-emerald-50 text-[#059669] border-emerald-200 font-mono-data'
                 : (briefing?.healthScore ?? 80) >= 60
-                  ? 'bg-amber-50 text-amber-800 border-amber-200'
-                  : 'bg-red-50 text-red-700 border-red-200'
+                  ? 'bg-amber-50 text-[#9A7B2C] border-amber-200 font-mono-data'
+                  : 'bg-rose-50 text-[#E11D48] border-rose-200 font-mono-data'
             }
           >
-            Health Score: {briefing?.healthScore ?? 85}/100
+            Health: {briefing?.healthScore ?? 85}/100
           </Badge>
-          <Badge className="bg-slate-100 text-slate-700 border-slate-200">
+          <Badge className="bg-[#F3EFEA] text-[#111318] border-[#EAE5DC] font-mono-data">
             Runway: {briefing?.emergencyRunwayMonths ?? 4.8} mo
-          </Badge>
-          <Badge className="bg-blue-50 text-blue-700 border-blue-200">
-            Net Worth: {formatINR(data.netWorthMinor, { compact: true })}
           </Badge>
         </div>
       </div>
 
       {/* Billboard Navigation Tabs */}
-      <div className="flex items-center justify-between gap-3 pt-3 pb-3 border-b border-slate-100 flex-wrap">
-        <div className="flex items-center gap-1.5">
+      <div className="flex items-center justify-between gap-3 pt-3 pb-3 border-b border-[#EAE5DC] flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <button
             type="button"
             onClick={() => setActiveTab('predictions')}
-            className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+            className={`inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
               activeTab === 'predictions'
-                ? 'bg-slate-900 text-white shadow-2xs'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+                ? 'bg-[#111318] text-[#FAF8F5] shadow-2xs'
+                : 'bg-[#F3EFEA] text-[#52504C] hover:text-[#111318]'
             }`}
           >
-            <BarChart3 className="h-3.5 w-3.5" />
-            Billboard Predictions & Runway
+            <BarChart3 className="h-3.5 w-3.5 text-[#E5C158]" />
+            Runway &amp; Stress Simulator
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('notices')}
-            className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer relative ${
+            className={`inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer relative ${
               activeTab === 'notices'
-                ? 'bg-slate-900 text-white shadow-2xs'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+                ? 'bg-[#111318] text-[#FAF8F5] shadow-2xs'
+                : 'bg-[#F3EFEA] text-[#52504C] hover:text-[#111318]'
             }`}
           >
-            <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-            Macro Notices & Alerts
+            <AlertTriangle className="h-3.5 w-3.5 text-[#C59B27]" />
+            Macro Notices
             {compiledNotices.length > 0 && (
               <span
-                className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
-                  urgentNoticesCount > 0 ? 'bg-red-500 text-white' : 'bg-slate-700 text-slate-200'
+                className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] font-mono-data font-bold ${
+                  urgentNoticesCount > 0 ? 'bg-[#E11D48] text-white' : 'bg-[#111318] text-[#FAF8F5]'
                 }`}
               >
                 {compiledNotices.length}
@@ -504,203 +496,238 @@ export function AdvisorBillboard({
           <button
             type="button"
             onClick={() => setActiveTab('strategies')}
-            className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+            className={`inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
               activeTab === 'strategies'
-                ? 'bg-slate-900 text-white shadow-2xs'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+                ? 'bg-[#111318] text-[#FAF8F5] shadow-2xs'
+                : 'bg-[#F3EFEA] text-[#52504C] hover:text-[#111318]'
             }`}
           >
-            <Zap className="h-3.5 w-3.5 text-indigo-500" />
-            Strategic Action Blueprints
+            <Zap className="h-3.5 w-3.5 text-[#059669]" />
+            Strategic Blueprints
           </button>
         </div>
 
-        <div className="text-[11px] text-slate-400">
-          Scope: <strong className="text-slate-700 font-medium capitalize">{scopeFilter}</strong>
+        <div className="text-[11px] text-[#858078] font-mono-data">
+          Scope: <strong className="text-[#111318] font-semibold uppercase">{scopeFilter}</strong>
         </div>
       </div>
 
       {/* TAB 1: BILLBOARD PREDICTIONS & RUNWAY */}
       {activeTab === 'predictions' && (
         <div className="pt-4 space-y-4 animate-panel-in">
-          {/* Scenario Stress-Test Selector */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 border border-slate-200/80 rounded-xl p-3">
-            <div className="flex items-center gap-2">
-              <Sliders className="h-4 w-4 text-slate-500 shrink-0" />
-              <div>
-                <span className="text-xs font-semibold text-slate-900">Predictive Cashflow Simulator:</span>
-                <span className="ml-1 text-xs text-slate-500 hidden sm:inline">Stress-test your runway under unexpected shocks</span>
+          {/* Scenario Stress-Test Selector + Interactive Burn Shock Slider */}
+          <div className="bg-[#FAF8F5] border border-[#EAE5DC] rounded-xl p-3.5 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Sliders className="h-4 w-4 text-[#C59B27] shrink-0" />
+                <div>
+                  <span className="text-xs font-semibold text-[#111318]">Scenario Stress-Tester:</span>
+                  <span className="ml-1 text-xs text-[#52504C] hidden sm:inline">Simulate liquidity shocks &amp; burn adjustments</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScenario('baseline');
+                    setCustomShockPct(0);
+                  }}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer ${
+                    scenario === 'baseline'
+                      ? 'bg-[#111318] text-[#FAF8F5]'
+                      : 'bg-white border border-[#EAE5DC] text-[#52504C] hover:text-[#111318]'
+                  }`}
+                >
+                  Standard Run-Rate
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScenario('stress');
+                    setCustomShockPct(0);
+                  }}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer ${
+                    scenario === 'stress'
+                      ? 'bg-[#C59B27] text-[#111318]'
+                      : 'bg-white border border-[#EAE5DC] text-[#52504C] hover:text-[#111318]'
+                  }`}
+                >
+                  Stress Shock (+25% Outflow)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScenario('aggressive');
+                    setCustomShockPct(0);
+                  }}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer ${
+                    scenario === 'aggressive'
+                      ? 'bg-[#059669] text-white'
+                      : 'bg-white border border-[#EAE5DC] text-[#52504C] hover:text-[#111318]'
+                  }`}
+                >
+                  Lean Wealth (+15% Save)
+                </button>
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setScenario('baseline')}
-                className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
-                  scenario === 'baseline'
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                Standard Run-Rate
-              </button>
-              <button
-                type="button"
-                onClick={() => setScenario('stress')}
-                className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
-                  scenario === 'stress'
-                    ? 'bg-amber-600 text-white shadow-xs'
-                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                Emergency Stress Test (+25% Outflow)
-              </button>
-              <button
-                type="button"
-                onClick={() => setScenario('aggressive')}
-                className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
-                  scenario === 'aggressive'
-                    ? 'bg-teal-700 text-white shadow-xs'
-                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                Aggressive Wealth (+15% Savings)
-              </button>
+            {/* Interactive Outflow Shock Fine-Tuning Slider */}
+            <div className="pt-2 border-t border-[#EAE5DC] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <label htmlFor="burn-shock-slider" className="text-[#52504C] font-medium flex items-center gap-2">
+                <span>Custom Burn / Outflow Shock Modifier:</span>
+                <strong className="font-mono-data text-[#111318] bg-white border border-[#EAE5DC] px-2 py-0.5 rounded">
+                  {customShockPct >= 0 ? `+${customShockPct}%` : `${customShockPct}%`}
+                </strong>
+              </label>
+              <div className="flex items-center gap-2 sm:w-64">
+                <span className="text-[10px] font-mono-data text-[#059669]">-20%</span>
+                <input
+                  id="burn-shock-slider"
+                  type="range"
+                  min={-20}
+                  max={50}
+                  step={5}
+                  value={customShockPct}
+                  onChange={(e) => setCustomShockPct(Number(e.target.value))}
+                  className="w-full accent-[#111318] cursor-pointer h-1.5 bg-[#EAE5DC] rounded-lg"
+                />
+                <span className="text-[10px] font-mono-data text-[#E11D48]">+50%</span>
+              </div>
             </div>
           </div>
 
           {/* 30-Day Liquidity Trajectory Cockpit */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-1">
-              <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-                <span>Current Liquid Cash</span>
-                <Landmark className="h-3.5 w-3.5 text-blue-600" />
+            <div className="rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] p-3.5 space-y-1">
+              <div className="flex items-center justify-between text-[#52504C] text-xs font-medium">
+                <span>Liquid Cash</span>
+                <Landmark className="h-3.5 w-3.5 text-[#111318]" />
               </div>
-              <div className="text-xl font-bold text-slate-900 tabular-nums">
-                {formatINR(liquidCash)}
+              <div className="text-xl font-bold text-[#111318] font-mono-data tabular-nums">
+                {formatINR(liquidCash, { compact: true })}
               </div>
-              <div className="text-[11px] text-slate-500">Across active bank accounts & wallets</div>
+              <div className="text-[11px] text-[#858078]">Active banks &amp; wallets</div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-1">
-              <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-                <span>Forecasted 30d Inflow</span>
-                <ArrowDownLeft className="h-3.5 w-3.5 text-emerald-600" />
+            <div className="rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] p-3.5 space-y-1">
+              <div className="flex items-center justify-between text-[#52504C] text-xs font-medium">
+                <span>30d Inflow</span>
+                <ArrowDownLeft className="h-3.5 w-3.5 text-[#059669]" />
               </div>
-              <div className="text-xl font-bold text-emerald-700 tabular-nums">
-                +{formatINR(scenarioCalculations.inflowMinor)}
+              <div className="text-xl font-bold text-[#059669] font-mono-data tabular-nums">
+                +{formatINR(scenarioCalculations.inflowMinor, { compact: true })}
               </div>
-              <div className="text-[11px] text-slate-500">Recurring salaries, invoices & receivables</div>
+              <div className="text-[11px] text-[#858078]">Salary &amp; receivables</div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-1">
-              <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-                <span>Scheduled 30d Outflow</span>
-                <ArrowUpRight className="h-3.5 w-3.5 text-rose-600" />
+            <div className="rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] p-3.5 space-y-1">
+              <div className="flex items-center justify-between text-[#52504C] text-xs font-medium">
+                <span>30d Outflow</span>
+                <ArrowUpRight className="h-3.5 w-3.5 text-[#E11D48]" />
               </div>
-              <div className="text-xl font-bold text-rose-700 tabular-nums">
-                -{formatINR(scenarioCalculations.outflowMinor)}
+              <div className="text-xl font-bold text-[#E11D48] font-mono-data tabular-nums">
+                -{formatINR(scenarioCalculations.outflowMinor, { compact: true })}
               </div>
-              <div className="text-[11px] text-slate-500">Card bills, EMIs, recurring & people dues</div>
+              <div className="text-[11px] text-[#858078]">Cards, EMIs &amp; bills</div>
             </div>
 
             <div
               className={`rounded-xl border p-3.5 space-y-1 ${
                 scenarioCalculations.projectedBalanceMinor >= 0
-                  ? 'border-emerald-200 bg-emerald-50/50'
-                  : 'border-red-200 bg-red-50/50'
+                  ? 'border-emerald-200 bg-emerald-50/40'
+                  : 'border-rose-200 bg-rose-50/40'
               }`}
             >
               <div className="flex items-center justify-between text-xs font-medium">
-                <span className={scenarioCalculations.projectedBalanceMinor >= 0 ? 'text-emerald-900' : 'text-red-900'}>
-                  Projected Day-30 Balance
+                <span className={scenarioCalculations.projectedBalanceMinor >= 0 ? 'text-[#059669]' : 'text-[#E11D48]'}>
+                  Day-30 Balance
                 </span>
-                <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
+                <Sparkles className="h-3.5 w-3.5 text-[#C59B27]" />
               </div>
               <div
-                className={`text-xl font-bold tabular-nums ${
-                  scenarioCalculations.projectedBalanceMinor >= 0 ? 'text-emerald-800' : 'text-red-800'
+                className={`text-xl font-bold font-mono-data tabular-nums ${
+                  scenarioCalculations.projectedBalanceMinor >= 0 ? 'text-[#059669]' : 'text-[#E11D48]'
                 }`}
               >
-                {formatINR(scenarioCalculations.projectedBalanceMinor)}
+                {formatINR(scenarioCalculations.projectedBalanceMinor, { compact: true })}
               </div>
-              <div className="text-[11px] text-slate-600">
-                Runway: <strong className="font-semibold text-slate-900">{scenarioCalculations.runwayMonths} months</strong>
+              <div className="text-[11px] text-[#52504C]">
+                Runway: <strong className="font-semibold text-[#111318] font-mono-data">{scenarioCalculations.runwayMonths} mo</strong>
               </div>
             </div>
           </div>
 
           {/* Scenario Narrative & 90-Day Trajectory */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-2">
+            <div className="rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] p-4 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-                  <Flame className="h-4 w-4 text-amber-500" /> Emergency Runway Health Radar
+                <span className="text-[11px] font-mono-data font-bold uppercase tracking-wider text-[#111318] flex items-center gap-1.5">
+                  <Flame className="h-4 w-4 text-[#C59B27]" /> Emergency Runway Health Radar
                 </span>
                 <span
-                  className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${
+                  className={`text-[11px] font-mono-data font-semibold px-2 py-0.5 rounded-md border ${
                     scenarioCalculations.runwayMonths >= 6
-                      ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                      ? 'border-emerald-200 bg-emerald-50 text-[#059669]'
                       : scenarioCalculations.runwayMonths >= 3
-                        ? 'border-amber-300 bg-amber-50 text-amber-800'
-                        : 'border-red-300 bg-red-50 text-red-800'
+                        ? 'border-amber-200 bg-amber-50 text-[#9A7B2C]'
+                        : 'border-rose-200 bg-rose-50 text-[#E11D48]'
                   }`}
                 >
                   {scenarioCalculations.runwayMonths >= 6 ? 'Robust Shield (6+ mo)' : scenarioCalculations.runwayMonths >= 3 ? 'Moderate Buffer' : 'Critical Buffer (<3 mo)'}
                 </span>
               </div>
               <div className="space-y-1">
-                <div className="flex justify-between text-xs text-slate-600">
+                <div className="flex justify-between text-xs text-[#52504C]">
                   <span>Current Liquid Cover:</span>
-                  <span className="font-semibold text-slate-900">{scenarioCalculations.runwayMonths} months of burn</span>
+                  <span className="font-semibold font-mono-data text-[#111318]">{scenarioCalculations.runwayMonths} months of burn</span>
                 </div>
                 <MeterBar
                   pct={Math.min(100, Math.round((scenarioCalculations.runwayMonths / 6) * 100))}
-                  colorHex={scenarioCalculations.runwayMonths >= 6 ? '#059669' : scenarioCalculations.runwayMonths >= 3 ? '#d97706' : '#dc2626'}
+                  colorHex={scenarioCalculations.runwayMonths >= 6 ? '#059669' : scenarioCalculations.runwayMonths >= 3 ? '#C59B27' : '#E11D48'}
                   heightClass="h-2"
                 />
-                <div className="flex justify-between text-[10px] text-slate-400">
-                  <span>0 mo (Immediate Risk)</span>
-                  <span>3 mo (Baseline Floor)</span>
-                  <span>6+ mo (Full Freedom)</span>
+                <div className="flex justify-between text-[10px] font-mono-data text-[#858078]">
+                  <span>0 mo (Risk)</span>
+                  <span>3 mo (Floor)</span>
+                  <span>6+ mo (Sovereign)</span>
                 </div>
               </div>
-              <p className="text-xs text-slate-600 pt-1 leading-relaxed">
+              <p className="text-xs text-[#52504C] pt-1 leading-relaxed">
                 {scenarioCalculations.statusNote}
               </p>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-2">
+            <div className="rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] p-4 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-                  <TrendingUp className="h-4 w-4 text-blue-600" /> 90-Day Net Worth Forecast
+                <span className="text-[11px] font-mono-data font-bold uppercase tracking-wider text-[#111318] flex items-center gap-1.5">
+                  <TrendingUp className="h-4 w-4 text-[#059669]" /> 90-Day Net Worth Forecast
                 </span>
-                <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">
+                <span className="text-[11px] font-mono-data font-semibold text-[#111318] bg-[#F3EFEA] border border-[#EAE5DC] px-2 py-0.5 rounded-md">
                   End of Quarter Outlook
                 </span>
               </div>
               <div className="flex items-baseline justify-between pt-1">
                 <div>
-                  <div className="text-xs text-slate-500">Projected Q-End Net Worth</div>
-                  <div className="text-xl font-bold text-slate-900 tabular-nums">
+                  <div className="text-xs text-[#52504C]">Projected Q-End Net Worth</div>
+                  <div className="text-xl font-bold text-[#111318] font-mono-data tabular-nums">
                     {formatINR(netWorth90dForecast.projectedNetIn90d)}
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xs text-slate-500">Monthly Net Trajectory</div>
+                  <div className="text-xs text-[#52504C]">Monthly Net Trajectory</div>
                   <div
-                    className={`text-sm font-bold tabular-nums ${
-                      netWorth90dForecast.monthlyNet >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                    className={`text-sm font-bold font-mono-data tabular-nums ${
+                      netWorth90dForecast.monthlyNet >= 0 ? 'text-[#059669]' : 'text-[#E11D48]'
                     }`}
                   >
                     {formatINR(netWorth90dForecast.monthlyNet, { signed: true })}/mo
                   </div>
                 </div>
               </div>
-              <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between text-xs text-slate-600">
+              <div className="pt-2 border-t border-[#EAE5DC] flex items-center justify-between text-xs text-[#52504C]">
                 <span>Annualized Savings Rate:</span>
-                <span className="font-semibold text-slate-900">{netWorth90dForecast.annualizedSavingsRate}% of gross income</span>
+                <span className="font-semibold font-mono-data text-[#059669]">{netWorth90dForecast.annualizedSavingsRate}% of gross income</span>
               </div>
             </div>
           </div>

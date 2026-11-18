@@ -1,5 +1,5 @@
 import React from 'react';
-import { Badge, Card, SortSelect } from '../../components/ui/Primitives.tsx';
+import { Badge, SortSelect } from '../../components/ui/Primitives.tsx';
 import { formatINR, SCOPE_META } from '../../lib/format.ts';
 import type { DetailedReports } from '../../lib/api.ts';
 import type {
@@ -35,44 +35,52 @@ export const AccountsPortfolioReports: React.FC<AccountsPortfolioReportsProps> =
   onLoanSortChange,
   onDueSortChange,
 }) => {
-  // Sorted Card Accounts
-  const cardAccounts = (data.accountActivity.filter((a) => a.type === 'credit_card') ?? []).slice().sort((a, b) => {
-    if (cardSort === 'util_desc') return (b.cardCycle?.utilizationPct ?? 0) - (a.cardCycle?.utilizationPct ?? 0);
-    if (cardSort === 'spend_desc') return b.periodOutflowMinor - a.periodOutflowMinor;
-    if (cardSort === 'name_asc') return a.name.localeCompare(b.name);
-    return (b.cardCycle?.statementDueMinor ?? 0) - (a.cardCycle?.statementDueMinor ?? 0);
-  });
+  const cardAccounts = (data.accountActivity.filter((a) => a.type === 'credit_card') ?? [])
+    .slice()
+    .sort((a, b) => {
+      if (cardSort === 'util_desc')
+        return (b.cardCycle?.utilizationPct ?? 0) - (a.cardCycle?.utilizationPct ?? 0);
+      if (cardSort === 'spend_desc') return b.periodOutflowMinor - a.periodOutflowMinor;
+      if (cardSort === 'name_asc') return a.name.localeCompare(b.name);
+      return (b.cardCycle?.statementDueMinor ?? 0) - (a.cardCycle?.statementDueMinor ?? 0);
+    });
 
-  // Sorted Bank Accounts
-  const bankAccounts = (data.accountActivity.filter((a) => a.type === 'bank') ?? []).slice().sort((a, b) => {
-    if (bankSort === 'inflow_desc') return b.periodInflowMinor - a.periodInflowMinor;
-    if (bankSort === 'name_asc') return a.name.localeCompare(b.name);
-    return b.currentBalanceMinor - a.currentBalanceMinor;
-  });
+  const bankAccounts = (data.accountActivity.filter((a) => a.type === 'bank') ?? [])
+    .slice()
+    .sort((a, b) => {
+      if (bankSort === 'inflow_desc') return b.periodInflowMinor - a.periodInflowMinor;
+      if (bankSort === 'name_asc') return a.name.localeCompare(b.name);
+      return b.currentBalanceMinor - a.currentBalanceMinor;
+    });
 
-  // Sorted Loans
   const sortedLoans = (data.loans ?? []).slice().sort((a, b) => {
     if (loanSort === 'interest_desc') return b.totalInterestPaidMinor - a.totalInterestPaidMinor;
     if (loanSort === 'name_asc') return a.name.localeCompare(b.name);
     return b.remainingMinor - a.remainingMinor;
   });
 
-  // Sorted Open Dues
-  const sortedOpenDues = (data.dues.filter((d) => d.status !== 'settled') ?? []).slice().sort((a, b) => {
-    if (dueSort === 'due_date') return (a.dueDate || '9999-12-31').localeCompare(b.dueDate || '9999-12-31');
-    if (dueSort === 'person_asc') return a.personName.localeCompare(b.personName);
-    return b.remainingMinor - a.remainingMinor;
-  });
+  const sortedOpenDues = (data.dues.filter((d) => d.status !== 'settled') ?? [])
+    .slice()
+    .sort((a, b) => {
+      if (dueSort === 'due_date')
+        return (a.dueDate || '9999-12-31').localeCompare(b.dueDate || '9999-12-31');
+      if (dueSort === 'person_asc') return a.personName.localeCompare(b.personName);
+      return b.remainingMinor - a.remainingMinor;
+    });
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* 1. CREDIT CARDS REPORT */}
       {reportTab === 'cards' && (
-        <Card className="p-4 border-slate-200/90 bg-white shadow-2xs">
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div className="rounded-3xl p-5 border border-[#E6E1D6] bg-white shadow-[0_8px_24px_rgba(17,19,24,0.03)]">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Credit Card Statement &amp; Spend Report</h2>
-              <p className="text-xs text-slate-500">Billed statement dues, unbilled rolling balance, and utilization</p>
+              <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[#C59B27] font-bold block">
+                REVOLVING CREDIT SCHEDULE
+              </span>
+              <h2 className="font-display text-sm font-bold text-[#111318]">
+                Credit Card Statement &amp; Spend Report
+              </h2>
             </div>
             <SortSelect
               label="Sort Cards"
@@ -89,20 +97,20 @@ export const AccountsPortfolioReports: React.FC<AccountsPortfolioReportsProps> =
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs tabular-nums">
               <thead>
-                <tr className="border-b border-slate-200 text-slate-500">
-                  <th className="py-2.5 pr-3 font-medium">Card Name</th>
-                  <th className="py-2.5 pr-3 font-medium">Scope</th>
-                  <th className="py-2.5 pr-3 font-medium text-right">Statement Due</th>
-                  <th className="py-2.5 pr-3 font-medium text-right">Unbilled</th>
-                  <th className="py-2.5 pr-3 font-medium text-right">Period Spend</th>
-                  <th className="py-2.5 pr-3 font-medium text-right">Period Paid</th>
-                  <th className="py-2.5 text-right font-medium">Utilization</th>
+                <tr className="border-b border-[#E6E1D6] text-[#52504C] font-mono uppercase text-[10px] tracking-wider">
+                  <th className="py-2.5 pr-3 font-bold">Card Name</th>
+                  <th className="py-2.5 pr-3 font-bold">Scope</th>
+                  <th className="py-2.5 pr-3 font-bold text-right">Statement Due</th>
+                  <th className="py-2.5 pr-3 font-bold text-right">Unbilled</th>
+                  <th className="py-2.5 pr-3 font-bold text-right">Period Spend</th>
+                  <th className="py-2.5 pr-3 font-bold text-right">Period Paid</th>
+                  <th className="py-2.5 text-right font-bold">Utilization</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[#E6E1D6]/60 font-mono">
                 {cardAccounts.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-slate-500 text-xs">
+                    <td colSpan={7} className="py-8 text-center text-[#52504C] text-xs font-sans">
                       No active credit cards registered in this scope.
                     </td>
                   </tr>
@@ -110,38 +118,44 @@ export const AccountsPortfolioReports: React.FC<AccountsPortfolioReportsProps> =
                   cardAccounts.map((c) => {
                     const util = c.cardCycle?.utilizationPct ?? 0;
                     return (
-                      <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="py-2.5 pr-3 font-semibold text-slate-900">
+                      <tr key={c.id} className="hover:bg-[#FAF8F5] transition-colors">
+                        <td className="py-3 pr-3 font-sans font-semibold text-[#111318]">
                           {c.name}
-                          {c.last4 && <span className="ml-1 text-slate-400 font-normal">••• {c.last4}</span>}
+                          {c.last4 && (
+                            <span className="ml-1 text-[#52504C] font-mono font-normal">
+                              ••{c.last4}
+                            </span>
+                          )}
                         </td>
-                        <td className="py-2.5 pr-3">
-                          <Badge className={SCOPE_META[c.scope].badgeClass}>{SCOPE_META[c.scope].label}</Badge>
+                        <td className="py-3 pr-3 font-sans">
+                          <Badge className={SCOPE_META[c.scope].badgeClass}>
+                            {SCOPE_META[c.scope].label}
+                          </Badge>
                         </td>
-                        <td className="py-2.5 pr-3 text-right font-semibold text-slate-900">
+                        <td className="py-3 pr-3 text-right font-bold text-[#111318]">
                           {formatINR(c.cardCycle?.statementDueMinor ?? 0)}
                         </td>
-                        <td className="py-2.5 pr-3 text-right text-slate-600">
+                        <td className="py-3 pr-3 text-right text-[#52504C]">
                           {formatINR(c.cardCycle?.unbilledMinor ?? 0)}
                         </td>
-                        <td className="py-2.5 pr-3 text-right text-rose-700 font-medium">
+                        <td className="py-3 pr-3 text-right text-[#E11D48] font-semibold">
                           -{formatINR(c.periodOutflowMinor)}
                         </td>
-                        <td className="py-2.5 pr-3 text-right text-emerald-700 font-medium">
+                        <td className="py-3 pr-3 text-right text-[#059669] font-semibold">
                           +{formatINR(c.periodInflowMinor)}
                         </td>
-                        <td className="py-2.5 text-right">
-                          <Badge
-                            className={
+                        <td className="py-3 text-right">
+                          <span
+                            className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
                               util >= 50
-                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                ? 'bg-[#E11D48]/10 text-[#E11D48] border-[#E11D48]/25'
                                 : util >= 30
-                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            }
+                                  ? 'bg-[#D97706]/10 text-[#D97706] border-[#D97706]/25'
+                                  : 'bg-[#059669]/10 text-[#059669] border-[#059669]/25'
+                            }`}
                           >
                             {util}%
-                          </Badge>
+                          </span>
                         </td>
                       </tr>
                     );
@@ -150,16 +164,20 @@ export const AccountsPortfolioReports: React.FC<AccountsPortfolioReportsProps> =
               </tbody>
             </table>
           </div>
-        </Card>
+        </div>
       )}
 
       {/* 2. BANK ACCOUNTS REPORT */}
       {reportTab === 'banks' && (
-        <Card className="p-4 border-slate-200/90 bg-white shadow-2xs">
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div className="rounded-3xl p-5 border border-[#E6E1D6] bg-white shadow-[0_8px_24px_rgba(17,19,24,0.03)]">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Bank Ledger Activity &amp; Current Balances</h2>
-              <p className="text-xs text-slate-500">Savings &amp; current account reconciliation, net cashflow delta</p>
+              <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[#059669] font-bold block">
+                TREASURY RECONCILIATION
+              </span>
+              <h2 className="font-display text-sm font-bold text-[#111318]">
+                Bank Ledger Activity &amp; Current Balances
+              </h2>
             </div>
             <SortSelect
               label="Sort Banks"
@@ -175,19 +193,19 @@ export const AccountsPortfolioReports: React.FC<AccountsPortfolioReportsProps> =
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs tabular-nums">
               <thead>
-                <tr className="border-b border-slate-200 text-slate-500">
-                  <th className="py-2.5 pr-3 font-medium">Bank Account</th>
-                  <th className="py-2.5 pr-3 font-medium">Scope</th>
-                  <th className="py-2.5 pr-3 font-medium text-right">Period Inflow</th>
-                  <th className="py-2.5 pr-3 font-medium text-right">Period Outflow</th>
-                  <th className="py-2.5 pr-3 font-medium text-right">Net Flow</th>
-                  <th className="py-2.5 text-right font-medium">Closing Balance</th>
+                <tr className="border-b border-[#E6E1D6] text-[#52504C] font-mono uppercase text-[10px] tracking-wider">
+                  <th className="py-2.5 pr-3 font-bold">Bank Account</th>
+                  <th className="py-2.5 pr-3 font-bold">Scope</th>
+                  <th className="py-2.5 pr-3 font-bold text-right">Period Inflow</th>
+                  <th className="py-2.5 pr-3 font-bold text-right">Period Outflow</th>
+                  <th className="py-2.5 pr-3 font-bold text-right">Net Flow</th>
+                  <th className="py-2.5 text-right font-bold">Closing Balance</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[#E6E1D6]/60 font-mono">
                 {bankAccounts.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-slate-500 text-xs">
+                    <td colSpan={6} className="py-8 text-center text-[#52504C] text-xs font-sans">
                       No bank accounts registered in this scope.
                     </td>
                   </tr>
@@ -195,28 +213,34 @@ export const AccountsPortfolioReports: React.FC<AccountsPortfolioReportsProps> =
                   bankAccounts.map((b) => {
                     const netFlow = b.periodInflowMinor - b.periodOutflowMinor;
                     return (
-                      <tr key={b.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="py-2.5 pr-3 font-semibold text-slate-900">
+                      <tr key={b.id} className="hover:bg-[#FAF8F5] transition-colors">
+                        <td className="py-3 pr-3 font-sans font-semibold text-[#111318]">
                           {b.name}
-                          {b.last4 && <span className="ml-1 text-slate-400 font-normal">••• {b.last4}</span>}
+                          {b.last4 && (
+                            <span className="ml-1 text-[#52504C] font-mono font-normal">
+                              ••{b.last4}
+                            </span>
+                          )}
                         </td>
-                        <td className="py-2.5 pr-3">
-                          <Badge className={SCOPE_META[b.scope].badgeClass}>{SCOPE_META[b.scope].label}</Badge>
+                        <td className="py-3 pr-3 font-sans">
+                          <Badge className={SCOPE_META[b.scope].badgeClass}>
+                            {SCOPE_META[b.scope].label}
+                          </Badge>
                         </td>
-                        <td className="py-2.5 pr-3 text-right text-emerald-700 font-medium">
+                        <td className="py-3 pr-3 text-right text-[#059669] font-semibold">
                           +{formatINR(b.periodInflowMinor)}
                         </td>
-                        <td className="py-2.5 pr-3 text-right text-rose-700 font-medium">
+                        <td className="py-3 pr-3 text-right text-[#E11D48] font-semibold">
                           -{formatINR(b.periodOutflowMinor)}
                         </td>
                         <td
-                          className={`py-2.5 pr-3 text-right font-semibold ${
-                            netFlow >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                          className={`py-3 pr-3 text-right font-bold ${
+                            netFlow >= 0 ? 'text-[#059669]' : 'text-[#E11D48]'
                           }`}
                         >
                           {formatINR(netFlow, { signed: true })}
                         </td>
-                        <td className="py-2.5 text-right font-bold text-slate-950">
+                        <td className="py-3 text-right font-bold text-[#111318]">
                           {formatINR(b.currentBalanceMinor)}
                         </td>
                       </tr>
@@ -226,16 +250,20 @@ export const AccountsPortfolioReports: React.FC<AccountsPortfolioReportsProps> =
               </tbody>
             </table>
           </div>
-        </Card>
+        </div>
       )}
 
       {/* 3. LOAN PORTFOLIO REPORT */}
       {reportTab === 'loans' && (
-        <Card className="p-4 border-slate-200/90 bg-white shadow-2xs">
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div className="rounded-3xl p-5 border border-[#E6E1D6] bg-white shadow-[0_8px_24px_rgba(17,19,24,0.03)]">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Loan Portfolio &amp; Amortization Report</h2>
-              <p className="text-xs text-slate-500">Principal clearance velocity vs. interest expenses paid</p>
+              <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[#C59B27] font-bold block">
+                AMORTIZATION AUDIT
+              </span>
+              <h2 className="font-display text-sm font-bold text-[#111318]">
+                Loan Portfolio &amp; Amortization Report
+              </h2>
             </div>
             <SortSelect
               label="Sort Loans"
@@ -251,20 +279,20 @@ export const AccountsPortfolioReports: React.FC<AccountsPortfolioReportsProps> =
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs tabular-nums">
               <thead>
-                <tr className="border-b border-slate-200 text-slate-500">
-                  <th className="py-2.5 pr-3 font-medium">Loan Facility</th>
-                  <th className="py-2.5 pr-3 font-medium">Type</th>
-                  <th className="py-2.5 pr-3 font-medium text-right">Original Principal</th>
-                  <th className="py-2.5 pr-3 font-medium text-right">Remaining Balance</th>
-                  <th className="py-2.5 pr-3 font-medium text-right">Principal Cleared</th>
-                  <th className="py-2.5 pr-3 font-medium text-right">Interest Paid</th>
-                  <th className="py-2.5 text-right font-medium">Cleared %</th>
+                <tr className="border-b border-[#E6E1D6] text-[#52504C] font-mono uppercase text-[10px] tracking-wider">
+                  <th className="py-2.5 pr-3 font-bold">Loan Facility</th>
+                  <th className="py-2.5 pr-3 font-bold">Type</th>
+                  <th className="py-2.5 pr-3 font-bold text-right">Original Principal</th>
+                  <th className="py-2.5 pr-3 font-bold text-right">Remaining Balance</th>
+                  <th className="py-2.5 pr-3 font-bold text-right">Principal Cleared</th>
+                  <th className="py-2.5 pr-3 font-bold text-right">Interest Paid</th>
+                  <th className="py-2.5 text-right font-bold">Cleared %</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[#E6E1D6]/60 font-mono">
                 {sortedLoans.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-slate-500 text-xs">
+                    <td colSpan={7} className="py-8 text-center text-[#52504C] text-xs font-sans">
                       No loans registered in this scope.
                     </td>
                   </tr>
@@ -272,44 +300,45 @@ export const AccountsPortfolioReports: React.FC<AccountsPortfolioReportsProps> =
                   sortedLoans.map((l) => {
                     const clearedPct =
                       l.principalMinor > 0
-                        ? Math.min(100, Math.round(((l.principalMinor - l.remainingMinor) / l.principalMinor) * 100))
+                        ? Math.min(
+                            100,
+                            Math.round(
+                              ((l.principalMinor - l.remainingMinor) / l.principalMinor) * 100,
+                            ),
+                          )
                         : 0;
                     return (
-                      <tr key={l.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="py-2.5 pr-3 font-semibold text-slate-900">{l.name}</td>
-                        <td className="py-2.5 pr-3">
-                          <Badge
-                            className={
+                      <tr key={l.id} className="hover:bg-[#FAF8F5] transition-colors">
+                        <td className="py-3 pr-3 font-sans font-semibold text-[#111318]">
+                          {l.name}
+                        </td>
+                        <td className="py-3 pr-3 font-sans">
+                          <span
+                            className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
                               l.direction === 'borrowed'
-                                ? 'bg-rose-50 text-rose-700 border-rose-200'
-                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            }
+                                ? 'bg-[#E11D48]/10 text-[#E11D48] border-[#E11D48]/25'
+                                : 'bg-[#059669]/10 text-[#059669] border-[#059669]/25'
+                            }`}
                           >
                             {l.direction === 'borrowed' ? 'Liability' : 'Asset (Lent)'}
-                          </Badge>
+                          </span>
                         </td>
-                        <td className="py-2.5 pr-3 text-right">{formatINR(l.principalMinor)}</td>
-                        <td className="py-2.5 pr-3 text-right font-semibold text-slate-900">
+                        <td className="py-3 pr-3 text-right text-[#52504C]">
+                          {formatINR(l.principalMinor)}
+                        </td>
+                        <td className="py-3 pr-3 text-right font-bold text-[#111318]">
                           {formatINR(l.remainingMinor)}
                         </td>
-                        <td className="py-2.5 pr-3 text-right text-emerald-700 font-medium">
+                        <td className="py-3 pr-3 text-right text-[#059669] font-semibold">
                           {formatINR(l.totalPrincipalPaidMinor)}
                         </td>
-                        <td className="py-2.5 pr-3 text-right text-amber-700 font-medium">
+                        <td className="py-3 pr-3 text-right text-[#C59B27] font-semibold">
                           {formatINR(l.totalInterestPaidMinor)}
                         </td>
-                        <td className="py-2.5 text-right">
-                          <Badge
-                            className={
-                              clearedPct >= 75
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : clearedPct >= 40
-                                  ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                  : 'bg-slate-100 text-slate-700 border-slate-200'
-                            }
-                          >
+                        <td className="py-3 text-right">
+                          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#F3EFEA] text-[#111318] border border-[#E6E1D6]">
                             {clearedPct}%
-                          </Badge>
+                          </span>
                         </td>
                       </tr>
                     );
@@ -318,7 +347,7 @@ export const AccountsPortfolioReports: React.FC<AccountsPortfolioReportsProps> =
               </tbody>
             </table>
           </div>
-        </Card>
+        </div>
       )}
 
       {/* 4. KHATABOOK DUES REPORT */}
@@ -326,37 +355,49 @@ export const AccountsPortfolioReports: React.FC<AccountsPortfolioReportsProps> =
         <div className="space-y-4">
           {/* Aging KPI Strip */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Card className="p-3.5 border-rose-200 bg-rose-50/30">
-              <div className="text-[11px] text-slate-500 font-medium">Overdue Dues</div>
-              <div className="text-lg font-bold text-rose-700 tabular-nums mt-0.5">
+            <div className="rounded-2xl p-4 border border-[#E11D48]/25 bg-[#E11D48]/6">
+              <div className="text-[10px] font-mono uppercase tracking-wider text-[#52504C] font-bold">
+                Overdue Dues
+              </div>
+              <div className="text-lg font-bold font-mono-data text-[#E11D48] tabular-nums mt-0.5">
                 {formatINR(data.duesAging.overdueMinor)}
               </div>
-            </Card>
-            <Card className="p-3.5 border-amber-200 bg-amber-50/30">
-              <div className="text-[11px] text-slate-500 font-medium">Due in 7 Days</div>
-              <div className="text-lg font-bold text-amber-700 tabular-nums mt-0.5">
+            </div>
+            <div className="rounded-2xl p-4 border border-[#C59B27]/35 bg-[#C59B27]/10">
+              <div className="text-[10px] font-mono uppercase tracking-wider text-[#52504C] font-bold">
+                Due in 7 Days
+              </div>
+              <div className="text-lg font-bold font-mono-data text-[#111318] tabular-nums mt-0.5">
                 {formatINR(data.duesAging.dueSoonMinor)}
               </div>
-            </Card>
-            <Card className="p-3.5 border-slate-200 bg-white">
-              <div className="text-[11px] text-slate-500 font-medium">Upcoming / Rolling</div>
-              <div className="text-lg font-bold text-slate-900 tabular-nums mt-0.5">
+            </div>
+            <div className="rounded-2xl p-4 border border-[#E6E1D6] bg-white">
+              <div className="text-[10px] font-mono uppercase tracking-wider text-[#52504C] font-bold">
+                Upcoming / Rolling
+              </div>
+              <div className="text-lg font-bold font-mono-data text-[#111318] tabular-nums mt-0.5">
                 {formatINR(data.duesAging.upcomingMinor)}
               </div>
-            </Card>
-            <Card className="p-3.5 border-emerald-200 bg-emerald-50/30">
-              <div className="text-[11px] text-slate-500 font-medium">Settled Volume</div>
-              <div className="text-lg font-bold text-emerald-700 tabular-nums mt-0.5">
+            </div>
+            <div className="rounded-2xl p-4 border border-[#059669]/25 bg-[#059669]/8">
+              <div className="text-[10px] font-mono uppercase tracking-wider text-[#52504C] font-bold">
+                Settled Volume
+              </div>
+              <div className="text-lg font-bold font-mono-data text-[#059669] tabular-nums mt-0.5">
                 {formatINR(data.duesAging.settledMinor)}
               </div>
-            </Card>
+            </div>
           </div>
 
-          <Card className="p-4 border-slate-200/90 bg-white shadow-2xs">
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div className="rounded-3xl p-5 border border-[#E6E1D6] bg-white shadow-[0_8px_24px_rgba(17,19,24,0.03)]">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
               <div>
-                <h2 className="text-sm font-semibold text-slate-900">Open &amp; Overdue People Balances</h2>
-                <p className="text-xs text-slate-500">Unsettled Udhar &amp; informal personal loans ledger</p>
+                <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-[#059669] font-bold block">
+                  KHATABOOK COUNTERPARTY SCHEDULE
+                </span>
+                <h2 className="font-display text-sm font-bold text-[#111318]">
+                  Open &amp; Overdue People Balances
+                </h2>
               </div>
               <SortSelect
                 label="Sort Dues"
@@ -372,41 +413,45 @@ export const AccountsPortfolioReports: React.FC<AccountsPortfolioReportsProps> =
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs tabular-nums">
                 <thead>
-                  <tr className="border-b border-slate-200 text-slate-500">
-                    <th className="py-2.5 pr-3 font-medium">Person</th>
-                    <th className="py-2.5 pr-3 font-medium">Direction</th>
-                    <th className="py-2.5 pr-3 font-medium">Scope</th>
-                    <th className="py-2.5 pr-3 font-medium">Due Date</th>
-                    <th className="py-2.5 text-right font-medium">Remaining Balance</th>
+                  <tr className="border-b border-[#E6E1D6] text-[#52504C] font-mono uppercase text-[10px] tracking-wider">
+                    <th className="py-2.5 pr-3 font-bold">Person</th>
+                    <th className="py-2.5 pr-3 font-bold">Direction</th>
+                    <th className="py-2.5 pr-3 font-bold">Scope</th>
+                    <th className="py-2.5 pr-3 font-bold">Due Date</th>
+                    <th className="py-2.5 text-right font-bold">Remaining Balance</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-[#E6E1D6]/60 font-mono">
                   {sortedOpenDues.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-8 text-center text-slate-500 text-xs">
+                      <td colSpan={5} className="py-8 text-center text-[#52504C] text-xs font-sans">
                         No unsettled dues in this scope.
                       </td>
                     </tr>
                   ) : (
                     sortedOpenDues.map((d) => (
-                      <tr key={d.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="py-2.5 pr-3 font-semibold text-slate-900">{d.personName}</td>
-                        <td className="py-2.5 pr-3">
-                          <Badge
-                            className={
+                      <tr key={d.id} className="hover:bg-[#FAF8F5] transition-colors">
+                        <td className="py-3 pr-3 font-sans font-semibold text-[#111318]">
+                          {d.personName}
+                        </td>
+                        <td className="py-3 pr-3 font-sans">
+                          <span
+                            className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
                               d.direction === 'need'
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : 'bg-rose-50 text-rose-700 border-rose-200'
-                            }
+                                ? 'bg-[#059669]/10 text-[#059669] border-[#059669]/25'
+                                : 'bg-[#E11D48]/10 text-[#E11D48] border-[#E11D48]/25'
+                            }`}
                           >
-                            {d.direction === 'need' ? 'Need From' : 'Give To'}
+                            {d.direction === 'need' ? 'Owed to You' : 'You Owe'}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-3 font-sans">
+                          <Badge className={SCOPE_META[d.scope].badgeClass}>
+                            {SCOPE_META[d.scope].label}
                           </Badge>
                         </td>
-                        <td className="py-2.5 pr-3">
-                          <Badge className={SCOPE_META[d.scope].badgeClass}>{SCOPE_META[d.scope].label}</Badge>
-                        </td>
-                        <td className="py-2.5 pr-3 text-slate-600">{d.dueDate || '—'}</td>
-                        <td className="py-2.5 text-right font-semibold text-slate-900">
+                        <td className="py-3 pr-3 text-[#52504C]">{d.dueDate || '—'}</td>
+                        <td className="py-3 text-right font-bold text-[#111318]">
                           {formatINR(d.remainingMinor)}
                         </td>
                       </tr>
@@ -415,7 +460,7 @@ export const AccountsPortfolioReports: React.FC<AccountsPortfolioReportsProps> =
                 </tbody>
               </table>
             </div>
-          </Card>
+          </div>
         </div>
       )}
     </div>

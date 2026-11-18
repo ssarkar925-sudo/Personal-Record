@@ -1302,4 +1302,39 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(snapshot),
     }).then((r) => r.data),
+
+  getJobSheets: () =>
+    request<{ data: import('../workspaces/sheets/jobSheetsAnalytics.ts').JobSheetRecord[] }>('/api/job-sheets').then(
+      (r) => r.data,
+    ),
+  createJobSheet: (body: {
+    name: string;
+    scope?: Scope;
+    color?: import('../workspaces/sheets/jobSheetsAnalytics.ts').SheetTabColor;
+    columns: import('../workspaces/sheets/jobSheetsAnalytics.ts').SheetColumn[];
+    rows: import('../workspaces/sheets/jobSheetsAnalytics.ts').SheetRow[];
+    settings?: import('../workspaces/sheets/jobSheetsAnalytics.ts').SheetSettings;
+    orderIndex?: number;
+  }) =>
+    request<{ data: import('../workspaces/sheets/jobSheetsAnalytics.ts').JobSheetRecord }>('/api/job-sheets', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then((r) => r.data),
+  updateJobSheet: (
+    id: string,
+    body: Partial<{
+      name: string;
+      scope: Scope;
+      color: import('../workspaces/sheets/jobSheetsAnalytics.ts').SheetTabColor;
+      columns: import('../workspaces/sheets/jobSheetsAnalytics.ts').SheetColumn[];
+      rows: import('../workspaces/sheets/jobSheetsAnalytics.ts').SheetRow[];
+      settings: import('../workspaces/sheets/jobSheetsAnalytics.ts').SheetSettings;
+      orderIndex: number;
+    }>,
+  ) =>
+    request<{ data: import('../workspaces/sheets/jobSheetsAnalytics.ts').JobSheetRecord }>(`/api/job-sheets/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }).then((r) => r.data),
+  deleteJobSheet: (id: string) => request<{ ok: boolean }>(`/api/job-sheets/${id}`, { method: 'DELETE' }),
 };

@@ -30,8 +30,8 @@ export function FinancialPulseSection({
           colorHex: palette[idx % palette.length],
         }))
       : [
-          { scope: 'personal', label: 'Personal', amountMinor: data.monthByScope.personal.expenseMinor, colorHex: '#2563eb' },
           { scope: 'business', label: 'Business', amountMinor: data.monthByScope.business.expenseMinor, colorHex: '#d97706' },
+          { scope: 'personal', label: 'Personal', amountMinor: data.monthByScope.personal.expenseMinor, colorHex: '#2563eb' },
           { scope: 'family', label: 'Family', amountMinor: data.monthByScope.family.expenseMinor, colorHex: '#059669' },
         ];
 

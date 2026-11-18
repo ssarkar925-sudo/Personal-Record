@@ -27,10 +27,12 @@ import {
 import type { DueDirection, GoalKind, LoanDirection, Scope } from '../../shared/ledger-core.ts';
 import type { AppLanguage } from '../../shared/i18n.ts';
 import { LoansDuesKpiStrip } from './loans-dues/LoansDuesKpiStrip.tsx';
+import { LoansHeroWorkstation } from './loans-dues/LoansHeroWorkstation.tsx';
 import { LoansDuesHub } from './loans-dues/LoansDuesHub.tsx';
 import { LoanContextHud } from './loans-dues/LoanContextHud.tsx';
 import { BentoLoansGrid } from './loans-dues/BentoLoansGrid.tsx';
 import { SettlementStream } from './loans-dues/SettlementStream.tsx';
+import { computeLoansDuesPortfolioMetrics } from './loans-dues/loansDuesAnalytics.ts';
 import type {
   LoansDuesSortOption,
   LoansTab,
@@ -44,9 +46,20 @@ export interface LoansDuesViewProps {
   dues: PersonDueRecord[];
   dueSummaries: PersonNetSummary[];
   accounts: AccountRecord[];
+  globalScopeFilter?: Scope | 'all';
   systemLanguage?: AppLanguage;
   onNotify?: (msg: string, kind?: 'ok' | 'err') => void;
   onRefresh: () => void;
+}
+
+function safeRupeesToPaise(raw: string): number {
+  const trimmed = raw.trim();
+  if (!trimmed) return 0;
+  try {
+    return Math.max(0, rupeesToPaise(trimmed));
+  } catch {
+    return 0;
+  }
 }
 
 export function LoansDuesView({
@@ -54,20 +67,29 @@ export function LoansDuesView({
   dues,
   dueSummaries,
   accounts,
+  globalScopeFilter = 'all',
   onNotify,
   onRefresh,
 }: LoansDuesViewProps) {
-  // Navigation & Layout State
+  // Navigation & Layout State (defaults to 'bento' 3D Cards mode)
   const [activeTab, setActiveTab] = useState<LoansTab>('all');
   const [triageFilter, setTriageFilter] = useState<LoansTriageFilter>('all');
-  const [workstationLayout, setWorkstationLayout] = useState<LoansWorkstationLayout>('split');
+  const [workstationLayout, setWorkstationLayout] = useState<LoansWorkstationLayout>('bento');
   const [sortOption, setSortOption] = useState<LoansDuesSortOption>('remaining_desc');
   const [selectedItem, setSelectedItem] = useState<SelectedLoansItem>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [scopeFilter, setScopeFilter] = useState<Scope | 'all'>('all');
+  const [scopeFilter, setScopeFilter] = useState<Scope | 'all'>(globalScopeFilter);
+
+  useEffect(() => {
+    setScopeFilter(globalScopeFilter);
+  }, [globalScopeFilter]);
 
   // Modals & Form State
-  const [confirmDelete, setConfirmDelete] = useState<{ kind: 'loan' | 'due' | 'goal'; id: string; label: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{
+    kind: 'loan' | 'due' | 'goal';
+    id: string;
+    label: string;
+  } | null>(null);
 
   // Debt Payoff Planner state
   const [payoffExtraRupees, setPayoffExtraRupees] = useState('5000');
@@ -80,7 +102,7 @@ export function LoansDuesView({
   const [editingLoan, setEditingLoan] = useState<LoanRecord | null>(null);
   const [loanName, setLoanName] = useState('');
   const [loanParty, setLoanParty] = useState('');
-  const [loanScope, setLoanScope] = useState<Scope>('personal');
+  const [loanScope, setLoanScope] = useState<Scope>('business');
   const [loanDir, setLoanDir] = useState<LoanDirection>('borrowed');
   const [loanPrincipal, setLoanPrincipal] = useState('');
   const [loanRemaining, setLoanRemaining] = useState('');
@@ -104,7 +126,7 @@ export function LoansDuesView({
   const [duePerson, setDuePerson] = useState('');
   const [duePhone, setDuePhone] = useState('');
   const [dueDir, setDueDir] = useState<DueDirection>('need');
-  const [dueScope, setDueScope] = useState<Scope>('personal');
+  const [dueScope, setDueScope] = useState<Scope>('business');
   const [dueAmount, setDueAmount] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [dueNote, setDueNote] = useState('');
@@ -121,7 +143,7 @@ export function LoansDuesView({
   const [editingGoal, setEditingGoal] = useState<SavingsGoalRecord | null>(null);
   const [goalTitle, setGoalTitle] = useState('');
   const [goalKind, setGoalKind] = useState<GoalKind>('goal');
-  const [goalScope, setGoalScope] = useState<Scope>('personal');
+  const [goalScope, setGoalScope] = useState<Scope>('business');
   const [goalTarget, setGoalTarget] = useState('');
   const [goalCurrent, setGoalCurrent] = useState('0');
   const [goalDate, setGoalDate] = useState('');
@@ -134,21 +156,22 @@ export function LoansDuesView({
   const [contribLogTx, setContribLogTx] = useState(false);
   const [isContributingGoal, setIsContributingGoal] = useState(false);
 
-  const banks = useMemo(() => accounts.filter((a) => a.accountGroup === 'bank' || a.type === 'bank'), [accounts]);
+  const banks = useMemo(
+    () => accounts.filter((a) => a.accountGroup === 'bank' || a.type === 'bank'),
+    [accounts],
+  );
 
   // Load Goals & Payoff Plan
   useEffect(() => {
-    void api.getGoals().then(setGoalsSummary).catch(() => {});
+    void api
+      .getGoals()
+      .then(setGoalsSummary)
+      .catch(() => {});
   }, [loans.length, accounts.length]);
 
   useEffect(() => {
     let cancelled = false;
-    let extraMinor = 0;
-    try {
-      extraMinor = payoffExtraRupees.trim() ? Math.max(0, rupeesToPaise(payoffExtraRupees)) : 0;
-    } catch {
-      extraMinor = 0;
-    }
+    const extraMinor = safeRupeesToPaise(payoffExtraRupees);
     void api
       .getDebtPayoffPlan({ extraMinor, strategy: payoffStrategy })
       .then((res) => {
@@ -162,61 +185,36 @@ export function LoansDuesView({
 
   // Estimated EMI Calculator
   const estimatedEmiMinor = useMemo(() => {
-    try {
-      const pMinor = rupeesToPaise(loanPrincipal || '0');
-      const bps = Math.round((Number(loanRatePct) || 0) * 100);
-      const tenure = Math.max(1, Number(loanTenure) || 12);
-      return estimateMonthlyEmiMinor(pMinor, bps, tenure);
-    } catch {
-      return 0;
-    }
+    const pMinor = safeRupeesToPaise(loanPrincipal);
+    if (pMinor <= 0) return 0;
+    const bps = Math.round((Number(loanRatePct) || 0) * 100);
+    const tenure = Math.max(1, Number(loanTenure) || 12);
+    return estimateMonthlyEmiMinor(pMinor, bps, tenure);
   }, [loanPrincipal, loanRatePct, loanTenure]);
 
   // 1. Executive Summary Financial Computations
-  const activeBorrowedLoans = useMemo(() => loans.filter((l) => l.direction === 'borrowed' && l.status === 'active'), [loans]);
-  const activeLentLoans = useMemo(() => loans.filter((l) => l.direction === 'lent' && l.status === 'active'), [loans]);
-  const openGiveDues = useMemo(() => dues.filter((d) => d.direction === 'give' && d.status !== 'settled'), [dues]);
-  const openNeedDues = useMemo(() => dues.filter((d) => d.direction === 'need' && d.status !== 'settled'), [dues]);
-
-  const totalBorrowingsMinor = useMemo(() => {
-    const loanDebt = activeBorrowedLoans.reduce((sum, l) => sum + l.remainingMinor, 0);
-    const dueDebt = openGiveDues.reduce((sum, d) => sum + d.remainingMinor, 0);
-    return loanDebt + dueDebt;
-  }, [activeBorrowedLoans, openGiveDues]);
-
-  const totalReceivablesMinor = useMemo(() => {
-    const loanLent = activeLentLoans.reduce((sum, l) => sum + l.remainingMinor, 0);
-    const dueReceivable = openNeedDues.reduce((sum, d) => sum + d.remainingMinor, 0);
-    return loanLent + dueReceivable;
-  }, [activeLentLoans, openNeedDues]);
-
-  const monthlyEmiCommitmentMinor = useMemo(() => {
-    return activeBorrowedLoans.reduce((sum, l) => sum + l.emiMinor, 0);
-  }, [activeBorrowedLoans]);
-
   const currentDayOfMonth = new Date().getDate();
-  const urgentDueCount = useMemo(() => {
-    let count = 0;
-    for (const l of activeBorrowedLoans) {
-      if (!l.nextDueDate) continue;
-      const parts = l.nextDueDate.split('-');
-      const dueDay = Number(parts[2]) || 1;
-      const diff = dueDay - currentDayOfMonth;
-      if ((diff >= 0 && diff <= 7) || (diff < 0 && diff >= -3)) count++;
-    }
-    for (const d of dues) {
-      if (d.status === 'settled' || !d.dueDate) continue;
-      const parts = d.dueDate.split('-');
-      const dueDay = Number(parts[2]) || 1;
-      const diff = dueDay - currentDayOfMonth;
-      if ((diff >= 0 && diff <= 7) || (diff < 0 && diff >= -3)) count++;
-    }
-    return count;
-  }, [activeBorrowedLoans, dues, currentDayOfMonth]);
+  const portfolioMetrics = useMemo(
+    () => computeLoansDuesPortfolioMetrics(loans, dues, currentDayOfMonth),
+    [loans, dues, currentDayOfMonth],
+  );
 
-  const nextEmiLoan = useMemo(() => {
-    return activeBorrowedLoans.slice().sort((a, b) => a.nextDueDate.localeCompare(b.nextDueDate))[0] || null;
-  }, [activeBorrowedLoans]);
+  const activeBorrowedLoans = useMemo(
+    () => loans.filter((l) => l.direction === 'borrowed' && l.status === 'active'),
+    [loans],
+  );
+  const activeLentLoans = useMemo(
+    () => loans.filter((l) => l.direction === 'lent' && l.status === 'active'),
+    [loans],
+  );
+  const openGiveDues = useMemo(
+    () => dues.filter((d) => d.direction === 'give' && d.status !== 'settled'),
+    [dues],
+  );
+  const openNeedDues = useMemo(
+    () => dues.filter((d) => d.direction === 'need' && d.status !== 'settled'),
+    [dues],
+  );
 
   // Scalable Filtered & Sorted Lists
   const filteredLoans = useMemo(() => {
@@ -244,7 +242,8 @@ export function LoansDuesView({
     return list.sort((a, b) => {
       if (sortOption === 'remaining_desc') return b.remainingMinor - a.remainingMinor;
       if (sortOption === 'remaining_asc') return a.remainingMinor - b.remainingMinor;
-      if (sortOption === 'next_due') return (a.nextDueDate || '9999').localeCompare(b.nextDueDate || '9999');
+      if (sortOption === 'next_due')
+        return (a.nextDueDate || '9999').localeCompare(b.nextDueDate || '9999');
       if (sortOption === 'name_asc') return a.name.localeCompare(b.name);
       return 0;
     });
@@ -255,8 +254,10 @@ export function LoansDuesView({
       if (scopeFilter !== 'all' && d.scope !== scopeFilter) return false;
       if (triageFilter === 'settled' && d.status !== 'settled') return false;
       if (triageFilter === 'bank_loans') return false;
-      if (triageFilter === 'you_owe' && (d.direction !== 'give' || d.status === 'settled')) return false;
-      if (triageFilter === 'you_are_owed' && (d.direction !== 'need' || d.status === 'settled')) return false;
+      if (triageFilter === 'you_owe' && (d.direction !== 'give' || d.status === 'settled'))
+        return false;
+      if (triageFilter === 'you_are_owed' && (d.direction !== 'need' || d.status === 'settled'))
+        return false;
       if (triageFilter === 'due_soon') {
         if (d.status === 'settled' || !d.dueDate) return false;
         const parts = d.dueDate.split('-');
@@ -277,7 +278,8 @@ export function LoansDuesView({
     return list.sort((a, b) => {
       if (sortOption === 'remaining_desc') return b.remainingMinor - a.remainingMinor;
       if (sortOption === 'remaining_asc') return a.remainingMinor - b.remainingMinor;
-      if (sortOption === 'next_due') return (a.dueDate || '9999').localeCompare(b.dueDate || '9999');
+      if (sortOption === 'next_due')
+        return (a.dueDate || '9999').localeCompare(b.dueDate || '9999');
       if (sortOption === 'name_asc') return a.personName.localeCompare(b.personName);
       return 0;
     });
@@ -301,7 +303,7 @@ export function LoansDuesView({
     setEditingLoan(null);
     setLoanName('');
     setLoanParty('');
-    setLoanScope(scopeFilter === 'all' ? 'personal' : scopeFilter);
+    setLoanScope(scopeFilter === 'all' ? 'business' : scopeFilter);
     setLoanDir('borrowed');
     setLoanPrincipal('');
     setLoanRemaining('');
@@ -392,7 +394,7 @@ export function LoansDuesView({
         paidAt: payEmiDate,
       });
       setPayLoanTarget(null);
-      onNotify?.(`Recorded EMI payment for ${payLoanTarget.name}! 🏦`);
+      onNotify?.(`Recorded EMI payment for ${payLoanTarget.name}`);
       onRefresh();
     } catch (err) {
       onNotify?.((err as Error).message, 'err');
@@ -407,7 +409,7 @@ export function LoansDuesView({
     setDuePerson('');
     setDuePhone('');
     setDueDir('need');
-    setDueScope(scopeFilter === 'all' ? 'personal' : scopeFilter);
+    setDueScope(scopeFilter === 'all' ? 'business' : scopeFilter);
     setDueAmount('');
     setDueDate('');
     setDueNote('');
@@ -467,7 +469,9 @@ export function LoansDuesView({
         settledAt: settleDate,
       });
       setSettleTarget(null);
-      onNotify?.(`Settled ${formatINR(rupeesToPaise(settleRupees))} with ${settleTarget.personName}! 🤝`);
+      onNotify?.(
+        `Settled ${formatINR(rupeesToPaise(settleRupees))} with ${settleTarget.personName}`,
+      );
       onRefresh();
     } catch (err) {
       onNotify?.((err as Error).message, 'err');
@@ -481,7 +485,7 @@ export function LoansDuesView({
     setEditingGoal(null);
     setGoalTitle('');
     setGoalKind('emergency');
-    setGoalScope(scopeFilter === 'all' ? 'personal' : scopeFilter);
+    setGoalScope(scopeFilter === 'all' ? 'business' : scopeFilter);
     setGoalTarget('100000');
     setGoalCurrent('0');
     setGoalDate('');
@@ -518,7 +522,10 @@ export function LoansDuesView({
       else await api.createGoal(payload);
       setGoalModalOpen(false);
       setEditingGoal(null);
-      await api.getGoals().then(setGoalsSummary).catch(() => {});
+      await api
+        .getGoals()
+        .then(setGoalsSummary)
+        .catch(() => {});
       onNotify?.(editingGoal ? 'Goal updated' : 'Goal created');
       onRefresh();
     } catch (err) {
@@ -540,8 +547,13 @@ export function LoansDuesView({
         recordAsExpense: contribLogTx,
       });
       setContribGoal(null);
-      await api.getGoals().then(setGoalsSummary).catch(() => {});
-      onNotify?.(`Contributed ${formatINR(rupeesToPaise(contribRupees))} to ${contribGoal.title}! 🎯`);
+      await api
+        .getGoals()
+        .then(setGoalsSummary)
+        .catch(() => {});
+      onNotify?.(
+        `Contributed ${formatINR(rupeesToPaise(contribRupees))} to ${contribGoal.title}`,
+      );
       onRefresh();
     } catch (err) {
       onNotify?.((err as Error).message, 'err');
@@ -558,7 +570,10 @@ export function LoansDuesView({
       else if (confirmDelete.kind === 'due') await api.deleteDue(confirmDelete.id);
       else {
         await api.deleteGoal(confirmDelete.id);
-        await api.getGoals().then(setGoalsSummary).catch(() => {});
+        await api
+          .getGoals()
+          .then(setGoalsSummary)
+          .catch(() => {});
       }
       onNotify?.(`Deleted ${confirmDelete.label}`);
       if (selectedItem?.data.id === confirmDelete.id) {
@@ -574,14 +589,41 @@ export function LoansDuesView({
 
   // CSV Export
   const handleExportCSV = () => {
-    const headers = ['Type', 'Name/Person', 'Party/Contact', 'Scope', 'Direction', 'Remaining (INR)', 'Total (INR)', 'Due Date'];
+    const headers = [
+      'Type',
+      'Name/Person',
+      'Party/Contact',
+      'Scope',
+      'Direction',
+      'Remaining (INR)',
+      'Total (INR)',
+      'Due Date',
+    ];
     const rows: (string | number)[][] = [];
 
     for (const l of loans) {
-      rows.push(['Loan', l.name, l.counterparty, l.scope, l.direction, (l.remainingMinor / 100).toFixed(2), (l.principalMinor / 100).toFixed(2), l.nextDueDate]);
+      rows.push([
+        'Loan',
+        l.name,
+        l.counterparty,
+        l.scope,
+        l.direction,
+        (l.remainingMinor / 100).toFixed(2),
+        (l.principalMinor / 100).toFixed(2),
+        l.nextDueDate,
+      ]);
     }
     for (const d of dues) {
-      rows.push(['Person Due', d.personName, d.phone || '', d.scope, d.direction, (d.remainingMinor / 100).toFixed(2), (d.amountMinor / 100).toFixed(2), d.dueDate || '']);
+      rows.push([
+        'Person Due',
+        d.personName,
+        d.phone || '',
+        d.scope,
+        d.direction,
+        (d.remainingMinor / 100).toFixed(2),
+        (d.amountMinor / 100).toFixed(2),
+        d.dueDate || '',
+      ]);
     }
 
     const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
@@ -596,57 +638,141 @@ export function LoansDuesView({
     onNotify?.('Exported CSV successfully!');
   };
 
+  const openPayEmiForLoan = (loan: LoanRecord) => {
+    setPayLoanTarget(loan);
+    setPayEmiRupees(((loan.emiMinor || loan.remainingMinor) / 100).toFixed(2));
+    setPayEmiAccId(loan.linkedAccountId || banks[0]?.id || '');
+    setPayEmiDate(todayISO());
+  };
+
+  const openSettleForDue = (due: PersonDueRecord) => {
+    setSettleTarget(due);
+    setSettleRupees((due.remainingMinor / 100).toFixed(2));
+    setSettleAccId(banks[0]?.id ?? '');
+    setSettleDate(todayISO());
+  };
+
+  const openContribForGoal = (g: SavingsGoalRecord) => {
+    setContribGoal(g);
+    setContribRupees('');
+    setContribAccId(banks[0]?.id || '');
+    setContribLogTx(false);
+  };
+
   return (
     <div className="space-y-6">
-      {/* 1. TOP EXECUTIVE FINANCIAL KPI STRIP (Daylight Studio Cards) */}
+      {/* 1. TOP EXECUTIVE FINANCIAL KPI STRIP (Warm Alabaster & Obsidian Bento Strip) */}
       <LoansDuesKpiStrip
-        totalBorrowingsMinor={totalBorrowingsMinor}
-        totalReceivablesMinor={totalReceivablesMinor}
-        monthlyEmiCommitmentMinor={monthlyEmiCommitmentMinor}
-        activeLoansCount={activeBorrowedLoans.length}
-        openDuesCount={openNeedDues.length + openGiveDues.length}
-        urgentDueCount={urgentDueCount}
-        nextEmiLoan={nextEmiLoan}
+        totalBorrowingsMinor={portfolioMetrics.totalBorrowingsMinor}
+        totalReceivablesMinor={portfolioMetrics.totalReceivablesMinor}
+        monthlyEmiCommitmentMinor={portfolioMetrics.monthlyEmiCommitmentMinor}
+        weightedAvgAprBps={portfolioMetrics.weightedAvgAprBps}
+        principalClearedPct={portfolioMetrics.principalClearedPct}
+        activeLoansCount={portfolioMetrics.activeLoansCount}
+        openDuesCount={portfolioMetrics.openDuesCount}
+        urgentDueCount={portfolioMetrics.urgentDueCount}
+        nextEmiLoan={portfolioMetrics.nextEmiLoan}
         onOpenAddLoan={openCreateLoan}
         onOpenAddDue={openCreateDue}
         onOpenAddGoal={openCreateGoal}
       />
 
-      {/* 2. MAIN WORKSTATION: BENTO GRID OR SPLIT DUAL-PANE VIEW */}
+      {/* 2. HERO 3D COVENANT STAGE & INTERACTIVE SVG AMORTIZATION / MIX WORKSTATION */}
+      <LoansHeroWorkstation
+        loans={filteredLoans}
+        dues={filteredDues}
+        goals={filteredGoals}
+        dueSummaries={dueSummaries}
+        accounts={accounts}
+        selectedItem={selectedItem}
+        payoffPlan={payoffPlan}
+        payoffExtraRupees={payoffExtraRupees}
+        payoffStrategy={payoffStrategy}
+        onPayoffExtraChange={setPayoffExtraRupees}
+        onPayoffStrategyChange={setPayoffStrategy}
+        onSelectItem={setSelectedItem}
+        onOpenPayEmi={openPayEmiForLoan}
+        onOpenSettleDue={openSettleForDue}
+        onOpenContributeGoal={openContribForGoal}
+        onOpenEditLoan={openEditLoan}
+        onOpenEditDue={openEditDue}
+        onOpenEditGoal={openEditGoal}
+        onOpenAddLoan={openCreateLoan}
+        onOpenAddDue={openCreateDue}
+        onNotify={onNotify}
+      />
+
+      {/* 3. MAIN WORKSTATION: 3D METALLIC BENTO DECK OR SPLIT DUAL-PANE VIEW */}
       {workstationLayout === 'bento' ? (
-        <BentoLoansGrid
-          loans={filteredLoans}
-          dues={filteredDues}
-          goals={filteredGoals}
-          onSelectAndSwitchToSplit={(item) => {
-            setSelectedItem(item);
-            setWorkstationLayout('split');
-          }}
-          onOpenAddLoan={openCreateLoan}
-          onOpenAddDue={openCreateDue}
-          onOpenPayEmi={(loan) => {
-            setPayLoanTarget(loan);
-            setPayEmiRupees(((loan.emiMinor || loan.remainingMinor) / 100).toFixed(2));
-            setPayEmiAccId(loan.linkedAccountId || banks[0]?.id || '');
-            setPayEmiDate(todayISO());
-          }}
-          onOpenSettleDue={(due) => {
-            setSettleTarget(due);
-            setSettleRupees((due.remainingMinor / 100).toFixed(2));
-            setSettleAccId(banks[0]?.id ?? '');
-            setSettleDate(todayISO());
-          }}
-          onOpenEditLoan={openEditLoan}
-          onOpenEditDue={openEditDue}
-          onOpenContributeGoal={(g) => {
-            setContribGoal(g);
-            setContribRupees('');
-            setContribAccId(banks[0]?.id || '');
-            setContribLogTx(false);
-          }}
-          onOpenDeleteConfirm={(kind, id, label) => setConfirmDelete({ kind, id, label })}
-          onSwitchToSplit={() => setWorkstationLayout('split')}
-        />
+        <div className="space-y-6">
+          <BentoLoansGrid
+            loans={filteredLoans}
+            dues={filteredDues}
+            goals={filteredGoals}
+            selectedItem={selectedItem}
+            searchQuery={searchQuery}
+            activeTab={activeTab}
+            triageFilter={triageFilter}
+            sortOption={sortOption}
+            scopeFilter={scopeFilter}
+            urgentDueCount={portfolioMetrics.urgentDueCount}
+            totalYouOweCount={activeBorrowedLoans.length + openGiveDues.length}
+            totalOwedToYouCount={activeLentLoans.length + openNeedDues.length}
+            onSearchChange={setSearchQuery}
+            onTabChange={setActiveTab}
+            onTriageChange={setTriageFilter}
+            onSortChange={setSortOption}
+            onScopeChange={setScopeFilter}
+            onSelectItem={setSelectedItem}
+            onSelectAndSwitchToSplit={(item) => {
+              setSelectedItem(item);
+              setWorkstationLayout('split');
+            }}
+            onOpenAddLoan={openCreateLoan}
+            onOpenAddDue={openCreateDue}
+            onOpenAddGoal={openCreateGoal}
+            onOpenPayEmi={openPayEmiForLoan}
+            onOpenSettleDue={openSettleForDue}
+            onOpenEditLoan={openEditLoan}
+            onOpenEditDue={openEditDue}
+            onOpenContributeGoal={openContribForGoal}
+            onOpenDeleteConfirm={(kind, id, label) => setConfirmDelete({ kind, id, label })}
+            onSwitchToSplit={() => setWorkstationLayout('split')}
+          />
+
+          {/* Context HUD & Khatabook Settlement Stream below 3D Bento Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <div className="lg:col-span-7">
+              <LoanContextHud
+                selectedItem={selectedItem}
+                accounts={accounts}
+                payoffPlan={payoffPlan}
+                payoffExtraRupees={payoffExtraRupees}
+                payoffStrategy={payoffStrategy}
+                onPayoffExtraChange={setPayoffExtraRupees}
+                onPayoffStrategyChange={setPayoffStrategy}
+                onClearSelection={() => setSelectedItem(null)}
+                onOpenPayEmi={openPayEmiForLoan}
+                onOpenEditLoan={openEditLoan}
+                onOpenSettleDue={openSettleForDue}
+                onOpenEditDue={openEditDue}
+                onOpenContributeGoal={openContribForGoal}
+                onOpenEditGoal={openEditGoal}
+              />
+            </div>
+            <div className="lg:col-span-5">
+              <SettlementStream
+                selectedItem={selectedItem}
+                dueSummaries={dueSummaries}
+                dues={dues}
+                loans={loans}
+                onOpenSettleDue={openSettleForDue}
+                onOpenPayEmi={openPayEmiForLoan}
+                onExportCSV={handleExportCSV}
+              />
+            </div>
+          </div>
+        </div>
       ) : (
         <div className="flex flex-col lg:flex-row gap-6 items-start">
           {/* ================= LEFT COLUMN: SCALABLE LOANS & DUES HUB ================= */}
@@ -666,7 +792,7 @@ export function LoansDuesView({
             onSortChange={setSortOption}
             scopeFilter={scopeFilter}
             onScopeChange={(s) => setScopeFilter(s)}
-            urgentDueCount={urgentDueCount}
+            urgentDueCount={portfolioMetrics.urgentDueCount}
             totalYouOweCount={activeBorrowedLoans.length + openGiveDues.length}
             totalOwedToYouCount={activeLentLoans.length + openNeedDues.length}
             onSelectItem={(item) => setSelectedItem(item)}
@@ -674,18 +800,8 @@ export function LoansDuesView({
             onTabChange={(tab) => setActiveTab(tab)}
             onTriageChange={(triage) => setTriageFilter(triage)}
             onLayoutChange={(layout) => setWorkstationLayout(layout)}
-            onOpenPayEmi={(loan) => {
-              setPayLoanTarget(loan);
-              setPayEmiRupees(((loan.emiMinor || loan.remainingMinor) / 100).toFixed(2));
-              setPayEmiAccId(loan.linkedAccountId || banks[0]?.id || '');
-              setPayEmiDate(todayISO());
-            }}
-            onOpenSettleDue={(due) => {
-              setSettleTarget(due);
-              setSettleRupees((due.remainingMinor / 100).toFixed(2));
-              setSettleAccId(banks[0]?.id ?? '');
-              setSettleDate(todayISO());
-            }}
+            onOpenPayEmi={openPayEmiForLoan}
+            onOpenSettleDue={openSettleForDue}
             onOpenEditLoan={openEditLoan}
             onOpenEditDue={openEditDue}
             onOpenDeleteConfirm={(kind, id, label) => setConfirmDelete({ kind, id, label })}
@@ -702,26 +818,11 @@ export function LoansDuesView({
               onPayoffExtraChange={(val) => setPayoffExtraRupees(val)}
               onPayoffStrategyChange={(strat) => setPayoffStrategy(strat)}
               onClearSelection={() => setSelectedItem(null)}
-              onOpenPayEmi={(loan) => {
-                setPayLoanTarget(loan);
-                setPayEmiRupees(((loan.emiMinor || loan.remainingMinor) / 100).toFixed(2));
-                setPayEmiAccId(loan.linkedAccountId || banks[0]?.id || '');
-                setPayEmiDate(todayISO());
-              }}
+              onOpenPayEmi={openPayEmiForLoan}
               onOpenEditLoan={openEditLoan}
-              onOpenSettleDue={(due) => {
-                setSettleTarget(due);
-                setSettleRupees((due.remainingMinor / 100).toFixed(2));
-                setSettleAccId(banks[0]?.id ?? '');
-                setSettleDate(todayISO());
-              }}
+              onOpenSettleDue={openSettleForDue}
               onOpenEditDue={openEditDue}
-              onOpenContributeGoal={(g) => {
-                setContribGoal(g);
-                setContribRupees('');
-                setContribAccId(banks[0]?.id || '');
-                setContribLogTx(false);
-              }}
+              onOpenContributeGoal={openContribForGoal}
               onOpenEditGoal={openEditGoal}
             />
 
@@ -730,18 +831,8 @@ export function LoansDuesView({
               dueSummaries={dueSummaries}
               dues={dues}
               loans={loans}
-              onOpenSettleDue={(due) => {
-                setSettleTarget(due);
-                setSettleRupees((due.remainingMinor / 100).toFixed(2));
-                setSettleAccId(banks[0]?.id ?? '');
-                setSettleDate(todayISO());
-              }}
-              onOpenPayEmi={(loan) => {
-                setPayLoanTarget(loan);
-                setPayEmiRupees(((loan.emiMinor || loan.remainingMinor) / 100).toFixed(2));
-                setPayEmiAccId(loan.linkedAccountId || banks[0]?.id || '');
-                setPayEmiDate(todayISO());
-              }}
+              onOpenSettleDue={openSettleForDue}
+              onOpenPayEmi={openPayEmiForLoan}
               onExportCSV={handleExportCSV}
             />
           </div>
@@ -779,7 +870,10 @@ export function LoansDuesView({
 
             <div>
               <FieldLabel>Direction</FieldLabel>
-              <Select value={loanDir} onChange={(e) => setLoanDir(e.target.value as LoanDirection)}>
+              <Select
+                value={loanDir}
+                onChange={(e) => setLoanDir(e.target.value as LoanDirection)}
+              >
                 <option value="borrowed">You Borrowed (Liability / EMI)</option>
                 <option value="lent">You Lent (Asset / Receivable)</option>
               </Select>
@@ -835,7 +929,7 @@ export function LoansDuesView({
             </div>
             <div>
               <FieldLabel>Est. Monthly EMI</FieldLabel>
-              <div className="h-9 px-3 rounded-lg bg-slate-100 border border-slate-200 flex items-center font-mono font-bold text-xs text-slate-800">
+              <div className="h-9 px-3 rounded-xl bg-[#FAF8F5] border border-[#E6E1D6] flex items-center font-mono font-bold text-xs text-[#111318]">
                 {formatINR(estimatedEmiMinor)}
               </div>
             </div>
@@ -844,20 +938,33 @@ export function LoansDuesView({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <FieldLabel>Start Date</FieldLabel>
-              <Input type="date" value={loanStart} onChange={(e) => setLoanStart(e.target.value)} required />
+              <Input
+                type="date"
+                value={loanStart}
+                onChange={(e) => setLoanStart(e.target.value)}
+                required
+              />
             </div>
             <div>
               <FieldLabel>Next EMI Due Date</FieldLabel>
-              <Input type="date" value={loanNextDue} onChange={(e) => setLoanNextDue(e.target.value)} required />
+              <Input
+                type="date"
+                value={loanNextDue}
+                onChange={(e) => setLoanNextDue(e.target.value)}
+                required
+              />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <FieldLabel>Scope</FieldLabel>
-              <Select value={loanScope} onChange={(e) => setLoanScope(e.target.value as Scope)}>
-                <option value="personal">Personal</option>
+              <Select
+                value={loanScope}
+                onChange={(e) => setLoanScope(e.target.value as Scope)}
+              >
                 <option value="business">Business</option>
+                <option value="personal">Personal</option>
                 <option value="family">Family</option>
               </Select>
             </div>
@@ -874,7 +981,7 @@ export function LoansDuesView({
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E6E1D6]">
             <Button variant="secondary" onClick={() => setLoanModalOpen(false)}>
               Cancel
             </Button>
@@ -892,14 +999,18 @@ export function LoansDuesView({
         title={`Record EMI: ${payLoanTarget?.name || ''}`}
       >
         <form onSubmit={handlePayEmi} className="space-y-4">
-          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+          <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#E6E1D6] text-xs">
             <div className="flex justify-between">
-              <span className="text-slate-500">Remaining Balance:</span>
-              <strong className="font-mono text-slate-900">{formatINR(payLoanTarget?.remainingMinor || 0)}</strong>
+              <span className="text-[#52504C]">Remaining Balance:</span>
+              <strong className="font-mono text-[#111318]">
+                {formatINR(payLoanTarget?.remainingMinor || 0)}
+              </strong>
             </div>
             <div className="flex justify-between mt-1">
-              <span className="text-slate-500">Scheduled EMI:</span>
-              <strong className="font-mono text-blue-700">{formatINR(payLoanTarget?.emiMinor || 0)}</strong>
+              <span className="text-[#52504C]">Scheduled EMI:</span>
+              <strong className="font-mono text-[#C59B27]">
+                {formatINR(payLoanTarget?.emiMinor || 0)}
+              </strong>
             </div>
           </div>
 
@@ -918,7 +1029,11 @@ export function LoansDuesView({
 
           <div>
             <FieldLabel>Pay From Bank Account</FieldLabel>
-            <Select value={payEmiAccId} onChange={(e) => setPayEmiAccId(e.target.value)} required>
+            <Select
+              value={payEmiAccId}
+              onChange={(e) => setPayEmiAccId(e.target.value)}
+              required
+            >
               <option value="">Select Bank Account</option>
               {banks.map((acc) => (
                 <option key={acc.id} value={acc.id}>
@@ -930,10 +1045,15 @@ export function LoansDuesView({
 
           <div>
             <FieldLabel>Payment Date</FieldLabel>
-            <Input type="date" value={payEmiDate} onChange={(e) => setPayEmiDate(e.target.value)} required />
+            <Input
+              type="date"
+              value={payEmiDate}
+              onChange={(e) => setPayEmiDate(e.target.value)}
+              required
+            />
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E6E1D6]">
             <Button variant="secondary" onClick={() => setPayLoanTarget(null)}>
               Cancel
             </Button>
@@ -1002,8 +1122,8 @@ export function LoansDuesView({
             <div>
               <FieldLabel>Scope</FieldLabel>
               <Select value={dueScope} onChange={(e) => setDueScope(e.target.value as Scope)}>
-                <option value="personal">Personal</option>
                 <option value="business">Business</option>
+                <option value="personal">Personal</option>
                 <option value="family">Family</option>
               </Select>
             </div>
@@ -1018,7 +1138,7 @@ export function LoansDuesView({
             />
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E6E1D6]">
             <Button variant="secondary" onClick={() => setDueModalOpen(false)}>
               Cancel
             </Button>
@@ -1036,14 +1156,16 @@ export function LoansDuesView({
         title={`Settle Due: ${settleTarget?.personName || ''}`}
       >
         <form onSubmit={handleSettleDue} className="space-y-4">
-          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+          <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#E6E1D6] text-xs">
             <div className="flex justify-between">
-              <span className="text-slate-500">Remaining Balance:</span>
-              <strong className="font-mono text-slate-900">{formatINR(settleTarget?.remainingMinor || 0)}</strong>
+              <span className="text-[#52504C]">Remaining Balance:</span>
+              <strong className="font-mono text-[#111318]">
+                {formatINR(settleTarget?.remainingMinor || 0)}
+              </strong>
             </div>
             <div className="flex justify-between mt-1">
-              <span className="text-slate-500">Type:</span>
-              <span className="font-semibold text-slate-700 capitalize">
+              <span className="text-[#52504C]">Type:</span>
+              <span className="font-semibold text-[#111318] capitalize">
                 {settleTarget?.direction === 'need' ? 'Money to Receive' : 'Money to Pay'}
               </span>
             </div>
@@ -1076,10 +1198,15 @@ export function LoansDuesView({
 
           <div>
             <FieldLabel>Settlement Date</FieldLabel>
-            <Input type="date" value={settleDate} onChange={(e) => setSettleDate(e.target.value)} required />
+            <Input
+              type="date"
+              value={settleDate}
+              onChange={(e) => setSettleDate(e.target.value)}
+              required
+            />
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E6E1D6]">
             <Button variant="secondary" onClick={() => setSettleTarget(null)}>
               Cancel
             </Button>
@@ -1149,14 +1276,14 @@ export function LoansDuesView({
             <div>
               <FieldLabel>Scope</FieldLabel>
               <Select value={goalScope} onChange={(e) => setGoalScope(e.target.value as Scope)}>
-                <option value="personal">Personal</option>
                 <option value="business">Business</option>
+                <option value="personal">Personal</option>
                 <option value="family">Family</option>
               </Select>
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E6E1D6]">
             <Button variant="secondary" onClick={() => setGoalModalOpen(false)}>
               Cancel
             </Button>
@@ -1189,12 +1316,12 @@ export function LoansDuesView({
           </div>
 
           <div>
-            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+            <label className="flex items-center gap-2 text-xs font-semibold text-[#111318] cursor-pointer">
               <input
                 type="checkbox"
                 checked={contribLogTx}
                 onChange={(e) => setContribLogTx(e.target.checked)}
-                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-[#E6E1D6] text-[#059669] focus:ring-[#C59B27]"
               />
               <span>Deduct funds from a Bank Account (Record ledger expense)</span>
             </label>
@@ -1203,7 +1330,11 @@ export function LoansDuesView({
           {contribLogTx && (
             <div>
               <FieldLabel>Deduct From Bank</FieldLabel>
-              <Select value={contribAccId} onChange={(e) => setContribAccId(e.target.value)} required>
+              <Select
+                value={contribAccId}
+                onChange={(e) => setContribAccId(e.target.value)}
+                required
+              >
                 <option value="">Select Bank Account</option>
                 {banks.map((acc) => (
                   <option key={acc.id} value={acc.id}>
@@ -1214,7 +1345,7 @@ export function LoansDuesView({
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E6E1D6]">
             <Button variant="secondary" onClick={() => setContribGoal(null)}>
               Cancel
             </Button>

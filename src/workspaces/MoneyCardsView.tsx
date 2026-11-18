@@ -31,10 +31,14 @@ import {
   type TxKind,
 } from '../../shared/ledger-core.ts';
 import type { AppLanguage } from '../../shared/i18n.ts';
+import type { MetallicFinishId } from './dashboard/dashboardVisuals.ts';
+import { computeTreasuryMetrics } from './money-cards/treasuryAnalytics.ts';
+import { TreasuryHeroWorkstation } from './money-cards/TreasuryHeroWorkstation.tsx';
 import { MoneyKpiStrip } from './money-cards/MoneyKpiStrip.tsx';
 import { AccountsHub } from './money-cards/AccountsHub.tsx';
 import { LedgerStream } from './money-cards/LedgerStream.tsx';
 import { BentoPortfolioGrid } from './money-cards/BentoPortfolioGrid.tsx';
+import { TreasuryRapidLogger } from './money-cards/TreasuryRapidLogger.tsx';
 import type {
   AccountGroupTab,
   AccountSortOption,
@@ -49,6 +53,8 @@ export interface MoneyCardsViewProps {
   budgets?: ScopeBudgetRecord[];
   monthSpentByScope?: Record<Scope, number>;
   systemLanguage?: AppLanguage;
+  globalScopeFilter?: Scope | 'all';
+  onGlobalScopeChange?: (scope: Scope | 'all') => void;
   onNotify: (text: string, kind?: 'ok' | 'err') => void;
   onRefresh: () => void;
   onNavigateToCards?: () => void;
@@ -58,6 +64,8 @@ export function MoneyCardsView({
   accounts,
   transactions,
   recurringBills,
+  globalScopeFilter,
+  onGlobalScopeChange,
   onNotify,
   onRefresh,
   onNavigateToCards,
@@ -65,17 +73,60 @@ export function MoneyCardsView({
   // Selected Account Filter (null = show all)
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
 
-  // Scalable Account Hub Controls (Engineered for 15+ accounts)
+  // Per-Bank Metallic Foil Finish Overrides (persisted in localStorage)
+  const [bankFinishOverrides, setBankFinishOverrides] = useState<Record<string, MetallicFinishId>>(
+    () => {
+      try {
+        const raw = localStorage.getItem('pl_bank_finish_overrides_v1');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') return parsed;
+        }
+      } catch {}
+      return {};
+    },
+  );
+
+  const handleChangeBankFinish = (accountId: string, finish: 'auto' | MetallicFinishId) => {
+    setBankFinishOverrides((prev) => {
+      const next = { ...prev };
+      if (finish === 'auto') {
+        delete next[accountId];
+      } else {
+        next[accountId] = finish;
+      }
+      try {
+        localStorage.setItem('pl_bank_finish_overrides_v1', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  // Scalable Account Hub Controls
   const [accountTab, setAccountTab] = useState<AccountGroupTab>('all');
   const [accountSearch, setAccountSearch] = useState('');
   const [accountSort, setAccountSort] = useState<AccountSortOption>('balance_desc');
   const [triageFilter, setTriageFilter] = useState<TriageFilter>('all');
-  const [workstationLayout, setWorkstationLayout] = useState<WorkstationLayout>('split');
+  const [workstationLayout, setWorkstationLayout] = useState<WorkstationLayout>('bento');
 
   // Search and Scope/Kind Filters for Ledger Stream
   const [searchQuery, setSearchQuery] = useState('');
   const [kindFilter, setKindFilter] = useState<TxKind | 'all'>('all');
-  const [scopeFilter, setScopeFilter] = useState<Scope | 'all'>('all');
+  const [localScopeFilter, setLocalScopeFilter] = useState<Scope | 'all'>(
+    globalScopeFilter ?? 'all',
+  );
+
+  useEffect(() => {
+    if (globalScopeFilter !== undefined) {
+      setLocalScopeFilter(globalScopeFilter);
+    }
+  }, [globalScopeFilter]);
+
+  const scopeFilter = localScopeFilter;
+  const handleScopeChange = (next: Scope | 'all') => {
+    setLocalScopeFilter(next);
+    onGlobalScopeChange?.(next);
+  };
 
   // Modals state
   const [txModalOpen, setTxModalOpen] = useState(false);
@@ -109,14 +160,18 @@ export function MoneyCardsView({
 
   // Receipt Attachment Viewer Modal
   const [attachmentViewerTx, setAttachmentViewerTx] = useState<TransactionRecord | null>(null);
-  const [attachmentData, setAttachmentData] = useState<{ filename: string; mimeType: string; dataBase64: string } | null>(null);
+  const [attachmentData, setAttachmentData] = useState<{
+    filename: string;
+    mimeType: string;
+    dataBase64: string;
+  } | null>(null);
 
-  // Transaction Form State
+  // Transaction Form State (defaults to 'business')
   const [txKind, setTxKind] = useState<TxKind>('expense');
-  const [txScope, setTxScope] = useState<Scope>('personal');
+  const [txScope, setTxScope] = useState<Scope>('business');
   const [txAccountId, setTxAccountId] = useState('');
   const [txToAccountId, setTxToAccountId] = useState('');
-  const [txCategory, setTxCategory] = useState('Groceries');
+  const [txCategory, setTxCategory] = useState('Inventory / Supplies');
   const [txAmountStr, setTxAmountStr] = useState('');
   const [txDate, setTxDate] = useState(todayISO());
   const [txParty, setTxParty] = useState('');
@@ -126,10 +181,10 @@ export function MoneyCardsView({
   const [txAttachmentMime, setTxAttachmentMime] = useState<string | null>(null);
   const [isSavingTx, setIsSavingTx] = useState(false);
 
-  // Account Form State
+  // Account Form State (defaults to 'business')
   const [accName, setAccName] = useState('');
   const [accGroup, setAccGroup] = useState<AccountGroup>('bank');
-  const [accScope, setAccScope] = useState<Scope>('personal');
+  const [accScope, setAccScope] = useState<Scope>('business');
   const [accInstitution, setAccInstitution] = useState('');
   const [accLast4, setAccLast4] = useState('');
   const [accOpeningBalStr, setAccOpeningBalStr] = useState('0');
@@ -139,35 +194,55 @@ export function MoneyCardsView({
   const [isSavingAccount, setIsSavingAccount] = useState(false);
 
   // 1. Financial Executive Summary Calculations
-  const creditCards = useMemo(() => accounts.filter((a) => a.accountGroup === 'credit_card'), [accounts]);
-  const bankAccounts = useMemo(() => accounts.filter((a) => a.accountGroup === 'bank'), [accounts]);
-  const walletAccounts = useMemo(() => accounts.filter((a) => a.accountGroup === 'cash' || a.accountGroup === 'wallet'), [accounts]);
-  const liquidAccounts = useMemo(() => accounts.filter((a) => a.accountGroup !== 'credit_card'), [accounts]);
-  const liquidAccountIds = useMemo(() => new Set(liquidAccounts.map((a) => a.id)), [liquidAccounts]);
+  const creditCards = useMemo(
+    () => accounts.filter((a) => a.accountGroup === 'credit_card'),
+    [accounts],
+  );
+  const bankAccounts = useMemo(
+    () => accounts.filter((a) => a.accountGroup === 'bank'),
+    [accounts],
+  );
+  const walletAccounts = useMemo(
+    () => accounts.filter((a) => a.accountGroup === 'cash' || a.accountGroup === 'wallet'),
+    [accounts],
+  );
+  const liquidAccounts = useMemo(
+    () => accounts.filter((a) => a.accountGroup !== 'credit_card'),
+    [accounts],
+  );
+  const liquidAccountIds = useMemo(
+    () => new Set(liquidAccounts.map((a) => a.id)),
+    [liquidAccounts],
+  );
 
-  const totalLiquidMinor = useMemo(() => {
-    return liquidAccounts.reduce((sum, a) => sum + (a.currentBalanceMinor || 0), 0);
-  }, [liquidAccounts]);
+  const treasuryMetrics = useMemo(
+    () => computeTreasuryMetrics(liquidAccounts, creditCards, transactions, todayISO()),
+    [liquidAccounts, creditCards, transactions],
+  );
 
-  const totalCreditDebtMinor = useMemo(() => {
-    return creditCards.reduce((sum, c) => sum + Math.abs(c.currentBalanceMinor || 0), 0);
-  }, [creditCards]);
+  const totalLiquidMinor = treasuryMetrics.totalLiquidMinor;
+  const totalCreditDebtMinor = treasuryMetrics.totalCreditDebtMinor;
 
   // Scalable Liquid Account List Filtering & Sorting (Only Banks & Cash)
   const filteredAccounts = useMemo(() => {
-    let list = liquidAccounts.filter((acc) => {
-      // Tab filter
+    const list = liquidAccounts.filter((acc) => {
+      if (scopeFilter !== 'all' && acc.scope !== scopeFilter) return false;
       if (accountTab === 'bank' && acc.accountGroup !== 'bank') return false;
-      if (accountTab === 'wallet' && acc.accountGroup !== 'cash' && acc.accountGroup !== 'wallet') return false;
+      if (accountTab === 'wallet' && acc.accountGroup !== 'cash' && acc.accountGroup !== 'wallet')
+        return false;
 
-      // Triage Filter
       if (triageFilter === 'unreconciled') {
         if (acc.accountGroup !== 'bank') return false;
       } else if (triageFilter === 'low_balance') {
-        if ((acc.currentBalanceMinor || 0) >= 500000) return false;
+        const floor =
+          acc.minBalanceMinor && acc.minBalanceMinor > 0
+            ? acc.minBalanceMinor
+            : acc.accountGroup === 'bank'
+              ? 2500000
+              : 500000;
+        if ((acc.currentBalanceMinor || 0) >= floor) return false;
       }
 
-      // Search filter
       if (accountSearch.trim()) {
         const q = accountSearch.toLowerCase();
         const matchName = acc.name.toLowerCase().includes(q);
@@ -178,7 +253,6 @@ export function MoneyCardsView({
       return true;
     });
 
-    // Sorting
     return list.sort((a, b) => {
       if (accountSort === 'balance_desc') {
         const balA = Math.abs(a.currentBalanceMinor || 0);
@@ -192,7 +266,7 @@ export function MoneyCardsView({
       }
       return a.name.localeCompare(b.name);
     });
-  }, [liquidAccounts, accountTab, accountSearch, accountSort, triageFilter]);
+  }, [liquidAccounts, scopeFilter, accountTab, accountSearch, accountSort, triageFilter]);
 
   // Load Unmatched Transfers
   const checkUnmatchedTransfers = async () => {
@@ -214,9 +288,12 @@ export function MoneyCardsView({
         const res = await api.getCardReconciliation(cardPayModalAccount.id);
         setCardReconData(res);
         const latest = res.cycles?.[0];
-        const suggestedAmount = (latest && latest.netDueMinor > 0) ? latest.netDueMinor : res.totalOutstandingMinor;
+        const suggestedAmount =
+          latest && latest.netDueMinor > 0 ? latest.netDueMinor : res.totalOutstandingMinor;
         setCardPayAmountStr((suggestedAmount / 100).toFixed(2));
-        const defaultBank = accounts.find((a) => a.accountGroup === 'bank' && a.id !== cardPayModalAccount.id);
+        const defaultBank = accounts.find(
+          (a) => a.accountGroup === 'bank' && a.id !== cardPayModalAccount.id,
+        );
         if (defaultBank) setCardPayFromAccId(defaultBank.id);
       } catch {
         onNotify('Could not load card cycle data', 'err');
@@ -232,7 +309,9 @@ export function MoneyCardsView({
           return false;
         }
       } else {
-        const touchesLiquid = liquidAccountIds.has(tx.accountId) || (tx.toAccountId && liquidAccountIds.has(tx.toAccountId));
+        const touchesLiquid =
+          liquidAccountIds.has(tx.accountId) ||
+          (tx.toAccountId && liquidAccountIds.has(tx.toAccountId));
         if (!touchesLiquid) return false;
       }
       if (kindFilter !== 'all' && tx.kind !== kindFilter) return false;
@@ -251,11 +330,15 @@ export function MoneyCardsView({
 
   // Stream Metrics
   const streamTotalInflowMinor = useMemo(() => {
-    return filteredTransactions.filter((t) => t.kind === 'income').reduce((sum, t) => sum + t.amountMinor, 0);
+    return filteredTransactions
+      .filter((t) => t.kind === 'income')
+      .reduce((sum, t) => sum + t.amountMinor, 0);
   }, [filteredTransactions]);
 
   const streamTotalOutflowMinor = useMemo(() => {
-    return filteredTransactions.filter((t) => t.kind === 'expense').reduce((sum, t) => sum + t.amountMinor, 0);
+    return filteredTransactions
+      .filter((t) => t.kind === 'expense')
+      .reduce((sum, t) => sum + t.amountMinor, 0);
   }, [filteredTransactions]);
 
   // Group Transactions by Date
@@ -270,13 +353,29 @@ export function MoneyCardsView({
   }, [filteredTransactions]);
 
   // Open New Transaction Modal
-  const handleOpenAddTx = (defaultKind: TxKind = 'expense') => {
+  const handleOpenAddTx = (defaultKind: TxKind = 'expense', forAccountId?: string) => {
+    const targetAccId =
+      forAccountId || selectedAccountId || (liquidAccounts[0]?.id ?? accounts[0]?.id ?? '');
+    const targetAcc = accounts.find((a) => a.id === targetAccId);
+    const defaultScope: Scope =
+      targetAcc?.scope ?? (scopeFilter !== 'all' ? scopeFilter : 'business');
+
     setEditingTx(null);
     setTxKind(defaultKind);
-    setTxScope('personal');
-    setTxAccountId(selectedAccountId || (accounts[0]?.id ?? ''));
-    setTxToAccountId(accounts[1]?.id ?? '');
-    setTxCategory(defaultKind === 'income' ? 'Salary' : defaultKind === 'transfer' ? 'Transfer' : 'Groceries');
+    setTxScope(defaultScope);
+    setTxAccountId(targetAccId);
+    setTxToAccountId(
+      liquidAccounts.find((a) => a.id !== targetAccId)?.id ??
+        accounts.find((a) => a.id !== targetAccId)?.id ??
+        '',
+    );
+    setTxCategory(
+      defaultKind === 'income'
+        ? 'Sales / Revenue'
+        : defaultKind === 'transfer'
+          ? 'Transfer'
+          : 'Inventory / Supplies',
+    );
     setTxAmountStr('');
     setTxDate(todayISO());
     setTxParty('');
@@ -386,7 +485,7 @@ export function MoneyCardsView({
     setEditingAccount(null);
     setAccName('');
     setAccGroup('bank');
-    setAccScope('personal');
+    setAccScope('business');
     setAccInstitution('');
     setAccLast4('');
     setAccOpeningBalStr('0');
@@ -499,7 +598,7 @@ export function MoneyCardsView({
         occurredAt: todayISO(),
         note: `Credit card bill payment for ${cardPayModalAccount.name}`,
       });
-      onNotify(`Paid ${formatINR(amountMinor)} towards ${cardPayModalAccount.name}! 💳`);
+      onNotify(`Paid ${formatINR(amountMinor)} towards ${cardPayModalAccount.name}!`);
       setCardPayModalAccount(null);
       onRefresh();
     } catch (err) {
@@ -521,7 +620,7 @@ export function MoneyCardsView({
       if (res && res.amountMinor !== 0) {
         onNotify(`Reconciled with balance adjustment of ${formatINR(Math.abs(res.amountMinor))}`);
       } else {
-        onNotify('Passbook balance matches ledger perfectly! 🟢');
+        onNotify('Passbook balance matches ledger perfectly!');
       }
       setReconcileBankAcc(null);
       onRefresh();
@@ -565,7 +664,17 @@ export function MoneyCardsView({
       onNotify('No transactions to export', 'err');
       return;
     }
-    const headers = ['Date', 'Type', 'Scope', 'Account', 'ToAccount', 'Category', 'Party', 'Note', 'Amount (INR)'];
+    const headers = [
+      'Date',
+      'Type',
+      'Scope',
+      'Account',
+      'ToAccount',
+      'Category',
+      'Party',
+      'Note',
+      'Amount (INR)',
+    ];
     const rows = filteredTransactions.map((tx) => [
       tx.occurredAt,
       tx.kind,
@@ -594,13 +703,12 @@ export function MoneyCardsView({
   }, [accounts, selectedAccountId]);
 
   return (
-    <div className="space-y-6">
-      {/* 1. TOP EXECUTIVE FINANCIAL KPI STRIP (Daylight Studio Cards) */}
+    <div className="space-y-5 pb-6">
+      {/* 1. TOP EXECUTIVE TREASURY KPI STRIP */}
       <MoneyKpiStrip
         accounts={liquidAccounts}
         creditCards={creditCards}
-        totalLiquidMinor={totalLiquidMinor}
-        totalCreditDebtMinor={totalCreditDebtMinor}
+        metrics={treasuryMetrics}
         unmatchedTransfersCount={unmatchedTransfers.length}
         onOpenRecordTx={() => handleOpenAddTx('expense')}
         onOpenNewAccount={handleOpenAddAccount}
@@ -609,28 +717,104 @@ export function MoneyCardsView({
         onNavigateToCards={onNavigateToCards}
       />
 
-      {/* 2. MAIN WORKSTATION: BENTO PORTFOLIO OR SPLIT DUAL-PANE VIEW */}
+      {/* 2. HERO 3D METALLIC PASSBOOK & 14D CASHFLOW PULSE WORKSTATION */}
+      <TreasuryHeroWorkstation
+        liquidAccounts={liquidAccounts}
+        creditCards={creditCards}
+        transactions={transactions}
+        metrics={treasuryMetrics}
+        selectedAccountId={selectedAccountId}
+        onSelectAccountId={(id) => setSelectedAccountId(id)}
+        onOpenRecordTx={(k, accId) => handleOpenAddTx(k || 'expense', accId)}
+        onOpenReconcileBank={(bank) => {
+          setReconcileBankAcc(bank);
+          setActualBalanceStr(((bank.currentBalanceMinor || 0) / 100).toFixed(2));
+        }}
+        onOpenEditAccount={handleOpenEditAccount}
+        onOpenNewAccount={handleOpenAddAccount}
+        onOpenPayCard={(card) => setCardPayModalAccount(card)}
+        bankFinishOverrides={bankFinishOverrides}
+        onChangeBankFinish={handleChangeBankFinish}
+      />
+
+      {/* 3. RAPID TREASURY & UPI PASSBOOK DESK + BANK SMS PARSER */}
+      <TreasuryRapidLogger
+        liquidAccounts={liquidAccounts}
+        selectedAccountId={selectedAccountId}
+        defaultScope={scopeFilter === 'all' ? 'business' : scopeFilter}
+        onNotify={onNotify}
+        onRefresh={onRefresh}
+      />
+
+      {/* 4. MAIN WORKSTATION: 3D METALLIC BENTO PORTFOLIO + PASSBOOK STREAM OR SPLIT VIEW */}
       {workstationLayout === 'bento' ? (
-        <BentoPortfolioGrid
-          accounts={filteredAccounts}
-          creditCards={creditCards}
-          totalCreditDebtMinor={totalCreditDebtMinor}
-          onSelectAccountAndSplit={(id) => {
-            setSelectedAccountId(id);
-            setWorkstationLayout('split');
-          }}
-          onOpenPayCard={(card) => setCardPayModalAccount(card)}
-          onOpenReconcileBank={(bank) => {
-            setReconcileBankAcc(bank);
-            setActualBalanceStr(((bank.currentBalanceMinor || 0) / 100).toFixed(2));
-          }}
-          onOpenEditAccount={handleOpenEditAccount}
-          onOpenNewAccount={handleOpenAddAccount}
-          onSwitchToSplit={() => setWorkstationLayout('split')}
-          onNavigateToCards={onNavigateToCards}
-        />
+        <div className="space-y-5">
+          <BentoPortfolioGrid
+            accounts={filteredAccounts}
+            totalLiquidCount={liquidAccounts.length}
+            bankCount={bankAccounts.length}
+            walletCount={walletAccounts.length}
+            creditCards={creditCards}
+            totalCreditDebtMinor={totalCreditDebtMinor}
+            selectedAccountId={selectedAccountId}
+            accountSearch={accountSearch}
+            accountTab={accountTab}
+            accountSort={accountSort}
+            triageFilter={triageFilter}
+            recurringBillsCount={recurringBills.length}
+            bankFinishOverrides={bankFinishOverrides}
+            onSelectAccount={(id) => setSelectedAccountId(id)}
+            onSelectAccountAndSplit={(id) => {
+              setSelectedAccountId(id);
+              setWorkstationLayout('split');
+            }}
+            onSearchChange={(val) => setAccountSearch(val)}
+            onTabChange={(tab) => setAccountTab(tab)}
+            onSortChange={(sort) => setAccountSort(sort)}
+            onTriageChange={(triage) => setTriageFilter(triage)}
+            onOpenRecordTx={(k, accId) => handleOpenAddTx(k, accId)}
+            onOpenPayCard={(card) => setCardPayModalAccount(card)}
+            onOpenReconcileBank={(bank) => {
+              setReconcileBankAcc(bank);
+              setActualBalanceStr(((bank.currentBalanceMinor || 0) / 100).toFixed(2));
+            }}
+            onOpenEditAccount={handleOpenEditAccount}
+            onOpenNewAccount={handleOpenAddAccount}
+            onOpenRecurringModal={() => setRecurringModalOpen(true)}
+            onOpenInvestmentsModal={() => setInvestmentsModalOpen(true)}
+            onSwitchToSplit={() => setWorkstationLayout('split')}
+            onNavigateToCards={onNavigateToCards}
+          />
+
+          <LedgerStream
+            selectedAccount={selectedAccount}
+            transactions={transactions}
+            filteredTransactions={filteredTransactions}
+            groupedTransactions={groupedTransactions}
+            searchQuery={searchQuery}
+            kindFilter={kindFilter}
+            scopeFilter={scopeFilter}
+            streamTotalInflowMinor={streamTotalInflowMinor}
+            streamTotalOutflowMinor={streamTotalOutflowMinor}
+            onSearchChange={(q) => setSearchQuery(q)}
+            onKindChange={(k) => setKindFilter(k)}
+            onScopeChange={handleScopeChange}
+            onClearSelection={() => setSelectedAccountId(null)}
+            onOpenAddTx={handleOpenAddTx}
+            onOpenEditTx={handleOpenEditTx}
+            onOpenDeleteTx={(id) => setDeleteTxConfirmId(id)}
+            onViewAttachment={handleViewAttachment}
+            onExportCSV={handleExportCSV}
+            onOpenPayCard={(card) => setCardPayModalAccount(card)}
+            onOpenReconcileBank={(bank) => {
+              setReconcileBankAcc(bank);
+              setActualBalanceStr(((bank.currentBalanceMinor || 0) / 100).toFixed(2));
+            }}
+            onOpenEditAccount={handleOpenEditAccount}
+          />
+        </div>
       ) : (
-        <div className="flex flex-col lg:flex-row gap-6 items-start">
+        <div className="flex flex-col lg:flex-row gap-5 items-start">
           {/* ================= LEFT COLUMN: SCALABLE ACCOUNTS HUB ================= */}
           <AccountsHub
             accounts={liquidAccounts}
@@ -677,7 +861,7 @@ export function MoneyCardsView({
             streamTotalOutflowMinor={streamTotalOutflowMinor}
             onSearchChange={(q) => setSearchQuery(q)}
             onKindChange={(k) => setKindFilter(k)}
-            onScopeChange={(s) => setScopeFilter(s)}
+            onScopeChange={handleScopeChange}
             onClearSelection={() => setSelectedAccountId(null)}
             onOpenAddTx={handleOpenAddTx}
             onOpenEditTx={handleOpenEditTx}
@@ -698,24 +882,25 @@ export function MoneyCardsView({
       <Dialog
         open={txModalOpen}
         onClose={() => setTxModalOpen(false)}
-        title={editingTx ? 'Edit Transaction' : 'Record Transaction'}
+        title={editingTx ? 'Edit Passbook Transaction' : 'Record Passbook Transaction'}
       >
         <form onSubmit={handleSaveTransaction} className="space-y-4">
           {/* Tabs: Expense | Income | Transfer */}
-          <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-xl text-xs font-semibold">
+          <div className="grid grid-cols-3 gap-1 p-1 bg-[#F3EFEA] border border-[#EAE5DC] rounded-xl text-xs font-semibold">
             {(['expense', 'income', 'transfer'] as const).map((k) => (
               <button
                 key={k}
                 type="button"
                 onClick={() => {
                   setTxKind(k);
-                  if (k === 'income' && txCategory === 'Groceries') setTxCategory('Salary');
-                  if (k === 'transfer' && txCategory !== 'Transfer') setTxCategory('Transfer');
+                  if (k === 'income') setTxCategory('Sales / Revenue');
+                  else if (k === 'transfer') setTxCategory('Transfer');
+                  else setTxCategory('Inventory / Supplies');
                 }}
                 className={`py-1.5 rounded-lg capitalize transition-all cursor-pointer ${
                   txKind === k
-                    ? 'bg-white text-slate-900 shadow-2xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-[#111318] text-[#FAF8F5] shadow-2xs font-bold'
+                    : 'text-[#52504C] hover:text-[#111318]'
                 }`}
               >
                 {k}
@@ -734,14 +919,14 @@ export function MoneyCardsView({
               placeholder="0.00"
               value={txAmountStr}
               onChange={(e) => setTxAmountStr(e.target.value)}
-              className="text-xl font-bold font-mono"
+              className="text-xl font-bold font-mono-data"
             />
           </div>
 
           {/* Source Account & Destination Account (for Transfer) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <FieldLabel>{txKind === 'transfer' ? 'From Account' : 'Account / Card'}</FieldLabel>
+              <FieldLabel>{txKind === 'transfer' ? 'From Account' : 'Account / Passbook'}</FieldLabel>
               <Select value={txAccountId} onChange={(e) => setTxAccountId(e.target.value)} required>
                 <option value="">Select Account</option>
                 {accounts.map((acc) => (
@@ -755,7 +940,11 @@ export function MoneyCardsView({
             {txKind === 'transfer' && (
               <div>
                 <FieldLabel>To Account</FieldLabel>
-                <Select value={txToAccountId} onChange={(e) => setTxToAccountId(e.target.value)} required>
+                <Select
+                  value={txToAccountId}
+                  onChange={(e) => setTxToAccountId(e.target.value)}
+                  required
+                >
                   <option value="">Select Destination</option>
                   {accounts
                     .filter((a) => a.id !== txAccountId)
@@ -771,8 +960,8 @@ export function MoneyCardsView({
             <div>
               <FieldLabel>Scope</FieldLabel>
               <Select value={txScope} onChange={(e) => setTxScope(e.target.value as Scope)}>
-                <option value="personal">Personal</option>
                 <option value="business">Business</option>
+                <option value="personal">Personal</option>
                 <option value="family">Family</option>
               </Select>
             </div>
@@ -783,7 +972,7 @@ export function MoneyCardsView({
             <div>
               <FieldLabel>Category</FieldLabel>
               {txKind === 'transfer' ? (
-                <Input value="Transfer" disabled className="bg-slate-50 text-slate-500" />
+                <Input value="Transfer" disabled className="bg-[#FAF8F5] text-[#858078]" />
               ) : (
                 <CategorySelect
                   value={txCategory}
@@ -794,9 +983,11 @@ export function MoneyCardsView({
             </div>
 
             <div>
-              <FieldLabel>{txKind === 'income' ? 'Received From (Payer)' : 'Paid To (Merchant/Party)'}</FieldLabel>
+              <FieldLabel>
+                {txKind === 'income' ? 'Received From (Payer)' : 'Paid To (Merchant/Party)'}
+              </FieldLabel>
               <Input
-                placeholder="e.g. Swiggy, Amazon, Client Name"
+                placeholder="e.g. Apex Global Corp, Supplier, Amazon"
                 value={txParty}
                 onChange={(e) => setTxParty(e.target.value)}
               />
@@ -827,7 +1018,7 @@ export function MoneyCardsView({
 
           {/* Receipt Attachment Upload (Only for New Tx) */}
           {!editingTx && (
-            <div className="pt-2 border-t border-slate-100">
+            <div className="pt-2 border-t border-[#EAE5DC]">
               <FieldLabel>Receipt Image (Optional)</FieldLabel>
               <input
                 type="file"
@@ -845,17 +1036,15 @@ export function MoneyCardsView({
                   };
                   reader.readAsDataURL(file);
                 }}
-                className="text-xs text-slate-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer"
+                className="text-xs text-[#52504C] file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-[#F3EFEA] file:text-[#111318] hover:file:bg-[#EAE5DC] cursor-pointer"
               />
               {txAttachmentName && (
-                <p className="text-[11px] text-emerald-600 mt-1">
-                  Attached: {txAttachmentName}
-                </p>
+                <p className="text-[11px] text-[#059669] mt-1">Attached: {txAttachmentName}</p>
               )}
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#EAE5DC]">
             <Button variant="secondary" onClick={() => setTxModalOpen(false)}>
               Cancel
             </Button>
@@ -870,7 +1059,7 @@ export function MoneyCardsView({
       <Dialog
         open={accountModalOpen}
         onClose={() => setAccountModalOpen(false)}
-        title={editingAccount ? 'Edit Account' : 'Add New Account'}
+        title={editingAccount ? 'Edit Bank / Cash Account' : 'Add New Bank / Cash Account'}
       >
         <form onSubmit={handleSaveAccount} className="space-y-4">
           <div>
@@ -878,7 +1067,7 @@ export function MoneyCardsView({
             <Input
               required
               autoFocus
-              placeholder="e.g. HDFC Regalia, Salary Account, Paytm Wallet"
+              placeholder="e.g. HDFC Corporate Account, ICICI Treasury, UPI Float"
               value={accName}
               onChange={(e) => setAccName(e.target.value)}
             />
@@ -901,8 +1090,8 @@ export function MoneyCardsView({
             <div>
               <FieldLabel>Ownership Scope</FieldLabel>
               <Select value={accScope} onChange={(e) => setAccScope(e.target.value as Scope)}>
-                <option value="personal">Personal</option>
                 <option value="business">Business</option>
+                <option value="personal">Personal</option>
                 <option value="family">Family</option>
               </Select>
             </div>
@@ -912,7 +1101,7 @@ export function MoneyCardsView({
             <div>
               <FieldLabel>Bank / Institution</FieldLabel>
               <Input
-                placeholder="e.g. HDFC, ICICI, SBI"
+                placeholder="e.g. HDFC, ICICI, SBI, Axis"
                 value={accInstitution}
                 onChange={(e) => setAccInstitution(e.target.value)}
               />
@@ -921,7 +1110,7 @@ export function MoneyCardsView({
             <div>
               <FieldLabel>Last 4 Digits</FieldLabel>
               <Input
-                placeholder="e.g. 4192"
+                placeholder="e.g. 4821"
                 maxLength={4}
                 value={accLast4}
                 onChange={(e) => setAccLast4(e.target.value)}
@@ -942,11 +1131,12 @@ export function MoneyCardsView({
           )}
 
           {/* Helpful callout: Credit Cards belong in Credit Cards Command Center */}
-          <div className="rounded-xl border border-blue-200/80 bg-blue-50/50 p-3 flex items-start gap-2.5 text-xs">
-            <CreditCard className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-            <div className="text-slate-700">
-              <span className="font-bold text-slate-900 block">Looking to add a Credit Card?</span>
-              Credit cards with billing cycles, limits, and swipe loggers are in the dedicated <strong>Credit Cards Command Center</strong>.{' '}
+          <div className="rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] p-3 flex items-start gap-2.5 text-xs">
+            <CreditCard className="w-4 h-4 text-[#C59B27] shrink-0 mt-0.5" />
+            <div className="text-[#52504C]">
+              <span className="font-bold text-[#111318] block">Looking to add a Credit Card?</span>
+              Credit cards with billing cycles, limits, and swipe loggers are in the dedicated{' '}
+              <strong>Credit Cards Command Center</strong>.{' '}
               {onNavigateToCards && (
                 <button
                   type="button"
@@ -954,7 +1144,7 @@ export function MoneyCardsView({
                     setAccountModalOpen(false);
                     onNavigateToCards();
                   }}
-                  className="text-blue-600 font-bold hover:underline inline-flex items-center gap-0.5 cursor-pointer ml-1"
+                  className="text-[#059669] font-bold hover:underline inline-flex items-center gap-0.5 cursor-pointer ml-1"
                 >
                   Go to Credit Cards →
                 </button>
@@ -962,7 +1152,7 @@ export function MoneyCardsView({
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+          <div className="flex items-center justify-between pt-2 border-t border-[#EAE5DC]">
             {editingAccount ? (
               <button
                 type="button"
@@ -970,7 +1160,7 @@ export function MoneyCardsView({
                   setAccountModalOpen(false);
                   setDeleteAccConfirmId(editingAccount.id);
                 }}
-                className="text-rose-600 hover:text-rose-700 text-xs font-semibold cursor-pointer"
+                className="text-[#E11D48] hover:underline text-xs font-semibold cursor-pointer"
               >
                 Delete Account
               </button>
@@ -997,12 +1187,12 @@ export function MoneyCardsView({
         title={`Pay Credit Card from Bank · ${cardPayModalAccount?.name || ''}`}
       >
         <form onSubmit={handlePayCard} className="space-y-4">
-          <div className="rounded-xl border border-blue-200/80 bg-blue-50/50 p-3 text-xs space-y-1">
-            <div className="font-bold text-blue-900 flex items-center gap-1.5">
-              <Zap className="h-3.5 w-3.5 text-blue-600" />
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-xs space-y-1">
+            <div className="font-bold text-[#059669] flex items-center gap-1.5">
+              <Zap className="h-3.5 w-3.5 text-[#059669]" />
               <span>Double-Entry Settlement Bridge</span>
             </div>
-            <p className="text-slate-600 text-[11px]">
+            <p className="text-[#52504C] text-[11px]">
               Transfers funds from your bank deposit account to clear this credit card debt, updating both account balances simultaneously.
             </p>
           </div>
@@ -1026,55 +1216,66 @@ export function MoneyCardsView({
             </div>
           )}
 
-          {cardReconData && (() => {
-            const latest = cardReconData.cycles?.[0];
-            const netDue = latest?.netDueMinor ?? 0;
-            return (
-              <>
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/90 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-500">Statement Cycle Status:</span>
-                    <span className="font-bold text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                      {latest?.dueDate ? `Bill Due on ${latest.dueDate}` : 'Cycle Active'}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-200">
-                    <div>
-                      <div className="text-[10px] text-slate-500 uppercase font-bold">Statement Billed Due</div>
-                      <div className="text-xl font-bold font-mono text-amber-700">
-                        {formatINR(netDue)}
+          {cardReconData &&
+            (() => {
+              const latest = cardReconData.cycles?.[0];
+              const netDue = latest?.netDueMinor ?? 0;
+              return (
+                <>
+                  <div className="p-4 rounded-xl bg-[#FAF8F5] border border-[#EAE5DC] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-[#52504C]">
+                        Statement Cycle Status:
+                      </span>
+                      <span className="font-bold text-xs px-2 py-0.5 rounded bg-amber-50 text-[#9A7B2C] border border-amber-200 font-mono-data">
+                        {latest?.dueDate ? `Bill Due on ${latest.dueDate}` : 'Cycle Active'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 pt-2 border-t border-[#EAE5DC]">
+                      <div>
+                        <div className="text-[10px] text-[#858078] uppercase font-bold font-mono-data">
+                          Statement Billed Due
+                        </div>
+                        <div className="text-xl font-bold font-mono-data text-[#9A7B2C]">
+                          {formatINR(netDue)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-[#858078] uppercase font-bold font-mono-data">
+                          Total Outstanding
+                        </div>
+                        <div className="text-xl font-bold font-mono-data text-[#111318]">
+                          {formatINR(cardReconData.totalOutstandingMinor)}
+                        </div>
                       </div>
                     </div>
-                    <div>
-                      <div className="text-[10px] text-slate-500 uppercase font-bold">Total Outstanding</div>
-                      <div className="text-xl font-bold font-mono text-slate-800">
-                        {formatINR(cardReconData.totalOutstandingMinor)}
-                      </div>
-                    </div>
                   </div>
-                </div>
 
-                {netDue > 0 && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setCardPayAmountStr((netDue / 100).toFixed(2))}
-                      className="flex-1 py-1.5 px-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg border border-blue-200 transition-colors cursor-pointer"
-                    >
-                      Pay Full Statement ({formatINR(netDue)})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCardPayAmountStr((cardReconData.totalOutstandingMinor / 100).toFixed(2))}
-                      className="flex-1 py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-                    >
-                      Pay Total Outstanding ({formatINR(cardReconData.totalOutstandingMinor)})
-                    </button>
-                  </div>
-                )}
-              </>
-            );
-          })()}
+                  {netDue > 0 && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCardPayAmountStr((netDue / 100).toFixed(2))}
+                        className="flex-1 py-1.5 px-2 bg-emerald-50 hover:bg-emerald-100 text-[#059669] text-xs font-semibold rounded-lg border border-emerald-200 transition-colors cursor-pointer"
+                      >
+                        Pay Full Statement ({formatINR(netDue)})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCardPayAmountStr(
+                            (cardReconData.totalOutstandingMinor / 100).toFixed(2),
+                          )
+                        }
+                        className="flex-1 py-1.5 px-2 bg-[#F3EFEA] hover:bg-[#EAE5DC] text-[#111318] text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                      >
+                        Pay Total Outstanding ({formatINR(cardReconData.totalOutstandingMinor)})
+                      </button>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
           <div>
             <FieldLabel>Payment Amount (₹)</FieldLabel>
@@ -1084,13 +1285,17 @@ export function MoneyCardsView({
               required
               value={cardPayAmountStr}
               onChange={(e) => setCardPayAmountStr(e.target.value)}
-              className="font-mono text-lg font-bold"
+              className="font-mono-data text-lg font-bold"
             />
           </div>
 
           <div>
             <FieldLabel>Pay From Bank Account</FieldLabel>
-            <Select value={cardPayFromAccId} onChange={(e) => setCardPayFromAccId(e.target.value)} required>
+            <Select
+              value={cardPayFromAccId}
+              onChange={(e) => setCardPayFromAccId(e.target.value)}
+              required
+            >
               <option value="">Select Paying Bank Account</option>
               {bankAccounts.map((acc) => (
                 <option key={acc.id} value={acc.id}>
@@ -1100,7 +1305,7 @@ export function MoneyCardsView({
             </Select>
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#EAE5DC]">
             <Button variant="secondary" onClick={() => setCardPayModalAccount(null)}>
               Cancel
             </Button>
@@ -1118,9 +1323,9 @@ export function MoneyCardsView({
         title={`Reconcile Passbook: ${reconcileBankAcc?.name || ''}`}
       >
         <form onSubmit={handleReconcileBank} className="space-y-4">
-          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
+          <div className="p-3 rounded-xl bg-[#FAF8F5] border border-[#EAE5DC] text-xs text-[#52504C]">
             Current Ledger Balance:{' '}
-            <strong className="font-mono text-slate-900 text-sm">
+            <strong className="font-mono-data text-[#111318] text-sm">
               {formatINR(reconcileBankAcc?.currentBalanceMinor || 0)}
             </strong>
           </div>
@@ -1133,14 +1338,14 @@ export function MoneyCardsView({
               required
               value={actualBalanceStr}
               onChange={(e) => setActualBalanceStr(e.target.value)}
-              className="font-mono text-lg font-bold"
+              className="font-mono-data text-lg font-bold"
             />
-            <p className="text-[11px] text-slate-400 mt-1">
+            <p className="text-[11px] text-[#858078] mt-1">
               If this differs from your ledger, an automated adjustment transaction will be created to balance your books.
             </p>
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#EAE5DC]">
             <Button variant="secondary" onClick={() => setReconcileBankAcc(null)}>
               Cancel
             </Button>
@@ -1160,7 +1365,7 @@ export function MoneyCardsView({
       >
         <div className="space-y-4">
           {unmatchedTransfers.length === 0 ? (
-            <div className="p-8 text-center text-xs text-slate-500">
+            <div className="p-8 text-center text-xs text-[#858078]">
               No unmatched transfers found. All inter-account movements are balanced.
             </div>
           ) : (
@@ -1168,29 +1373,31 @@ export function MoneyCardsView({
               {unmatchedTransfers.map((cand, idx) => (
                 <div
                   key={idx}
-                  className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between text-xs"
+                  className="p-3.5 rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] flex items-center justify-between text-xs"
                 >
                   <div className="space-y-1">
-                    <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                    <div className="font-bold text-[#111318] flex items-center gap-1.5">
                       <span>{cand.sourceTx.accountName}</span>
-                      <ArrowRightLeft className="w-3 h-3 text-slate-400" />
+                      <ArrowRightLeft className="w-3 h-3 text-[#C59B27]" />
                       <span>{cand.destTx.accountName}</span>
                     </div>
-                    <div className="text-slate-500 text-[11px]">
+                    <div className="text-[#52504C] text-[11px]">
                       Date: {cand.sourceTx.occurredAt} • Amount:{' '}
-                      <strong className="text-slate-900 font-mono">{formatINR(cand.amountMinor)}</strong>
+                      <strong className="text-[#111318] font-mono-data">
+                        {formatINR(cand.amountMinor)}
+                      </strong>
                     </div>
                   </div>
 
                   <Button size="sm" variant="primary" onClick={() => handleMatchTransfer(cand)}>
-                    Match & Merge
+                    Match &amp; Merge
                   </Button>
                 </div>
               ))}
             </div>
           )}
 
-          <div className="flex justify-end pt-2 border-t border-slate-100">
+          <div className="flex justify-end pt-2 border-t border-[#EAE5DC]">
             <Button variant="secondary" onClick={() => setTransferMatchModalOpen(false)}>
               Close
             </Button>
@@ -1207,7 +1414,7 @@ export function MoneyCardsView({
       >
         <div className="space-y-4">
           {recurringBills.length === 0 ? (
-            <div className="p-8 text-center text-xs text-slate-500">
+            <div className="p-8 text-center text-xs text-[#858078]">
               No recurring subscriptions or bills active.
             </div>
           ) : (
@@ -1215,17 +1422,19 @@ export function MoneyCardsView({
               {recurringBills.map((b) => (
                 <div
                   key={b.id}
-                  className="p-3 rounded-xl border border-slate-200 bg-white flex items-center justify-between text-xs"
+                  className="p-3 rounded-xl border border-[#EAE5DC] bg-white flex items-center justify-between text-xs"
                 >
                   <div>
-                    <span className="font-bold text-slate-800 block">{b.title}</span>
-                    <span className="text-[11px] text-slate-400">
+                    <span className="font-bold text-[#111318] block">{b.title}</span>
+                    <span className="text-[11px] text-[#858078]">
                       Due day {b.dueDay} of month · {b.kind} · {b.scope}
                     </span>
                   </div>
                   <div className="text-right">
-                    <span className="font-bold font-mono text-slate-900 block">{formatINR(b.amountMinor)}</span>
-                    <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-medium">
+                    <span className="font-bold font-mono-data text-[#111318] block">
+                      {formatINR(b.amountMinor)}
+                    </span>
+                    <span className="text-[10px] text-[#059669] bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-medium">
                       Active
                     </span>
                   </div>
@@ -1234,7 +1443,7 @@ export function MoneyCardsView({
             </div>
           )}
 
-          <div className="flex justify-end pt-2 border-t border-slate-100">
+          <div className="flex justify-end pt-2 border-t border-[#EAE5DC]">
             <Button variant="secondary" onClick={() => setRecurringModalOpen(false)}>
               Close
             </Button>
@@ -1246,26 +1455,28 @@ export function MoneyCardsView({
       <Dialog
         open={investmentsModalOpen}
         onClose={() => setInvestmentsModalOpen(false)}
-        title="Investments & Net Worth Assets"
+        title="Investments & Liquid Treasury Assets"
       >
         <div className="space-y-4">
           <div className="p-4 rounded-xl bg-emerald-50/80 border border-emerald-200/90 flex items-center justify-between">
             <div>
-              <span className="text-xs font-semibold text-emerald-800 block">Total Portfolio Valuation</span>
-              <span className="text-2xl font-bold font-mono text-emerald-700">
+              <span className="text-xs font-semibold text-[#059669] block">
+                Total Liquid Reserve Valuation
+              </span>
+              <span className="text-2xl font-bold font-mono-data text-[#059669]">
                 {formatINR(totalLiquidMinor)}
               </span>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-[#059669] flex items-center justify-center">
               <PiggyBank className="w-5 h-5" />
             </div>
           </div>
 
-          <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-600">
+          <div className="p-4 rounded-xl border border-[#EAE5DC] bg-[#FAF8F5] text-xs text-[#52504C]">
             Track mutual funds, equity SIPs, and fixed deposits linked with your primary ledger accounts.
           </div>
 
-          <div className="flex justify-end pt-2 border-t border-slate-100">
+          <div className="flex justify-end pt-2 border-t border-[#EAE5DC]">
             <Button variant="secondary" onClick={() => setInvestmentsModalOpen(false)}>
               Close
             </Button>
@@ -1285,7 +1496,7 @@ export function MoneyCardsView({
       >
         <div className="space-y-4">
           {attachmentData ? (
-            <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center p-2 min-h-64">
+            <div className="rounded-xl overflow-hidden border border-[#EAE5DC] bg-[#FAF8F5] flex items-center justify-center p-2 min-h-64">
               {attachmentData.mimeType.startsWith('image/') ? (
                 <img
                   src={`data:${attachmentData.mimeType};base64,${attachmentData.dataBase64}`}
@@ -1293,12 +1504,12 @@ export function MoneyCardsView({
                   className="max-h-96 max-w-full object-contain rounded"
                 />
               ) : (
-                <div className="text-slate-700 text-xs p-6 text-center space-y-2">
+                <div className="text-[#111318] text-xs p-6 text-center space-y-2">
                   <div className="font-bold">{attachmentData.filename}</div>
                   <a
                     href={`data:${attachmentData.mimeType};base64,${attachmentData.dataBase64}`}
                     download={attachmentData.filename}
-                    className="inline-block px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold"
+                    className="inline-block px-3 py-1.5 bg-[#111318] text-[#FAF8F5] rounded-lg text-xs font-semibold"
                   >
                     Download File
                   </a>
@@ -1306,10 +1517,12 @@ export function MoneyCardsView({
               )}
             </div>
           ) : (
-            <div className="p-8 text-center text-xs text-slate-500">Loading attachment preview...</div>
+            <div className="p-8 text-center text-xs text-[#858078]">
+              Loading attachment preview...
+            </div>
           )}
 
-          <div className="flex justify-end pt-2 border-t border-slate-100">
+          <div className="flex justify-end pt-2 border-t border-[#EAE5DC]">
             <Button
               variant="secondary"
               onClick={() => {

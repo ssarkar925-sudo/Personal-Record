@@ -34,11 +34,11 @@ export function QuickAddModal({
 }) {
   const dict = UI_STRINGS[systemLanguage];
   const [tab, setTab] = useState<QuickTab>('expense');
-  const [scope, setScope] = useState<Scope>(defaultScope ?? 'personal');
+  const [scope, setScope] = useState<Scope>(defaultScope ?? 'business');
   const [amountRupees, setAmountRupees] = useState('');
   const [accountId, setAccountId] = useState('');
   const [toAccountId, setToAccountId] = useState('');
-  const [category, setCategory] = useState('Food & Dining');
+  const [category, setCategory] = useState('Inventory / Supplies');
   const [party, setParty] = useState('');
   const [occurredAt, setOccurredAt] = useState(todayISO());
   const [note, setNote] = useState('');
@@ -52,7 +52,7 @@ export function QuickAddModal({
   // Checklist fields
   const [noteTitle, setNoteTitle] = useState('');
   const [checklistText, setChecklistText] = useState('');
-  const [noteScope, setNoteScope] = useState<NoteScope>('general');
+  const [noteScope, setNoteScope] = useState<NoteScope>('business');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -387,8 +387,8 @@ export function QuickAddModal({
               <div>
                 <FieldLabel htmlFor="qa-scope">Scope</FieldLabel>
                 <Select id="qa-scope" value={scope} onChange={(e) => handleScopeChange(e.target.value as Scope)}>
-                  <option value="personal">Personal</option>
                   <option value="business">Business</option>
+                  <option value="personal">Personal</option>
                   <option value="family">Family</option>
                 </Select>
               </div>
@@ -617,8 +617,8 @@ export function QuickAddModal({
                 <FieldLabel htmlFor="qa-note-scope">Scope</FieldLabel>
                 <Select value={noteScope} onChange={(e) => setNoteScope(e.target.value as NoteScope)}>
                   <option value="general">General</option>
-                  <option value="personal">Personal</option>
                   <option value="business">Business</option>
+                  <option value="personal">Personal</option>
                   <option value="family">Family</option>
                 </Select>
               </div>

@@ -368,6 +368,19 @@ function initSchema(db: DatabaseSync): void {
       data_base64 TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS job_sheets (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      scope TEXT NOT NULL DEFAULT 'business' CHECK(scope IN ('personal', 'business', 'family')),
+      color TEXT NOT NULL DEFAULT 'gold',
+      columns_json TEXT NOT NULL DEFAULT '[]',
+      rows_json TEXT NOT NULL DEFAULT '[]',
+      settings_json TEXT NOT NULL DEFAULT '{}',
+      order_index INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
 
   // Safe migrations for upgraded notes columns
@@ -383,4 +396,7 @@ function initSchema(db: DatabaseSync): void {
   try { db.exec(`ALTER TABLE vault_meta ADD COLUMN recovery_iv TEXT`); } catch {}
   try { db.exec(`ALTER TABLE vault_meta ADD COLUMN recovery_ct TEXT`); } catch {}
   try { db.exec(`ALTER TABLE vault_meta ADD COLUMN wa_recovery_key TEXT`); } catch {}
+
+  // Safe migration for job_sheets settings_json
+  try { db.exec(`ALTER TABLE job_sheets ADD COLUMN settings_json TEXT NOT NULL DEFAULT '{}'`); } catch {}
 }

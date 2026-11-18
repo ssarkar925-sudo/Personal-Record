@@ -24,14 +24,15 @@ export function Button({
     <button
       type={type}
       className={cn(
-        'btn-press inline-flex items-center justify-center gap-1.5 rounded-xl font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:pointer-events-none disabled:opacity-50 cursor-pointer',
-        size === 'sm' ? 'h-8 px-2.5 text-xs' : 'h-9 px-3.5 text-sm',
+        'btn-press inline-flex items-center justify-center gap-1.5 rounded-xl font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#111318] disabled:pointer-events-none disabled:opacity-50 cursor-pointer whitespace-nowrap',
+        size === 'sm' ? 'h-8 px-3 text-xs' : 'h-9 px-4 text-sm',
         variant === 'primary' &&
-          'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-xs border border-blue-700/80',
+          'bg-gradient-to-b from-[#1E222B] to-[#111318] text-[#FAF8F5] hover:from-[#282D38] hover:to-[#161920] border border-[#111318] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_2px_6px_rgba(17,19,24,0.2)]',
         variant === 'secondary' &&
-          'bg-white/95 text-slate-800 border border-[#d0dbea] hover:bg-slate-50 shadow-2xs',
-        variant === 'ghost' && 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900',
-        variant === 'danger' && 'bg-red-600 text-white hover:bg-red-700 border border-red-600 shadow-xs',
+          'bg-white text-[#111318] border border-[#EAE5DC] hover:bg-[#FAF8F5] hover:border-[#D6CFC2] shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(17,19,24,0.04)]',
+        variant === 'ghost' && 'text-[#52504C] hover:bg-[#F3EFEA] hover:text-[#111318]',
+        variant === 'danger' &&
+          'bg-gradient-to-b from-rose-600 to-rose-700 text-white hover:from-rose-500 hover:to-rose-700 border border-rose-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_1px_2px_rgba(225,29,72,0.25)]',
         className,
       )}
       {...props}
@@ -88,7 +89,7 @@ export function FieldLabel({
   children: React.ReactNode;
 }) {
   return (
-    <label htmlFor={htmlFor} className="block text-xs font-medium text-slate-700 mb-1">
+    <label htmlFor={htmlFor} className="block text-xs font-medium text-[#52504C] mb-1">
       {children}
     </label>
   );
@@ -101,7 +102,7 @@ export function Input({
   return (
     <input
       className={cn(
-        'w-full h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/15 disabled:bg-slate-50',
+        'w-full h-9 rounded-lg border border-[#D6CFC2] bg-white px-3 text-sm text-[#111318] placeholder:text-[#858078] focus:border-[#111318] focus:outline-none focus:ring-2 focus:ring-[#111318]/10 disabled:bg-[#F3EFEA]',
         className,
       )}
       {...props}
@@ -117,7 +118,7 @@ export function Select({
   return (
     <select
       className={cn(
-        'w-full h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-sm text-slate-900 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/15',
+        'w-full h-9 rounded-lg border border-[#D6CFC2] bg-white px-2.5 text-sm text-[#111318] focus:border-[#111318] focus:outline-none focus:ring-2 focus:ring-[#111318]/10',
         className,
       )}
       {...props}
@@ -263,7 +264,7 @@ export function Dialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/40 backdrop-blur-[1px] p-4 flex items-center justify-center"
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/35 p-4 flex items-center justify-center"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -273,13 +274,13 @@ export function Dialog({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          'my-auto w-full rounded-2xl border border-slate-200 bg-white shadow-2xl animate-panel-in max-h-[calc(100dvh-2rem)] flex flex-col',
+          'my-auto w-full rounded-2xl border border-slate-200 bg-white shadow-[0_24px_56px_-12px_rgba(15,23,42,0.22)] animate-panel-in max-h-[calc(100dvh-2rem)] flex flex-col',
           maxWidth,
         )}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 shrink-0">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 shrink-0">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+            <h2 className="font-display text-base font-bold text-slate-950">{title}</h2>
             {description && <p className="mt-0.5 text-xs text-slate-500">{description}</p>}
           </div>
           <button

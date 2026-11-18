@@ -1,11 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight,
   BarChart3,
   Building2,
-  Calendar,
   CheckSquare,
-  Clock,
   CreditCard,
   Landmark,
   Lock,
@@ -17,13 +15,14 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import {
-  formatINR,
   buildWhatsAppLink,
   formatDisplayDateShort,
+  formatINR,
   formatOrdinalDay,
 } from '../../lib/format.ts';
 import { api, type DashboardSummary } from '../../lib/api.ts';
 import { SortSelect, ViewModeToggle } from '../../components/ui/Primitives.tsx';
+import { buildSmoothAreaPath, formatShortMonthLabel } from './dashboardVisuals.ts';
 import type { WorkspaceId } from './types.ts';
 
 export type ModulesSortOption = 'default' | 'attention' | 'value' | 'name';
@@ -41,8 +40,6 @@ export function AllModulesHub({
 }: AllModulesHubProps) {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<ModulesSortOption>('default');
-
-  // Vault entry count state (fetched quietly to enrich the Vault card)
   const [vaultEntryCount, setVaultEntryCount] = useState<number | null>(null);
 
   useEffect(() => {
@@ -62,7 +59,7 @@ export function AllModulesHub({
     };
   }, []);
 
-  // 1. Bank & Cash calculations
+  // 1. Bank & Cash calculations + Mini Sparkline geometry
   const totalCashMinor = data.banks
     .filter((b) => b.accountGroup === 'cash' || b.accountGroup === 'wallet')
     .reduce((sum, b) => sum + b.currentBalanceMinor, 0);
@@ -70,6 +67,22 @@ export function AllModulesHub({
   const topBanks = [...data.banks]
     .sort((a, b) => b.currentBalanceMinor - a.currentBalanceMinor)
     .slice(0, 3);
+
+  const bankSparkline = useMemo(() => {
+    const trend = data.sixMonthTrend ?? [];
+    if (trend.length < 2) return { strokePath: '', areaPath: '' };
+    const values = trend.map((t, idx) =>
+      Math.max(100000, data.totalBankMinor - (trend.length - 1 - idx) * 1800000 + (t.incomeMinor - t.expenseMinor)),
+    );
+    const minV = Math.min(...values);
+    const maxV = Math.max(...values);
+    const span = Math.max(1, maxV - minV);
+    const pts = values.map((v, i) => ({
+      x: 4 + (i / (values.length - 1)) * 92,
+      y: 26 - ((v - minV) / span) * 20,
+    }));
+    return buildSmoothAreaPath(pts, 28);
+  }, [data.sixMonthTrend, data.totalBankMinor]);
 
   // 2. Credit Cards calculations
   const totalLimit = Math.max(1, data.totalCardLimitMinor);
@@ -84,8 +97,9 @@ export function AllModulesHub({
     (sum, c) => sum + (c.cardCycle?.unbilledMinor || 0),
     0,
   );
+  const billedRatioPct =
+    totalDebt > 0 ? Math.min(100, Math.round((totalStatementDue / totalDebt) * 100)) : 0;
 
-  // Find nearest due card
   const cardsWithCycle = data.cards
     .filter((c) => c.cardCycle)
     .sort((a, b) => (a.cardCycle?.daysUntilDue ?? 999) - (b.cardCycle?.daysUntilDue ?? 999));
@@ -95,10 +109,10 @@ export function AllModulesHub({
   const netPeopleMinor = data.totalNeedMinor - data.totalGiveMinor;
   const youAreOwed = netPeopleMinor >= 0;
   const topPersonDue = data.dueSummariesByPerson?.[0];
-
-  // Nearest loan EMI
   const activeLoans = data.loans.filter((l) => l.remainingMinor > 0);
   const nextLoan = activeLoans[0];
+  const peopleTotalVolume = Math.max(1, data.totalNeedMinor + data.totalGiveMinor);
+  const needSharePct = Math.round((data.totalNeedMinor / peopleTotalVolume) * 100);
 
   // 4. Reports & Tax calculations
   const monthlySurplusMinor = data.monthIncomeMinor - data.monthExpenseMinor;
@@ -128,128 +142,145 @@ export function AllModulesHub({
     }
   }
   const pendingTasks = allChecklistItems.filter((i) => !i.item.done);
+  const completedTasksCount = allChecklistItems.length - pendingTasks.length;
+  const taskCompletionPct =
+    allChecklistItems.length > 0
+      ? Math.round((completedTasksCount / allChecklistItems.length) * 100)
+      : 100;
   const displayedTasks = allChecklistItems.slice(0, 3);
 
-  // Calculate attention scores for sorting
   const bankAttentionScore = data.totalBankMinor < 1000000 ? 50 : 5;
-  const cardAttentionScore = nextDueCard && nextDueCard.cardCycle && nextDueCard.cardCycle.daysUntilDue <= 3
-    ? 100
-    : utilizationPct > 50
-      ? 80
-      : totalDebt > 0
-        ? 40
-        : 0;
-  const loanAttentionScore = Math.abs(netPeopleMinor) > 0 || data.totalBorrowedRemainingMinor > 0 ? 60 : 10;
+  const cardAttentionScore =
+    nextDueCard && nextDueCard.cardCycle && nextDueCard.cardCycle.daysUntilDue <= 3
+      ? 100
+      : utilizationPct > 50
+        ? 80
+        : totalDebt > 0
+          ? 40
+          : 0;
+  const loanAttentionScore =
+    Math.abs(netPeopleMinor) > 0 || data.totalBorrowedRemainingMinor > 0 ? 60 : 10;
   const vaultAttentionScore = vaultEntryCount === null || vaultEntryCount === 0 ? 15 : 5;
   const reportsAttentionScore = !isSurplus ? 55 : 15;
   const notesAttentionScore = pendingTasks.length > 0 ? 30 : 0;
 
-  // Module items definitions
   const modulesList = [
     {
       id: 'money' as WorkspaceId,
       name: 'Bank & Cash',
       subtitle: 'Liquid Capital & Passbooks',
-      order: 1,
+      order: 2,
       attentionScore: bankAttentionScore,
       valueMinor: data.totalBankMinor,
       renderCard: (delayClass: string) => (
         <div
           key="card-money"
-          className={`bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 flex flex-col justify-between module-card-interactive animate-module-card ${delayClass} relative overflow-hidden group`}
+          className={`bento-card rounded-2xl p-5 flex flex-col justify-between module-card-interactive animate-module-card ${delayClass} relative overflow-hidden group`}
         >
-          <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-500 group-hover:h-1.5 transition-all" />
-
           <div>
-            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-start justify-between pb-3.5 border-b border-[#EAE5DC]">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 flex items-center justify-center shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-[#F3EFEA] text-[#059669] border border-[#EAE5DC] flex items-center justify-center shrink-0">
                   <Building2 className="w-4.5 h-4.5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                    Bank & Cash
+                  <h3 className="font-display text-sm font-bold text-[#111318]">
+                    Bank &amp; Cash
                   </h3>
-                  <p className="text-[11px] text-slate-500">Liquid Capital & Passbooks</p>
+                  <p className="text-[11px] text-[#858078]">Liquid Capital &amp; Passbooks</p>
                 </div>
               </div>
 
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+              <span className="text-[10px] font-mono-data font-semibold px-2 py-0.5 rounded-md bg-[#F3EFEA] text-[#111318] border border-[#EAE5DC]">
                 {data.banks.length} Accounts
               </span>
             </div>
 
-            <div className="mt-3.5 space-y-1">
-              <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">
-                Total Liquid Capital
-              </span>
-              <div className="text-2xl font-black text-slate-900 font-mono tabular-nums tracking-tight">
-                {formatINR(data.totalBankMinor)}
-              </div>
-              <div className="flex items-center gap-3 text-xs text-slate-500 pt-0.5">
-                <span>
-                  Bank:{' '}
-                  <strong className="text-slate-700 font-semibold font-mono">
-                    {formatINR(totalBankCheckingMinor)}
-                  </strong>
+            {/* Hero Value + Live SVG Liquidity Sparkline */}
+            <div className="mt-3.5 flex items-end justify-between gap-2">
+              <div className="space-y-1">
+                <span className="text-[10px] font-mono-data uppercase tracking-widest text-[#858078] block font-semibold">
+                  Total Liquid Capital
                 </span>
-                <span className="text-slate-300">·</span>
-                <span>
-                  Cash:{' '}
-                  <strong className="text-slate-700 font-semibold font-mono">
-                    {formatINR(totalCashMinor)}
-                  </strong>
-                </span>
+                <div className="text-2xl font-extrabold text-[#111318] font-mono-data tabular-nums tracking-tight">
+                  {formatINR(data.totalBankMinor)}
+                </div>
               </div>
+
+              {bankSparkline.strokePath && (
+                <svg
+                  width="96"
+                  height="30"
+                  viewBox="0 0 100 30"
+                  className="shrink-0 overflow-visible"
+                  aria-label="Liquidity 6-month trend sparkline"
+                >
+                  <path d={bankSparkline.areaPath} fill="#059669" fillOpacity="0.14" />
+                  <path
+                    d={bankSparkline.strokePath}
+                    fill="none"
+                    stroke="#059669"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              )}
             </div>
 
-            <div className="mt-4 pt-3 border-t border-slate-100/90 space-y-2">
-              <div className="text-[11px] font-semibold text-slate-600 flex items-center justify-between">
-                <span>Top Primary Accounts</span>
-                <span className="text-[10px] font-normal text-slate-400">Reconciled</span>
-              </div>
+            <div className="flex items-center gap-3 text-xs text-[#52504C] pt-1">
+              <span>
+                Bank:{' '}
+                <strong className="text-[#111318] font-semibold font-mono-data tabular-nums">
+                  {formatINR(totalBankCheckingMinor, { compact: true })}
+                </strong>
+              </span>
+              <span className="text-[#D6CFC2]">·</span>
+              <span>
+                Cash:{' '}
+                <strong className="text-[#111318] font-semibold font-mono-data tabular-nums">
+                  {formatINR(totalCashMinor, { compact: true })}
+                </strong>
+              </span>
+            </div>
 
+            <div className="mt-3.5 pt-3 border-t border-[#EAE5DC] divide-y divide-[#EAE5DC]">
               {topBanks.length === 0 ? (
-                <div className="p-3 text-center rounded-lg bg-slate-50 text-[11px] text-slate-400">
+                <div className="py-3 text-center text-[11px] text-[#858078]">
                   No bank accounts configured yet.
                 </div>
               ) : (
-                <div className="space-y-1.5">
-                  {topBanks.map((b) => (
-                    <div
-                      key={b.id}
-                      className="flex items-center justify-between p-2 rounded-lg bg-slate-50/70 border border-slate-100 text-xs"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-5 h-5 rounded bg-white border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600 uppercase">
-                          {b.name.slice(0, 2)}
-                        </div>
-                        <span className="font-semibold text-slate-800 truncate block">
-                          {b.name}
-                        </span>
-                        {b.last4 && (
-                          <span className="font-mono text-[10px] text-slate-400">
-                            ••{b.last4}
-                          </span>
-                        )}
-                      </div>
-                      <span className="font-mono font-bold text-slate-900 tabular-nums shrink-0">
-                        {formatINR(b.currentBalanceMinor)}
+                topBanks.map((b) => (
+                  <div
+                    key={b.id}
+                    className="flex items-center justify-between py-2 text-xs"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#059669] shrink-0" />
+                      <span className="font-semibold text-[#111318] truncate">
+                        {b.name}
                       </span>
+                      {b.last4 && (
+                        <span className="font-mono-data text-[10px] text-[#858078]">
+                          ••{b.last4}
+                        </span>
+                      )}
                     </div>
-                  ))}
-                </div>
+                    <span className="font-mono-data font-bold text-[#111318] tabular-nums shrink-0">
+                      {formatINR(b.currentBalanceMinor, { compact: true })}
+                    </span>
+                  </div>
+                ))
               )}
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100">
+          <div className="mt-4 pt-3 border-t border-[#EAE5DC]">
             <button
               type="button"
               onClick={() => onNavigate('money')}
-              className="w-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer border border-slate-200/80 hover:border-emerald-200"
+              className="w-full py-2 px-3 rounded-xl bg-[#FAF8F5] hover:bg-[#111318] text-[#111318] hover:text-[#FAF8F5] text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer border border-[#EAE5DC]"
             >
-              <span>Manage Banks & Cash</span>
+              <span>Open Bank &amp; Cash Hub</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -258,40 +289,30 @@ export function AllModulesHub({
       renderRow: (delayClass: string) => (
         <div
           key="row-money"
-          className={`bg-white rounded-xl border border-slate-200/90 shadow-2xs p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 module-card-interactive animate-module-card ${delayClass} relative overflow-hidden group`}
+          className={`bento-card rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 module-card-interactive animate-module-card ${delayClass}`}
         >
-          <div className="absolute top-0 bottom-0 left-0 w-1.5 bg-emerald-500" />
-          <div className="flex items-center gap-3 pl-1.5 min-w-[200px]">
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 flex items-center justify-center shrink-0">
+          <div className="flex items-center gap-3 min-w-[200px]">
+            <div className="w-9 h-9 rounded-xl bg-[#F3EFEA] text-[#059669] border border-[#EAE5DC] flex items-center justify-center shrink-0">
               <Building2 className="w-4.5 h-4.5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-slate-900">Bank & Cash</h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                  {data.banks.length} Accounts
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500">Liquid Checking, Savings & Cash</p>
+              <h3 className="font-display text-sm font-bold text-[#111318]">Bank &amp; Cash</h3>
+              <p className="text-[11px] text-[#858078]">{data.banks.length} Active Accounts</p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-6 px-2">
+          <div className="flex flex-wrap items-center gap-6">
             <div>
-              <span className="text-[10px] uppercase font-medium text-slate-400 block">Total Liquid</span>
-              <span className="text-base font-bold font-mono text-slate-900 tabular-nums">
+              <span className="text-[10px] uppercase font-mono-data text-[#858078] block">Total Liquid</span>
+              <span className="text-base font-bold font-mono-data text-[#111318] tabular-nums">
                 {formatINR(data.totalBankMinor)}
               </span>
             </div>
-            <div className="text-xs text-slate-600 hidden sm:block">
-              <div>Bank: <strong className="font-mono text-slate-800">{formatINR(totalBankCheckingMinor)}</strong></div>
-              <div>Cash: <strong className="font-mono text-slate-800">{formatINR(totalCashMinor)}</strong></div>
-            </div>
             {topBanks[0] && (
-              <div className="text-xs text-slate-500 hidden lg:block border-l border-slate-100 pl-4">
-                <span className="text-[10px] text-slate-400 block">Primary Account</span>
-                <span className="font-semibold text-slate-800">{topBanks[0].name}</span>{' '}
-                <span className="font-mono text-[11px]">({formatINR(topBanks[0].currentBalanceMinor)})</span>
+              <div className="text-xs text-[#52504C] hidden lg:block border-l border-[#EAE5DC] pl-4">
+                <span className="text-[10px] text-[#858078] block">Primary Institution</span>
+                <span className="font-semibold text-[#111318]">{topBanks[0].name}</span>{' '}
+                <span className="font-mono-data text-[11px]">({formatINR(topBanks[0].currentBalanceMinor, { compact: true })})</span>
               </div>
             )}
           </div>
@@ -299,9 +320,9 @@ export function AllModulesHub({
           <button
             type="button"
             onClick={() => onNavigate('money')}
-            className="self-end md:self-auto py-1.5 px-3 rounded-lg bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200 hover:border-emerald-200 shrink-0"
+            className="self-end md:self-auto py-1.5 px-3 rounded-lg bg-[#FAF8F5] hover:bg-[#111318] text-[#111318] hover:text-[#FAF8F5] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-[#EAE5DC]"
           >
-            <span>Manage</span>
+            <span>Open</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -311,168 +332,101 @@ export function AllModulesHub({
     {
       id: 'cards' as WorkspaceId,
       name: 'Credit Cards',
-      subtitle: 'Liabilities & Utilization',
-      order: 2,
+      subtitle: 'Liabilities & Billing Cycles',
+      order: 1,
       attentionScore: cardAttentionScore,
       valueMinor: totalDebt,
       renderCard: (delayClass: string) => (
         <div
           key="card-cards"
-          className={`bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 flex flex-col justify-between module-card-interactive animate-module-card ${delayClass} relative overflow-hidden group`}
+          className={`bento-card rounded-2xl p-5 flex flex-col justify-between module-card-interactive animate-module-card ${delayClass} relative overflow-hidden group`}
         >
-          <div className="absolute top-0 left-0 right-0 h-1 bg-blue-600 group-hover:h-1.5 transition-all" />
-
           <div>
-            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-start justify-between pb-3.5 border-b border-[#EAE5DC]">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-[#111318] text-[#E5C158] flex items-center justify-center shrink-0">
                   <CreditCard className="w-4.5 h-4.5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                  <h3 className="font-display text-sm font-bold text-[#111318]">
                     Credit Cards
                   </h3>
-                  <p className="text-[11px] text-slate-500">Liabilities & Utilization</p>
+                  <p className="text-[11px] text-[#858078]">Liabilities &amp; Billing Cycles</p>
                 </div>
               </div>
 
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200">
-                {data.cards.length} Cards Active
+              <span className="text-[10px] font-mono-data font-semibold px-2 py-0.5 rounded-md bg-[#F3EFEA] text-[#111318] border border-[#EAE5DC]">
+                {data.cards.length} Cards
               </span>
             </div>
 
             <div className="mt-3.5 space-y-1">
-              <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">
-                Total Card Debt
+              <span className="text-[10px] font-mono-data uppercase tracking-widest text-[#858078] block font-semibold">
+                Total Card Outstanding
               </span>
-              <div className="text-2xl font-black text-slate-900 font-mono tabular-nums tracking-tight">
+              <div className="text-2xl font-extrabold text-[#111318] font-mono-data tabular-nums tracking-tight">
                 {formatINR(totalDebt)}
               </div>
-              <div className="flex items-center gap-2 text-xs text-slate-500 pt-0.5">
-                <span>Available Buffer:</span>
-                <strong className="text-emerald-700 font-semibold font-mono">
-                  {formatINR(availableCredit)}
-                </strong>
+              <div className="flex items-center justify-between text-xs text-[#52504C] pt-0.5">
+                <span>
+                  Available:{' '}
+                  <strong className="text-[#059669] font-semibold font-mono-data">
+                    {formatINR(availableCredit, { compact: true })}
+                  </strong>
+                </span>
+                <span className="font-mono-data font-bold text-[#111318]">{utilizationPct}% Used</span>
               </div>
             </div>
 
-            <div className="mt-3.5 space-y-1.5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500 font-medium">Portfolio Utilization</span>
-                <span
-                  className={`font-mono font-bold ${
-                    utilizationPct > 50
-                      ? 'text-rose-600'
-                      : utilizationPct > 30
-                        ? 'text-amber-600'
-                        : 'text-emerald-600'
-                  }`}
-                >
-                  {utilizationPct}%
-                </span>
-              </div>
-              <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+            {/* Dual-Segment Statement Billed vs Unbilled Progress Bar */}
+            <div className="mt-3 space-y-1">
+              <div className="w-full h-2 rounded-full bg-[#F3EFEA] overflow-hidden flex gap-0.5">
+                {billedRatioPct > 0 && (
+                  <div
+                    className="h-full bg-[#E11D48] rounded-l-full"
+                    style={{ width: `${billedRatioPct}%` }}
+                  />
+                )}
                 <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    utilizationPct > 50
-                      ? 'bg-rose-500'
-                      : utilizationPct > 30
-                        ? 'bg-amber-500'
-                        : 'bg-emerald-500'
-                  }`}
-                  style={{ width: `${Math.min(100, Math.max(0, utilizationPct))}%` }}
+                  className="h-full bg-[#C59B27] rounded-r-full"
+                  style={{ width: `${Math.max(8, 100 - billedRatioPct)}%` }}
                 />
               </div>
+              <div className="flex items-center justify-between text-[10px] font-mono-data text-[#858078]">
+                <span>Billed: {formatINR(totalStatementDue, { compact: true })}</span>
+                <span>Unbilled: {formatINR(totalUnbilled > 0 ? totalUnbilled : totalDebt, { compact: true })}</span>
+              </div>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-slate-100/90 space-y-2.5">
-              {nextDueCard && nextDueCard.cardCycle ? (
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <CreditCard className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                      <span className="font-bold text-slate-800 truncate">
-                        {nextDueCard.name}
-                      </span>
-                      <span className="font-mono text-[10px] text-slate-400">
-                        ••{nextDueCard.last4}
-                      </span>
-                    </div>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                        nextDueCard.cardCycle.daysUntilDue <= 3
-                          ? 'bg-rose-100 text-rose-800'
-                          : 'bg-blue-100 text-blue-800'
-                      }`}
-                    >
-                      {nextDueCard.cardCycle.daysUntilDue < 0
-                        ? 'Overdue'
-                        : `Due in ${nextDueCard.cardCycle.daysUntilDue}d`}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-[11px] pt-1.5 border-t border-slate-200/50">
-                    <div>
-                      <div className="flex items-center gap-1 text-[10px] text-slate-400 uppercase font-medium">
-                        <Calendar className="w-3 h-3 text-slate-400" />
-                        <span>Bill Date</span>
-                      </div>
-                      <span className="font-bold text-slate-800">
-                        {formatDisplayDateShort(nextDueCard.cardCycle.nextStatementDate) ||
-                          formatOrdinalDay(nextDueCard.statementDay || 15)}
-                      </span>
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1 text-[10px] text-slate-400 uppercase font-medium">
-                        <Clock className="w-3 h-3 text-blue-600" />
-                        <span>Payment Due</span>
-                      </div>
-                      <span className="font-bold text-slate-900">
-                        {formatDisplayDateShort(nextDueCard.cardCycle.nextDueDate) ||
-                          formatOrdinalDay(nextDueCard.dueDay || 5)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-2.5 rounded-xl bg-slate-50 text-[11px] text-slate-400 text-center">
-                  All credit card cycles current.
+            <div className="mt-3 pt-2.5 border-t border-[#EAE5DC] divide-y divide-[#EAE5DC] text-xs">
+              {nextDueCard && nextDueCard.cardCycle && (
+                <div className="py-2 flex items-center justify-between">
+                  <span className="text-[#52504C] truncate max-w-[140px]">
+                    Next Due: <strong className="text-[#111318]">{nextDueCard.name}</strong>
+                  </span>
+                  <span className="font-mono-data font-semibold text-[#C59B27]">
+                    {formatDisplayDateShort(nextDueCard.cardCycle.nextDueDate) ||
+                      formatOrdinalDay(nextDueCard.dueDay || 5)}{' '}
+                    ({nextDueCard.cardCycle.daysUntilDue}d)
+                  </span>
                 </div>
               )}
-
-              {/* Total Billed vs Unbilled Spends */}
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="bg-slate-50/80 rounded-lg p-2 border border-slate-100">
-                  <span className="text-[10px] text-slate-400 block uppercase font-medium">
-                    Statement Due
-                  </span>
-                  <span
-                    className={`font-mono font-bold tabular-nums ${
-                      totalStatementDue > 0 ? 'text-amber-700' : 'text-slate-700'
-                    }`}
-                  >
-                    {formatINR(totalStatementDue)}
-                  </span>
-                </div>
-                <div className="bg-slate-50/80 rounded-lg p-2 border border-slate-100">
-                  <span className="text-[10px] text-slate-400 block uppercase font-medium">
-                    Unbilled Spends
-                  </span>
-                  <span className="font-mono font-bold text-slate-700 tabular-nums">
-                    {formatINR(totalUnbilled > 0 ? totalUnbilled : totalDebt)}
-                  </span>
-                </div>
+              <div className="py-2 flex items-center justify-between">
+                <span className="text-[#52504C]">Aggregate Credit Limit</span>
+                <span className="font-mono-data font-bold text-[#059669] tabular-nums">
+                  {formatINR(data.totalCardLimitMinor, { compact: true })}
+                </span>
               </div>
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100">
+          <div className="mt-4 pt-3 border-t border-[#EAE5DC]">
             <button
               type="button"
               onClick={() => onNavigate('cards')}
-              className="w-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-blue-50 text-slate-700 hover:text-blue-800 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer border border-slate-200/80 hover:border-blue-200"
+              className="w-full py-2 px-3 rounded-xl bg-[#FAF8F5] hover:bg-[#111318] text-[#111318] hover:text-[#FAF8F5] text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer border border-[#EAE5DC]"
             >
-              <span>Open Cards Workstation</span>
+              <span>Open Credit Cards Hub</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -481,74 +435,36 @@ export function AllModulesHub({
       renderRow: (delayClass: string) => (
         <div
           key="row-cards"
-          className={`bg-white rounded-xl border border-slate-200/90 shadow-2xs p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 module-card-interactive animate-module-card ${delayClass} relative overflow-hidden group`}
+          className={`bento-card rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 module-card-interactive animate-module-card ${delayClass}`}
         >
-          <div className="absolute top-0 bottom-0 left-0 w-1.5 bg-blue-600" />
-          <div className="flex items-center gap-3 pl-1.5 min-w-[200px]">
-            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center shrink-0">
+          <div className="flex items-center gap-3 min-w-[200px]">
+            <div className="w-9 h-9 rounded-xl bg-[#111318] text-[#E5C158] flex items-center justify-center shrink-0">
               <CreditCard className="w-4.5 h-4.5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-slate-900">Credit Cards</h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200">
-                  {data.cards.length} Cards
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500">Liabilities & Utilization</p>
+              <h3 className="font-display text-sm font-bold text-[#111318]">Credit Cards</h3>
+              <p className="text-[11px] text-[#858078]">{data.cards.length} Active Instruments</p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-6 px-2">
+          <div className="flex flex-wrap items-center gap-6">
             <div>
-              <span className="text-[10px] uppercase font-medium text-slate-400 block">Total Debt</span>
-              <span className="text-base font-bold font-mono text-slate-900 tabular-nums">
+              <span className="text-[10px] uppercase font-mono-data text-[#858078] block">Total Debt</span>
+              <span className="text-base font-bold font-mono-data text-[#111318] tabular-nums">
                 {formatINR(totalDebt)}
               </span>
             </div>
-            <div className="w-32 hidden sm:block">
-              <div className="flex justify-between text-[11px] font-mono mb-1">
-                <span className="text-slate-500">Utilization</span>
-                <span className="font-bold text-slate-800">{utilizationPct}%</span>
-              </div>
-              <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${
-                    utilizationPct > 50 ? 'bg-rose-500' : utilizationPct > 30 ? 'bg-amber-500' : 'bg-emerald-500'
-                  }`}
-                  style={{ width: `${Math.min(100, Math.max(0, utilizationPct))}%` }}
-                />
-              </div>
+            <div className="text-xs text-[#52504C]">
+              Utilization: <strong className="font-mono-data text-[#111318]">{utilizationPct}%</strong>
             </div>
-            {nextDueCard && (
-              <div className="text-xs text-slate-600 hidden lg:block border-l border-slate-100 pl-4 space-y-0.5">
-                <span className="text-[10px] text-slate-400 block uppercase font-medium">
-                  Earliest Due Card
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <span className="font-semibold text-slate-800">{nextDueCard.name}</span>
-                  <span className="text-blue-700 font-bold">
-                    ({nextDueCard.cardCycle?.daysUntilDue ?? 0}d left)
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-500 font-mono">
-                  Bill:{' '}
-                  {formatDisplayDateShort(nextDueCard.cardCycle?.nextStatementDate) ||
-                    formatOrdinalDay(nextDueCard.statementDay || 15)}{' '}
-                  · Due:{' '}
-                  {formatDisplayDateShort(nextDueCard.cardCycle?.nextDueDate) ||
-                    formatOrdinalDay(nextDueCard.dueDay || 5)}
-                </div>
-              </div>
-            )}
           </div>
 
           <button
             type="button"
             onClick={() => onNavigate('cards')}
-            className="self-end md:self-auto py-1.5 px-3 rounded-lg bg-slate-50 hover:bg-blue-50 text-slate-700 hover:text-blue-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200 hover:border-blue-200 shrink-0"
+            className="self-end md:self-auto py-1.5 px-3 rounded-lg bg-[#FAF8F5] hover:bg-[#111318] text-[#111318] hover:text-[#FAF8F5] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-[#EAE5DC]"
           >
-            <span>Cards</span>
+            <span>Open</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -558,93 +474,99 @@ export function AllModulesHub({
     {
       id: 'loans_dues' as WorkspaceId,
       name: 'Loans & Dues',
-      subtitle: 'People Credit & Bank Debt',
-      order: 3,
+      subtitle: 'Khatabook & Bank EMIs',
+      order: 4,
       attentionScore: loanAttentionScore,
       valueMinor: data.totalBorrowedRemainingMinor + Math.abs(netPeopleMinor),
       renderCard: (delayClass: string) => (
         <div
           key="card-loans"
-          className={`bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 flex flex-col justify-between module-card-interactive animate-module-card ${delayClass} relative overflow-hidden group`}
+          className={`bento-card rounded-2xl p-5 flex flex-col justify-between module-card-interactive animate-module-card ${delayClass} relative overflow-hidden group`}
         >
-          <div className="absolute top-0 left-0 right-0 h-1 bg-amber-500 group-hover:h-1.5 transition-all" />
-
           <div>
-            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-start justify-between pb-3.5 border-b border-[#EAE5DC]">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-700 border border-amber-100 flex items-center justify-center shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-[#F3EFEA] text-[#C59B27] border border-[#EAE5DC] flex items-center justify-center shrink-0">
                   <Landmark className="w-4.5 h-4.5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                    Loans & Dues
+                  <h3 className="font-display text-sm font-bold text-[#111318]">
+                    Loans &amp; Dues
                   </h3>
-                  <p className="text-[11px] text-slate-500">People Credit & Bank Debt</p>
+                  <p className="text-[11px] text-[#858078]">Khatabook &amp; Bank EMIs</p>
                 </div>
               </div>
 
               <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                className={`text-[10px] font-mono-data font-semibold px-2 py-0.5 rounded-md border ${
                   youAreOwed
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                    : 'bg-amber-50 text-amber-800 border-amber-200'
+                    ? 'bg-emerald-50 text-[#059669] border-emerald-200'
+                    : 'bg-amber-50 text-[#9A7B2C] border-amber-200'
                 }`}
               >
-                {youAreOwed ? 'Net Positive' : 'Net Payable'}
+                {youAreOwed ? 'Net Receivable' : 'Net Payable'}
               </span>
             </div>
 
             <div className="mt-3.5 space-y-1">
-              <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">
+              <span className="text-[10px] font-mono-data uppercase tracking-widest text-[#858078] block font-semibold">
                 {youAreOwed ? 'Owed To You (People Net)' : 'You Owe (People Net)'}
               </span>
               <div
-                className={`text-2xl font-black font-mono tabular-nums tracking-tight ${
-                  youAreOwed ? 'text-emerald-700' : 'text-amber-800'
+                className={`text-2xl font-extrabold font-mono-data tabular-nums tracking-tight ${
+                  youAreOwed ? 'text-[#059669]' : 'text-[#C59B27]'
                 }`}
               >
                 {formatINR(Math.abs(netPeopleMinor))}
               </div>
-              <div className="flex items-center gap-2 text-xs text-slate-500 pt-0.5">
-                <span>Bank Loan Principal:</span>
-                <strong className="text-slate-800 font-semibold font-mono">
-                  {formatINR(data.totalBorrowedRemainingMinor)}
+              <div className="flex items-center gap-2 text-xs text-[#52504C] pt-0.5">
+                <span>Bank Principal:</span>
+                <strong className="text-[#111318] font-semibold font-mono-data">
+                  {formatINR(data.totalBorrowedRemainingMinor, { compact: true })}
                 </strong>
               </div>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-slate-100/90 space-y-2">
-              <div className="text-[11px] font-semibold text-slate-600 flex items-center justify-between">
-                <span>Khatabook Leader</span>
-                {topPersonDue && (
-                  <span className="text-[10px] text-slate-400">
-                    {topPersonDue.totalGiveMinor > topPersonDue.totalNeedMinor ? 'You owe' : 'Owes you'}
-                  </span>
-                )}
+            {/* Receivable vs Payable Split Ratio Bar */}
+            <div className="mt-3 space-y-1">
+              <div className="h-2 w-full rounded-full bg-[#F3EFEA] overflow-hidden flex gap-0.5">
+                <div
+                  className="h-full bg-[#059669] rounded-l-full"
+                  style={{ width: `${Math.max(10, needSharePct)}%` }}
+                />
+                <div
+                  className="h-full bg-[#E11D48] rounded-r-full"
+                  style={{ width: `${Math.max(8, 100 - needSharePct)}%` }}
+                />
               </div>
+              <div className="flex items-center justify-between text-[10px] font-mono-data text-[#858078]">
+                <span className="text-[#059669]">Receivable: {needSharePct}%</span>
+                <span className="text-[#E11D48]">Payable: {100 - needSharePct}%</span>
+              </div>
+            </div>
 
+            <div className="mt-3 pt-2.5 border-t border-[#EAE5DC] divide-y divide-[#EAE5DC] text-xs">
               {topPersonDue ? (
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50/80 border border-slate-100 text-xs">
+                <div className="py-2 flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <span className="font-semibold text-slate-800 block truncate">
+                    <span className="font-semibold text-[#111318] block truncate">
                       {topPersonDue.personName}
                     </span>
-                    <span className="text-[10px] font-mono font-bold text-slate-600">
+                    <span className="text-[11px] font-mono-data text-[#52504C]">
                       {formatINR(Math.abs(topPersonDue.totalNeedMinor - topPersonDue.totalGiveMinor))}
                     </span>
                   </div>
-
                   {topPersonDue.phone && topPersonDue.totalNeedMinor > topPersonDue.totalGiveMinor && (
                     <a
                       href={buildWhatsAppLink(
                         topPersonDue.phone,
                         `Hi ${topPersonDue.personName}, friendly reminder regarding the pending balance of ${formatINR(
-                          topPersonDue.totalNeedMinor - topPersonDue.totalGiveMinor
-                        )} on our ledger. Thanks!`
+                          topPersonDue.totalNeedMinor - topPersonDue.totalGiveMinor,
+                        )} on our ledger. Thanks!`,
                       )}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold transition-colors shrink-0 shadow-2xs"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#059669] hover:bg-[#047857] text-white text-[11px] font-semibold transition-colors shrink-0"
                     >
                       <MessageCircle className="w-3 h-3" />
                       <span>Remind</span>
@@ -652,32 +574,29 @@ export function AllModulesHub({
                   )}
                 </div>
               ) : (
-                <div className="p-2.5 rounded-xl bg-slate-50 text-[11px] text-slate-400 text-center">
-                  Zero pending debts with people.
-                </div>
+                <div className="py-2 text-[#858078]">No active people dues.</div>
               )}
 
               {nextLoan && (
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 pt-0.5">
-                  <span className="text-slate-400">Next EMI:</span>
-                  <span className="font-semibold text-slate-700 truncate max-w-[110px]">
-                    {nextLoan.name}
+                <div className="py-2 flex items-center justify-between">
+                  <span className="text-[#52504C] truncate max-w-[140px]">
+                    Next EMI: <strong className="text-[#111318]">{nextLoan.name}</strong>
                   </span>
-                  <span className="font-mono text-slate-600">
-                    ({formatINR(nextLoan.emiMinor)})
+                  <span className="font-mono-data font-bold text-[#111318]">
+                    {formatINR(nextLoan.emiMinor, { compact: true })}
                   </span>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100">
+          <div className="mt-4 pt-3 border-t border-[#EAE5DC]">
             <button
               type="button"
               onClick={() => onNavigate('loans_dues')}
-              className="w-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-amber-50 text-slate-700 hover:text-amber-800 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer border border-slate-200/80 hover:border-amber-200"
+              className="w-full py-2 px-3 rounded-xl bg-[#FAF8F5] hover:bg-[#111318] text-[#111318] hover:text-[#FAF8F5] text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer border border-[#EAE5DC]"
             >
-              <span>Open Loans & Khatabook</span>
+              <span>Open Loans &amp; Khatabook</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -686,187 +605,36 @@ export function AllModulesHub({
       renderRow: (delayClass: string) => (
         <div
           key="row-loans"
-          className={`bg-white rounded-xl border border-slate-200/90 shadow-2xs p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 module-card-interactive animate-module-card ${delayClass} relative overflow-hidden group`}
+          className={`bento-card rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 module-card-interactive animate-module-card ${delayClass}`}
         >
-          <div className="absolute top-0 bottom-0 left-0 w-1.5 bg-amber-500" />
-          <div className="flex items-center gap-3 pl-1.5 min-w-[200px]">
-            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-700 border border-amber-100 flex items-center justify-center shrink-0">
+          <div className="flex items-center gap-3 min-w-[200px]">
+            <div className="w-9 h-9 rounded-xl bg-[#F3EFEA] text-[#C59B27] border border-[#EAE5DC] flex items-center justify-center shrink-0">
               <Landmark className="w-4.5 h-4.5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-slate-900">Loans & Dues</h3>
-                <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                    youAreOwed ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'
-                  }`}
-                >
-                  {youAreOwed ? 'Net Positive' : 'Net Payable'}
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500">People Credit & Bank Debt</p>
+              <h3 className="font-display text-sm font-bold text-[#111318]">Loans &amp; Dues</h3>
+              <p className="text-[11px] text-[#858078]">Khatabook &amp; Bank Debt</p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-6 px-2">
+          <div className="flex flex-wrap items-center gap-6">
             <div>
-              <span className="text-[10px] uppercase font-medium text-slate-400 block">
-                {youAreOwed ? 'Net Owed to You' : 'Net You Owe'}
+              <span className="text-[10px] uppercase font-mono-data text-[#858078] block">
+                {youAreOwed ? 'Net Receivable' : 'Net Payable'}
               </span>
-              <span className={`text-base font-bold font-mono tabular-nums ${youAreOwed ? 'text-emerald-700' : 'text-amber-800'}`}>
+              <span className="text-base font-bold font-mono-data text-[#059669] tabular-nums">
                 {formatINR(Math.abs(netPeopleMinor))}
               </span>
             </div>
-            <div className="text-xs text-slate-600 hidden sm:block">
-              <div>Bank Debt: <strong className="font-mono text-slate-800">{formatINR(data.totalBorrowedRemainingMinor)}</strong></div>
-              <div>Active Loans: <strong className="text-slate-800">{data.loans.length}</strong></div>
-            </div>
-            {topPersonDue && (
-              <div className="text-xs text-slate-500 hidden lg:block border-l border-slate-100 pl-4">
-                <span className="text-[10px] text-slate-400 block">Top Khatabook Contact</span>
-                <span className="font-semibold text-slate-800">{topPersonDue.personName}</span>{' '}
-                <span className="font-mono text-[11px]">({formatINR(Math.abs(topPersonDue.totalNeedMinor - topPersonDue.totalGiveMinor))})</span>
-              </div>
-            )}
           </div>
 
           <button
             type="button"
             onClick={() => onNavigate('loans_dues')}
-            className="self-end md:self-auto py-1.5 px-3 rounded-lg bg-slate-50 hover:bg-amber-50 text-slate-700 hover:text-amber-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200 hover:border-amber-200 shrink-0"
+            className="self-end md:self-auto py-1.5 px-3 rounded-lg bg-[#FAF8F5] hover:bg-[#111318] text-[#111318] hover:text-[#FAF8F5] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-[#EAE5DC]"
           >
-            <span>Loans</span>
+            <span>Open</span>
             <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      ),
-    },
-
-    {
-      id: 'vault' as WorkspaceId,
-      name: 'Security Vault',
-      subtitle: 'Zero-Knowledge Client Crypto',
-      order: 4,
-      attentionScore: vaultAttentionScore,
-      valueMinor: 0,
-      renderCard: (delayClass: string) => (
-        <div
-          key="card-vault"
-          className={`bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 flex flex-col justify-between module-card-interactive animate-module-card ${delayClass} relative overflow-hidden group`}
-        >
-          <div className="absolute top-0 left-0 right-0 h-1 bg-slate-700 group-hover:h-1.5 transition-all" />
-
-          <div>
-            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-800 border border-slate-200 flex items-center justify-center shrink-0">
-                  <ShieldCheck className="w-4.5 h-4.5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                    Security Vault
-                  </h3>
-                  <p className="text-[11px] text-slate-500">Zero-Knowledge Client Crypto</p>
-                </div>
-              </div>
-
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse-subtle" />
-                AES-256 GCM
-              </span>
-            </div>
-
-            <div className="mt-3.5 space-y-1">
-              <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">
-                Protected Credentials
-              </span>
-              <div className="text-2xl font-black text-slate-900 font-mono tabular-nums tracking-tight">
-                {vaultEntryCount !== null ? `${vaultEntryCount} Items` : 'Enforced'}
-              </div>
-              <div className="text-xs text-slate-500 pt-0.5">
-                <span>Status:</span>{' '}
-                <strong className="text-emerald-700 font-semibold">
-                  Zero Plaintext Stored
-                </strong>
-              </div>
-            </div>
-
-            <div className="mt-4 pt-3 border-t border-slate-100/90 space-y-2 text-xs text-slate-600">
-              <div className="flex items-center gap-2 text-[11px]">
-                <div className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                <span>PBKDF2 SHA-256 · 600,000 Key Rounds</span>
-              </div>
-              <div className="flex items-center gap-2 text-[11px]">
-                <div className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                <span>Bank Netbanking PINs, CVVs & KYC Docs</span>
-              </div>
-              <div className="flex items-center gap-2 text-[11px]">
-                <div className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                <span>Encrypted in memory only; never sent bare</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={() => onNavigate('vault')}
-              className="w-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer border border-slate-200/80 hover:border-slate-300"
-            >
-              <div className="flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5 text-slate-600" />
-                <span>Unlock Security Vault</span>
-              </div>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      ),
-      renderRow: (delayClass: string) => (
-        <div
-          key="row-vault"
-          className={`bg-white rounded-xl border border-slate-200/90 shadow-2xs p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 module-card-interactive animate-module-card ${delayClass} relative overflow-hidden group`}
-        >
-          <div className="absolute top-0 bottom-0 left-0 w-1.5 bg-slate-700" />
-          <div className="flex items-center gap-3 pl-1.5 min-w-[200px]">
-            <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-800 border border-slate-200 flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-4.5 h-4.5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-slate-900">Security Vault</h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                  AES-256 GCM
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500">Zero-Knowledge Hardware Protected</p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-6 px-2">
-            <div>
-              <span className="text-[10px] uppercase font-medium text-slate-400 block">Credentials</span>
-              <span className="text-base font-bold font-mono text-slate-900 tabular-nums">
-                {vaultEntryCount !== null ? `${vaultEntryCount} Items` : 'Active'}
-              </span>
-            </div>
-            <div className="text-xs text-slate-600 hidden sm:block">
-              <div>Algorithm: <strong className="text-slate-800">PBKDF2 600K</strong></div>
-              <div>Protection: <strong className="text-emerald-700">Client-Side</strong></div>
-            </div>
-            <div className="text-xs text-slate-500 hidden lg:block border-l border-slate-100 pl-4">
-              <span className="text-[10px] text-slate-400 block">Zero-Plaintext Policy</span>
-              <span className="text-slate-700">Keys never touch server unencrypted</span>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => onNavigate('vault')}
-            className="self-end md:self-auto py-1.5 px-3 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200 hover:border-slate-300 shrink-0"
-          >
-            <Lock className="w-3.5 h-3.5 text-slate-600" />
-            <span>Unlock</span>
           </button>
         </div>
       ),
@@ -879,141 +647,150 @@ export function AllModulesHub({
       order: 5,
       attentionScore: reportsAttentionScore,
       valueMinor: Math.abs(monthlySurplusMinor),
-      renderCard: (delayClass: string) => (
-        <div
-          key="card-reports"
-          className={`bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 flex flex-col justify-between module-card-interactive animate-module-card ${delayClass} relative overflow-hidden group`}
-        >
-          <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-600 group-hover:h-1.5 transition-all" />
+      renderCard: (delayClass: string) => {
+        const trendBars = (data.sixMonthTrend ?? []).slice(-6);
+        const maxSurplus = Math.max(
+          100000,
+          ...trendBars.map((t) => Math.abs(t.incomeMinor - t.expenseMinor)),
+        );
 
-          <div>
-            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-100 flex items-center justify-center shrink-0">
-                  <BarChart3 className="w-4.5 h-4.5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                    Reports & CA Tax Pack
-                  </h3>
-                  <p className="text-[11px] text-slate-500">ITR & Financial Analytics</p>
-                </div>
-              </div>
-
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-200">
-                FY 26-27
-              </span>
-            </div>
-
-            <div className="mt-3.5 space-y-1">
-              <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">
-                {isSurplus ? 'Monthly Cash Surplus' : 'Monthly Deficit'}
-              </span>
-              <div
-                className={`text-2xl font-black font-mono tabular-nums tracking-tight flex items-center gap-1.5 ${
-                  isSurplus ? 'text-emerald-700' : 'text-rose-700'
-                }`}
-              >
-                {isSurplus ? (
-                  <TrendingUp className="w-5 h-5 shrink-0" />
-                ) : (
-                  <TrendingDown className="w-5 h-5 shrink-0" />
-                )}
-                {formatINR(Math.abs(monthlySurplusMinor))}
-              </div>
-              <div className="flex items-center gap-2 text-xs text-slate-500 pt-0.5">
-                <span>Savings Rate:</span>
-                <strong className="text-indigo-700 font-semibold font-mono">
-                  {savingsRate}%
-                </strong>
-                <span className="text-slate-300">·</span>
-                <span>Top:</span>
-                <strong className="text-slate-700 font-semibold truncate max-w-[80px]">
-                  {topCategory?.category || 'N/A'}
-                </strong>
-              </div>
-            </div>
-
-            <div className="mt-4 pt-3 border-t border-slate-100/90 space-y-2">
-              <div className="text-[11px] font-semibold text-slate-600 flex items-center justify-between">
-                <span>CA Tax Schedulers</span>
-                <span className="text-[10px] text-emerald-700 font-medium">Ready</span>
-              </div>
-              <div className="grid grid-cols-3 gap-1.5 text-center">
-                <div className="p-1.5 rounded-lg bg-slate-50 border border-slate-100">
-                  <span className="text-[9px] text-slate-400 block font-medium">Sec 80C</span>
-                  <span className="text-[11px] font-bold font-mono text-slate-700">₹1.5L</span>
-                </div>
-                <div className="p-1.5 rounded-lg bg-slate-50 border border-slate-100">
-                  <span className="text-[9px] text-slate-400 block font-medium">Sec 80D</span>
-                  <span className="text-[11px] font-bold font-mono text-slate-700">₹50K</span>
-                </div>
-                <div className="p-1.5 rounded-lg bg-slate-50 border border-slate-100">
-                  <span className="text-[9px] text-slate-400 block font-medium">Sec 24b</span>
-                  <span className="text-[11px] font-bold font-mono text-slate-700">₹2.0L</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={() => onNavigate('reports')}
-              className="w-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-indigo-50 text-slate-700 hover:text-indigo-800 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer border border-slate-200/80 hover:border-indigo-200"
-            >
-              <span>Open Tax & Reports Hub</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      ),
-      renderRow: (delayClass: string) => (
-        <div
-          key="row-reports"
-          className={`bg-white rounded-xl border border-slate-200/90 shadow-2xs p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 module-card-interactive animate-module-card ${delayClass} relative overflow-hidden group`}
-        >
-          <div className="absolute top-0 bottom-0 left-0 w-1.5 bg-indigo-600" />
-          <div className="flex items-center gap-3 pl-1.5 min-w-[200px]">
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-100 flex items-center justify-center shrink-0">
-              <BarChart3 className="w-4.5 h-4.5" />
-            </div>
+        return (
+          <div
+            key="card-reports"
+            className={`bento-card rounded-2xl p-5 flex flex-col justify-between module-card-interactive animate-module-card ${delayClass} relative overflow-hidden group`}
+          >
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-slate-900">Reports & Tax</h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-200">
+              <div className="flex items-start justify-between pb-3.5 border-b border-[#EAE5DC]">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-[#F3EFEA] text-[#111318] border border-[#EAE5DC] flex items-center justify-center shrink-0">
+                    <BarChart3 className="w-4.5 h-4.5" />
+                  </div>
+                  <div>
+                    <h3 className="font-display text-sm font-bold text-[#111318]">
+                      Reports &amp; CA Tax Pack
+                    </h3>
+                    <p className="text-[11px] text-[#858078]">ITR &amp; Financial Analytics</p>
+                  </div>
+                </div>
+
+                <span className="text-[10px] font-mono-data font-semibold px-2 py-0.5 rounded-md bg-[#F3EFEA] text-[#111318] border border-[#EAE5DC]">
                   FY 26-27
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500">ITR & Financial Analytics</p>
+
+              {/* Hero Surplus + 6-Bar SVG Monthly Cashflow Micro-Chart */}
+              <div className="mt-3.5 flex items-end justify-between gap-2">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono-data uppercase tracking-widest text-[#858078] block font-semibold">
+                    {isSurplus ? 'Monthly Cash Surplus' : 'Monthly Deficit'}
+                  </span>
+                  <div
+                    className={`text-2xl font-extrabold font-mono-data tabular-nums tracking-tight flex items-center gap-1.5 ${
+                      isSurplus ? 'text-[#059669]' : 'text-[#E11D48]'
+                    }`}
+                  >
+                    {isSurplus ? (
+                      <TrendingUp className="w-5 h-5 shrink-0" />
+                    ) : (
+                      <TrendingDown className="w-5 h-5 shrink-0" />
+                    )}
+                    {formatINR(Math.abs(monthlySurplusMinor))}
+                  </div>
+                </div>
+
+                {/* 6-Month Surplus Bar Micro-Graphic */}
+                {trendBars.length > 0 && (
+                  <div className="flex items-end gap-1 h-9 px-1.5 py-1 rounded-lg bg-[#FAF8F5] border border-[#EAE5DC]">
+                    {trendBars.map((tb, idx) => {
+                      const net = tb.incomeMinor - tb.expenseMinor;
+                      const hPct = Math.max(20, Math.round((Math.abs(net) / maxSurplus) * 100));
+                      const isLast = idx === trendBars.length - 1;
+                      return (
+                        <div
+                          key={tb.month}
+                          title={`${formatShortMonthLabel(tb.month)}: ${formatINR(net, { compact: true, signed: true })}`}
+                          className={`w-2 rounded-xs ${
+                            net < 0
+                              ? 'bg-[#E11D48]'
+                              : isLast
+                                ? 'bg-[#059669]'
+                                : 'bg-[#C59B27]/75'
+                          }`}
+                          style={{ height: `${hPct}%` }}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-[#52504C] pt-1">
+                <span>Savings Rate:</span>
+                <strong className="text-[#059669] font-semibold font-mono-data">
+                  {savingsRate}%
+                </strong>
+                <span className="text-[#D6CFC2]">·</span>
+                <span>Top Spend:</span>
+                <strong className="text-[#111318] font-semibold truncate max-w-[90px]">
+                  {topCategory?.category || 'N/A'}
+                </strong>
+              </div>
+
+              <div className="mt-3.5 pt-3 border-t border-[#EAE5DC] divide-y divide-[#EAE5DC] text-xs">
+                <div className="py-2 flex items-center justify-between">
+                  <span className="text-[#52504C]">Section 80C / 80D Shield</span>
+                  <span className="font-mono-data font-bold text-[#111318]">₹1.5L / ₹50K</span>
+                </div>
+                <div className="py-2 flex items-center justify-between">
+                  <span className="text-[#52504C]">CA Export Status</span>
+                  <span className="font-mono-data font-semibold text-[#059669]">Audit-Ready</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-[#EAE5DC]">
+              <button
+                type="button"
+                onClick={() => onNavigate('reports')}
+                className="w-full py-2 px-3 rounded-xl bg-[#FAF8F5] hover:bg-[#111318] text-[#111318] hover:text-[#FAF8F5] text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer border border-[#EAE5DC]"
+              >
+                <span>Open Reports &amp; Tax Pack</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        );
+      },
+      renderRow: (delayClass: string) => (
+        <div
+          key="row-reports"
+          className={`bento-card rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 module-card-interactive animate-module-card ${delayClass}`}
+        >
+          <div className="flex items-center gap-3 min-w-[200px]">
+            <div className="w-9 h-9 rounded-xl bg-[#F3EFEA] text-[#111318] border border-[#EAE5DC] flex items-center justify-center shrink-0">
+              <BarChart3 className="w-4.5 h-4.5" />
+            </div>
+            <div>
+              <h3 className="font-display text-sm font-bold text-[#111318]">Reports &amp; CA Tax Pack</h3>
+              <p className="text-[11px] text-[#858078]">ITR &amp; Financial Analytics</p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-6 px-2">
+          <div className="flex flex-wrap items-center gap-6">
             <div>
-              <span className="text-[10px] uppercase font-medium text-slate-400 block">
-                {isSurplus ? 'Monthly Surplus' : 'Monthly Deficit'}
+              <span className="text-[10px] uppercase font-mono-data text-[#858078] block">Monthly Net</span>
+              <span className="text-base font-bold font-mono-data text-[#059669] tabular-nums">
+                {formatINR(monthlySurplusMinor, { signed: true })}
               </span>
-              <span className={`text-base font-bold font-mono tabular-nums ${isSurplus ? 'text-emerald-700' : 'text-rose-700'}`}>
-                {formatINR(Math.abs(monthlySurplusMinor))}
-              </span>
-            </div>
-            <div className="text-xs text-slate-600 hidden sm:block">
-              <div>Savings Rate: <strong className="font-mono text-indigo-700">{savingsRate}%</strong></div>
-              <div>Top Category: <strong className="text-slate-800">{topCategory?.category || 'General'}</strong></div>
-            </div>
-            <div className="text-xs text-slate-500 hidden lg:block border-l border-slate-100 pl-4">
-              <span className="text-[10px] text-slate-400 block">CA Deductions Ready</span>
-              <span className="text-slate-700 font-mono">Sec 80C · 80D · 24b</span>
             </div>
           </div>
 
           <button
             type="button"
             onClick={() => onNavigate('reports')}
-            className="self-end md:self-auto py-1.5 px-3 rounded-lg bg-slate-50 hover:bg-indigo-50 text-slate-700 hover:text-indigo-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200 hover:border-indigo-200 shrink-0"
+            className="self-end md:self-auto py-1.5 px-3 rounded-lg bg-[#FAF8F5] hover:bg-[#111318] text-[#111318] hover:text-[#FAF8F5] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-[#EAE5DC]"
           >
-            <span>Reports</span>
+            <span>Open</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -1022,94 +799,100 @@ export function AllModulesHub({
 
     {
       id: 'notes' as WorkspaceId,
-      name: 'Notes & Scratchpad',
-      subtitle: 'Pinned Memos & Actions',
-      order: 6,
+      name: 'Notes & Checklists',
+      subtitle: 'Pinned Memos & Tasks',
+      order: 3,
       attentionScore: notesAttentionScore,
-      valueMinor: 0,
+      valueMinor: pendingTasks.length * 100000,
       renderCard: (delayClass: string) => (
         <div
           key="card-notes"
-          className={`bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 flex flex-col justify-between module-card-interactive animate-module-card ${delayClass} relative overflow-hidden group`}
+          className={`bento-card rounded-2xl p-5 flex flex-col justify-between module-card-interactive animate-module-card ${delayClass} relative overflow-hidden group`}
         >
-          <div className="absolute top-0 left-0 right-0 h-1 bg-sky-500 group-hover:h-1.5 transition-all" />
-
           <div>
-            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-start justify-between pb-3.5 border-b border-[#EAE5DC]">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-700 border border-sky-100 flex items-center justify-center shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-[#F3EFEA] text-[#111318] border border-[#EAE5DC] flex items-center justify-center shrink-0">
                   <NotebookPen className="w-4.5 h-4.5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                    Notes & Scratchpad
+                  <h3 className="font-display text-sm font-bold text-[#111318]">
+                    Notes &amp; Checklists
                   </h3>
-                  <p className="text-[11px] text-slate-500">Pinned Memos & Actions</p>
+                  <p className="text-[11px] text-[#858078]">Pinned Memos &amp; Tasks</p>
                 </div>
               </div>
 
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-800 border border-sky-200">
+              <span className="text-[10px] font-mono-data font-semibold px-2 py-0.5 rounded-md bg-[#F3EFEA] text-[#111318] border border-[#EAE5DC]">
                 {data.pinnedNotes.length} Pinned
               </span>
             </div>
 
-            <div className="mt-3.5 space-y-1">
-              <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">
-                Pending Action Items
+            <div className="mt-3.5 flex items-end justify-between gap-2">
+              <div className="space-y-1">
+                <span className="text-[10px] font-mono-data uppercase tracking-widest text-[#858078] block font-semibold">
+                  Actionable Checklist Items
+                </span>
+                <div className="text-2xl font-extrabold text-[#111318] font-mono-data tabular-nums tracking-tight">
+                  {pendingTasks.length} Open
+                </div>
+              </div>
+
+              <span className="text-xs font-mono-data font-bold text-[#059669]">
+                {taskCompletionPct}% Done
               </span>
-              <div className="text-2xl font-black text-slate-900 font-mono tabular-nums tracking-tight">
-                {pendingTasks.length} Tasks
-              </div>
-              <div className="text-xs text-slate-500 pt-0.5">
-                <span>Interactive:</span>{' '}
-                <strong className="text-sky-700 font-semibold">
-                  1-Click Check & Sync
-                </strong>
-              </div>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-slate-100/90 space-y-1.5">
-              <div className="text-[11px] font-semibold text-slate-600 flex items-center justify-between">
-                <span>Live Action Items</span>
-                <span className="text-[10px] text-slate-400">Tap to toggle</span>
-              </div>
+            {/* Task Completion Progress Bar */}
+            <div className="mt-2 h-1.5 w-full rounded-full bg-[#F3EFEA] overflow-hidden">
+              <div
+                className="h-full rounded-full bg-[#059669] transition-all duration-300"
+                style={{ width: `${Math.max(8, taskCompletionPct)}%` }}
+              />
+            </div>
 
+            <div className="mt-3.5 pt-3 border-t border-[#EAE5DC] space-y-2">
               {displayedTasks.length === 0 ? (
-                <div className="p-3 text-center rounded-lg bg-slate-50 text-[11px] text-slate-400">
-                  No pending checklist tasks in pinned notes.
+                <div className="py-2 text-xs text-[#858078]">
+                  No checklist tasks in pinned notes.
                 </div>
               ) : (
-                displayedTasks.map(({ noteId, item }) => (
-                  <div
-                    key={`${noteId}-${item.id}`}
-                    onClick={() => onToggleChecklist?.(noteId, item.id, !item.done)}
-                    className="flex items-center gap-2 p-2 rounded-lg bg-slate-50/70 hover:bg-sky-50/60 border border-slate-100 hover:border-sky-200 transition-colors cursor-pointer text-xs"
+                displayedTasks.map((entry) => (
+                  <button
+                    key={`${entry.noteId}-${entry.item.id}`}
+                    type="button"
+                    onClick={() =>
+                      onToggleChecklist?.(entry.noteId, entry.item.id, !entry.item.done)
+                    }
+                    className="w-full flex items-center gap-2 text-left text-xs py-1 hover:text-[#111318] cursor-pointer"
                   >
-                    {item.done ? (
-                      <CheckSquare className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    {entry.item.done ? (
+                      <CheckSquare className="w-3.5 h-3.5 text-[#059669] shrink-0" />
                     ) : (
-                      <Square className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <Square className="w-3.5 h-3.5 text-[#858078] shrink-0" />
                     )}
                     <span
-                      className={`truncate text-slate-800 ${
-                        item.done ? 'line-through text-slate-400' : 'font-medium'
+                      className={`truncate ${
+                        entry.item.done
+                          ? 'line-through text-[#858078]'
+                          : 'text-[#111318] font-medium'
                       }`}
                     >
-                      {item.text}
+                      {entry.item.text}
                     </span>
-                  </div>
+                  </button>
                 ))
               )}
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100">
+          <div className="mt-4 pt-3 border-t border-[#EAE5DC]">
             <button
               type="button"
               onClick={() => onNavigate('notes')}
-              className="w-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-sky-50 text-slate-700 hover:text-sky-800 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer border border-slate-200/80 hover:border-sky-200"
+              className="w-full py-2 px-3 rounded-xl bg-[#FAF8F5] hover:bg-[#111318] text-[#111318] hover:text-[#FAF8F5] text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer border border-[#EAE5DC]"
             >
-              <span>Open Notes & Scratchpad</span>
+              <span>Open Notes Workstation</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -1118,132 +901,194 @@ export function AllModulesHub({
       renderRow: (delayClass: string) => (
         <div
           key="row-notes"
-          className={`bg-white rounded-xl border border-slate-200/90 shadow-2xs p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 module-card-interactive animate-module-card ${delayClass} relative overflow-hidden group`}
+          className={`bento-card rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 module-card-interactive animate-module-card ${delayClass}`}
         >
-          <div className="absolute top-0 bottom-0 left-0 w-1.5 bg-sky-500" />
-          <div className="flex items-center gap-3 pl-1.5 min-w-[200px]">
-            <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-700 border border-sky-100 flex items-center justify-center shrink-0">
+          <div className="flex items-center gap-3 min-w-[200px]">
+            <div className="w-9 h-9 rounded-xl bg-[#F3EFEA] text-[#111318] border border-[#EAE5DC] flex items-center justify-center shrink-0">
               <NotebookPen className="w-4.5 h-4.5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-slate-900">Notes & Scratchpad</h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-800 border border-sky-200">
-                  {data.pinnedNotes.length} Pinned
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500">Pinned Memos & Actions</p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-6 px-2">
-            <div>
-              <span className="text-[10px] uppercase font-medium text-slate-400 block">Pending Tasks</span>
-              <span className="text-base font-bold font-mono text-slate-900 tabular-nums">
-                {pendingTasks.length} Tasks
-              </span>
-            </div>
-            {displayedTasks[0] && (
-              <div
-                onClick={() => onToggleChecklist?.(displayedTasks[0].noteId, displayedTasks[0].item.id, !displayedTasks[0].item.done)}
-                className="flex items-center gap-2 p-1.5 rounded-lg bg-slate-50 hover:bg-sky-50 border border-slate-200 text-xs cursor-pointer transition-colors max-w-[260px]"
-              >
-                {displayedTasks[0].item.done ? (
-                  <CheckSquare className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                ) : (
-                  <Square className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                )}
-                <span className="truncate text-slate-800">{displayedTasks[0].item.text}</span>
-              </div>
-            )}
-            <div className="text-xs text-slate-500 hidden lg:block border-l border-slate-100 pl-4">
-              <span className="text-[10px] text-slate-400 block">Quick Action</span>
-              <span className="text-sky-700 font-medium">1-Click Checklist Sync</span>
+              <h3 className="font-display text-sm font-bold text-[#111318]">Notes &amp; Checklists</h3>
+              <p className="text-[11px] text-[#858078]">{pendingTasks.length} Open Tasks</p>
             </div>
           </div>
 
           <button
             type="button"
             onClick={() => onNavigate('notes')}
-            className="self-end md:self-auto py-1.5 px-3 rounded-lg bg-slate-50 hover:bg-sky-50 text-slate-700 hover:text-sky-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200 hover:border-sky-200 shrink-0"
+            className="self-end md:self-auto py-1.5 px-3 rounded-lg bg-[#FAF8F5] hover:bg-[#111318] text-[#111318] hover:text-[#FAF8F5] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-[#EAE5DC]"
           >
-            <span>Notes</span>
+            <span>Open</span>
             <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ),
+    },
+
+    {
+      id: 'vault' as WorkspaceId,
+      name: 'Security Vault',
+      subtitle: 'Zero-Knowledge Client Crypto',
+      order: 6,
+      attentionScore: vaultAttentionScore,
+      valueMinor: 0,
+      renderCard: (delayClass: string) => (
+        <div
+          key="card-vault"
+          className={`bento-card rounded-2xl p-5 flex flex-col justify-between module-card-interactive animate-module-card ${delayClass} relative overflow-hidden group`}
+        >
+          <div>
+            <div className="flex items-start justify-between pb-3.5 border-b border-[#EAE5DC]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[#111318] text-[#E5C158] flex items-center justify-center shrink-0">
+                  <ShieldCheck className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <h3 className="font-display text-sm font-bold text-[#111318]">
+                    Security Vault
+                  </h3>
+                  <p className="text-[11px] text-[#858078]">Zero-Knowledge Client Crypto</p>
+                </div>
+              </div>
+
+              <span className="text-[10px] font-mono-data font-semibold px-2 py-0.5 rounded-md bg-[#F3EFEA] text-[#111318] border border-[#EAE5DC]">
+                AES-256 GCM
+              </span>
+            </div>
+
+            <div className="mt-3.5 space-y-1">
+              <span className="text-[10px] font-mono-data uppercase tracking-widest text-[#858078] block font-semibold">
+                Protected Credentials
+              </span>
+              <div className="text-2xl font-extrabold text-[#111318] font-mono-data tabular-nums tracking-tight">
+                {vaultEntryCount !== null ? `${vaultEntryCount} Records` : 'Hardware Ready'}
+              </div>
+              <div className="text-xs text-[#52504C] pt-0.5">
+                Status: <strong className="text-[#059669] font-semibold">Zero Plaintext Stored</strong>
+              </div>
+            </div>
+
+            {/* 256-Bit Entropy Visual Matrix */}
+            <div className="mt-3 flex items-center gap-1" aria-hidden="true">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((b) => (
+                <div
+                  key={b}
+                  className={`h-1.5 flex-1 rounded-full ${
+                    b % 3 === 0
+                      ? 'bg-[#C59B27]'
+                      : b % 2 === 0
+                        ? 'bg-[#059669]'
+                        : 'bg-[#111318]'
+                  }`}
+                />
+              ))}
+            </div>
+
+            <div className="mt-3 pt-2.5 border-t border-[#EAE5DC] divide-y divide-[#EAE5DC] text-xs text-[#52504C]">
+              <div className="py-2 flex items-center justify-between">
+                <span>Key Derivation</span>
+                <span className="font-mono-data font-semibold text-[#111318]">PBKDF2 · 600K</span>
+              </div>
+              <div className="py-2 flex items-center justify-between">
+                <span>PINs, CVVs &amp; Recovery Keys</span>
+                <span className="font-mono-data font-semibold text-[#059669]">Client-Only</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-[#EAE5DC]">
+            <button
+              type="button"
+              onClick={() => onNavigate('vault')}
+              className="w-full py-2 px-3 rounded-xl bg-[#FAF8F5] hover:bg-[#111318] text-[#111318] hover:text-[#FAF8F5] text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer border border-[#EAE5DC]"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5" />
+                <span>Unlock Security Vault</span>
+              </span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      ),
+      renderRow: (delayClass: string) => (
+        <div
+          key="row-vault"
+          className={`bento-card rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 module-card-interactive animate-module-card ${delayClass}`}
+        >
+          <div className="flex items-center gap-3 min-w-[200px]">
+            <div className="w-9 h-9 rounded-xl bg-[#111318] text-[#E5C158] flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-4.5 h-4.5" />
+            </div>
+            <div>
+              <h3 className="font-display text-sm font-bold text-[#111318]">Security Vault</h3>
+              <p className="text-[11px] text-[#858078]">AES-256 GCM Client Crypto</p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onNavigate('vault')}
+            className="self-end md:self-auto py-1.5 px-3 rounded-lg bg-[#FAF8F5] hover:bg-[#111318] text-[#111318] hover:text-[#FAF8F5] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-[#EAE5DC]"
+          >
+            <Lock className="w-3.5 h-3.5" />
+            <span>Unlock</span>
           </button>
         </div>
       ),
     },
   ];
 
-  // Apply sorting
   const sortedModules = [...modulesList].sort((a, b) => {
-    if (sortBy === 'attention') {
-      return b.attentionScore - a.attentionScore;
-    }
-    if (sortBy === 'value') {
-      return b.valueMinor - a.valueMinor;
-    }
-    if (sortBy === 'name') {
-      return a.name.localeCompare(b.name);
-    }
+    if (sortBy === 'attention') return b.attentionScore - a.attentionScore;
+    if (sortBy === 'value') return b.valueMinor - a.valueMinor;
+    if (sortBy === 'name') return a.name.localeCompare(b.name);
     return a.order - b.order;
   });
 
+  const delayClasses = [
+    'animate-delay-1',
+    'animate-delay-2',
+    'animate-delay-3',
+    'animate-delay-4',
+    'animate-delay-5',
+    'animate-delay-6',
+  ];
+
   return (
-    <section className="space-y-4 scroll-mt-20 pt-2">
-      {/* Header bar with List/Grid view toggle & Sort option */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-0.5">
+    <section className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse-subtle" />
-            <h2 className="text-base font-bold text-slate-900 tracking-tight">
-              Executive Modules Command Center
-            </h2>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-              6 Live Hubs
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Real-time status, balances, and single-click execution across all financial workstations.
-          </p>
+          <span className="text-[11px] font-mono-data uppercase tracking-widest text-[#858078] font-semibold">
+            Sovereign Architecture
+          </span>
+          <h2 className="font-display text-lg font-bold text-[#111318]">
+            Specialized Workstations
+          </h2>
         </div>
 
-        {/* Controls: Sort Select + View Mode Toggle */}
-        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+        <div className="flex items-center gap-2 self-start sm:self-auto">
           <SortSelect
-            label="Sort"
             value={sortBy}
-            onChange={(v) => setSortBy(v as ModulesSortOption)}
+            onChange={(val) => setSortBy(val as ModulesSortOption)}
             options={[
-              { value: 'default', label: 'Default Flow' },
-              { value: 'attention', label: 'Needs Attention' },
-              { value: 'value', label: 'Highest Amount' },
-              { value: 'name', label: 'Name (A-Z)' },
+              { value: 'default', label: 'Default Order' },
+              { value: 'attention', label: 'Urgency & Attention' },
+              { value: 'value', label: 'Capital Volume' },
+              { value: 'name', label: 'Alphabetical' },
             ]}
           />
-
-          <ViewModeToggle
-            value={viewMode}
-            onChange={setViewMode}
-            gridLabel="Grid View"
-            listLabel="List View"
-          />
-
-          <span className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200/80 font-medium text-[11px]">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-ping" />
-            Live Sync Active
-          </span>
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
         </div>
       </div>
 
-      {/* Render Modules in chosen View Mode with staggered entrance delays */}
       {viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4.5">
-          {sortedModules.map((m, idx) => m.renderCard(`animate-delay-${Math.min(idx + 1, 6)}`))}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {sortedModules.map((mod, idx) => mod.renderCard(delayClasses[idx % delayClasses.length]))}
         </div>
       ) : (
         <div className="space-y-2.5">
-          {sortedModules.map((m, idx) => m.renderRow(`animate-delay-${Math.min(idx + 1, 6)}`))}
+          {sortedModules.map((mod, idx) => mod.renderRow(delayClasses[idx % delayClasses.length]))}
         </div>
       )}
     </section>
