@@ -386,7 +386,7 @@ export interface VaultMetaRecord {
   recoverySaltB64?: string | null;
   recoveryIv?: string | null;
   recoveryCt?: string | null;
-  waRecoveryKey?: string | null;
+  hasWaRecoveryKey?: boolean;
   updatedAt: string;
 }
 
@@ -1144,6 +1144,11 @@ export const api = {
     autoBackupDir?: string;
   }) => request<{ data: AppPreferences }>('/api/preferences', { method: 'PUT', body: JSON.stringify(body) }).then((r) => r.data),
 
+  getAppLockStatus: () =>
+    request<{ data: { hasAppPin: boolean; unlocked: boolean; autoLockMinutes: number } }>('/api/app-lock/status').then(
+      (r) => r.data,
+    ),
+  lockApp: () => request<{ ok: boolean }>('/api/app-lock/lock', { method: 'POST' }),
   setAppPin: (body: { pin: string; currentPin?: string }) =>
     request<{ data: AppPreferences }>('/api/app-lock/set', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data),
   verifyAppPin: (pin: string) =>

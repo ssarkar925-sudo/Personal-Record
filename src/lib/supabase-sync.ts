@@ -100,7 +100,7 @@ export async function pushLocalDataToSupabase(): Promise<{
     if (loanErr) throw new Error(`Loans sync failed: ${loanErr.message}`);
   }
 
-  // 5. Upsert People Dues
+  // 5. Upsert People Dues (aligned with public.people_dues schema)
   if (duesRes.data.length > 0) {
     const duePayload = duesRes.data.map((d: PersonDueRecord) => ({
       id: d.id,
@@ -108,27 +108,31 @@ export async function pushLocalDataToSupabase(): Promise<{
       person_name: d.personName,
       direction: d.direction,
       scope: d.scope,
-      amount_minor: d.amountMinor,
+      original_minor: d.amountMinor,
       remaining_minor: d.remainingMinor,
       due_date: d.dueDate || null,
-      note: d.note || '',
+      status: d.status === 'partial' ? 'partially_paid' : d.status,
+      notes: d.note || '',
     }));
 
     const { error: dueErr } = await client.from('people_dues').upsert(duePayload, { onConflict: 'id' });
     if (dueErr) throw new Error(`Dues sync failed: ${dueErr.message}`);
   }
 
-  // 6. Upsert Notes
+  // 6. Upsert Notes (aligned with public.notes schema)
   if (notes.length > 0) {
     const notesPayload = notes.map((n: NoteRecord) => ({
       id: n.id,
       user_id: userId,
       title: n.title,
-      content: n.body || '',
-      category: n.tags?.[0] || 'General',
-      scope: n.scope,
-      color: n.color || 'slate',
-      pinned: n.pinned ? true : false,
+      body: n.body || '',
+      tags: Array.isArray(n.tags) ? n.tags : [],
+      scope: n.scope === 'general' ? 'personal' : n.scope,
+      color: n.color || 'default',
+      pinned: Boolean(n.pinned),
+      archived: Boolean(n.archived),
+      order_index: n.orderIndex ?? 0,
+      checklist: n.checklist ?? [],
     }));
 
     const { error: noteErr } = await client.from('notes').upsert(notesPayload, { onConflict: 'id' });

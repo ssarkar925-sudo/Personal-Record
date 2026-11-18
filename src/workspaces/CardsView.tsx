@@ -2536,10 +2536,16 @@ export function CardsView({
         title={`Receipt · ${attachmentViewerTx?.party || 'Card Spend'}`}
       >
         <div className="space-y-4">
-          {attachmentData ? (
-            attachmentData.mimeType.startsWith('image/') ? (
+          {attachmentData ? (() => {
+            const safeMime = /^(image\/(png|jpeg|webp|gif)|application\/pdf|text\/plain)$/.test(attachmentData.mimeType)
+              ? attachmentData.mimeType
+              : 'application/octet-stream';
+            const dataUrl = attachmentData.dataBase64.startsWith('data:')
+              ? attachmentData.dataBase64
+              : `data:${safeMime};base64,${attachmentData.dataBase64}`;
+            return safeMime.startsWith('image/') ? (
               <img
-                src={attachmentData.dataBase64}
+                src={dataUrl}
                 alt="Receipt"
                 className="max-h-96 w-full object-contain rounded-xl border border-[#EAE5DC]"
               />
@@ -2548,7 +2554,7 @@ export function CardsView({
                 <FileText className="mx-auto h-12 w-12 text-[#858078] mb-2" />
                 <p className="text-xs font-semibold text-[#111318]">{attachmentData.filename}</p>
                 <a
-                  href={attachmentData.dataBase64}
+                  href={dataUrl}
                   download={attachmentData.filename}
                   className="mt-3 inline-flex items-center gap-1.5 text-xs text-[#059669] font-semibold underline"
                 >
@@ -2556,8 +2562,8 @@ export function CardsView({
                   <span>Download Document</span>
                 </a>
               </div>
-            )
-          ) : (
+            );
+          })() : (
             <p className="text-xs text-[#858078]">Loading attachment...</p>
           )}
 

@@ -46,7 +46,16 @@ export function getSupabaseConfig(): SupabaseConfig {
     url.includes('your-project-id') ||
     url.includes('example.supabase.co') ||
     anonKey.includes('your-anon-key');
-  const isConfigured = Boolean(url && anonKey && url.startsWith('http') && !isPlaceholder);
+  let validOrigin = false;
+  try {
+    const parsed = new URL(url);
+    validOrigin =
+      parsed.protocol === 'https:' ||
+      (parsed.protocol === 'http:' && (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost'));
+  } catch {
+    validOrigin = false;
+  }
+  const isConfigured = Boolean(url && anonKey && validOrigin && !isPlaceholder);
   return { url, anonKey, isConfigured };
 }
 
