@@ -21,7 +21,6 @@ import type {
   AdvisorFinding,
   AdvisorSuggestion,
   AttentionItem,
-  ChecklistItemRecord,
   DashboardSummary,
   DetailedReports,
   GlobalSearchResult,
@@ -37,7 +36,7 @@ import type {
 } from './api.ts';
 import { getSupabaseClient, getCurrentUser } from './supabase.ts';
 
-const DB_STORAGE_KEY = 'pl_browser_db_v1';
+const DB_STORAGE_KEY = 'pl_browser_db_v4';
 const PREFS_STORAGE_KEY = 'pl_app_preferences_v1';
 
 interface ClientDatabaseSchema {
@@ -52,315 +51,19 @@ interface ClientDatabaseSchema {
 }
 
 function getInitialDatabase(): ClientDatabaseSchema {
-  const today = todayISO();
-  const acc1: AccountRecord = {
-    id: 'acc-hdfc-sal',
-    name: 'HDFC Corporate & Salary',
-    type: 'bank',
-    accountGroup: 'bank',
-    scope: 'business',
-    institution: 'HDFC Bank',
-    last4: '4192',
-    openingBalanceMinor: 84500000,
-    minBalanceMinor: 10000000,
-    creditLimitMinor: 0,
-    statementDay: 15,
-    dueDay: 5,
-    currentBalanceMinor: 84500000,
-    cardCycle: null,
-    createdAt: today,
-  };
-
-  const acc2: AccountRecord = {
-    id: 'acc-kotak-pers',
-    name: 'Kotak Personal 811',
-    type: 'bank',
-    accountGroup: 'bank',
-    scope: 'personal',
-    institution: 'Kotak Mahindra Bank',
-    last4: '3319',
-    openingBalanceMinor: 18500000,
-    minBalanceMinor: 0,
-    creditLimitMinor: 0,
-    statementDay: 15,
-    dueDay: 5,
-    currentBalanceMinor: 18500000,
-    cardCycle: null,
-    createdAt: today,
-  };
-
-  const acc3: AccountRecord = {
-    id: 'acc-sbi-fam',
-    name: 'SBI Family Reserve',
-    type: 'bank',
-    accountGroup: 'bank',
-    scope: 'family',
-    institution: 'State Bank of India',
-    last4: '7810',
-    openingBalanceMinor: 68000000,
-    minBalanceMinor: 5000000,
-    creditLimitMinor: 0,
-    statementDay: 15,
-    dueDay: 5,
-    currentBalanceMinor: 68000000,
-    cardCycle: null,
-    createdAt: today,
-  };
-
-  const card1: AccountRecord = {
-    id: 'acc-icici-amazon',
-    name: 'ICICI Amazon Pay Card',
-    type: 'credit_card',
-    accountGroup: 'credit_card',
-    scope: 'business',
-    institution: 'ICICI Bank',
-    last4: '8831',
-    openingBalanceMinor: 0,
-    minBalanceMinor: 0,
-    creditLimitMinor: 25000000,
-    statementDay: 15,
-    dueDay: 5,
-    currentBalanceMinor: 0,
-    cardCycle: null,
-    createdAt: today,
-  };
-
-  const card2: AccountRecord = {
-    id: 'acc-hdfc-regalia',
-    name: 'HDFC Regalia Gold',
-    type: 'credit_card',
-    accountGroup: 'credit_card',
-    scope: 'business',
-    institution: 'HDFC Bank',
-    last4: '2049',
-    openingBalanceMinor: 1240000,
-    minBalanceMinor: 0,
-    creditLimitMinor: 45000000,
-    statementDay: 18,
-    dueDay: 8,
-    currentBalanceMinor: 1240000,
-    cardCycle: null,
-    createdAt: today,
-  };
-
-  const cashWallet: AccountRecord = {
-    id: 'acc-petty-cash',
-    name: 'Daily Petty Cash Wallet',
-    type: 'bank',
-    accountGroup: 'cash',
-    scope: 'personal',
-    institution: 'Cash Wallet',
-    last4: 'CASH',
-    openingBalanceMinor: 450000,
-    minBalanceMinor: 0,
-    creditLimitMinor: 0,
-    statementDay: 1,
-    dueDay: 1,
-    currentBalanceMinor: 450000,
-    cardCycle: null,
-    createdAt: today,
-  };
-
-  const initialAccounts = [acc1, acc2, acc3, card1, card2, cashWallet];
-
-  const initialTx: TransactionRecord[] = [
-    {
-      id: 'tx-init-1',
-      kind: 'income',
-      scope: 'business',
-      accountId: acc1.id,
-      accountName: acc1.name,
-      toAccountId: null,
-      toAccountName: null,
-      category: 'Professional Services',
-      amountMinor: 15000000,
-      occurredAt: today,
-      party: 'Stripe Global Retainer',
-      note: 'Monthly engineering retainer contract',
-      sourceRef: null,
-      createdAt: today,
-      hasAttachment: false,
-    },
-    {
-      id: 'tx-init-2',
-      kind: 'expense',
-      scope: 'business',
-      accountId: card1.id,
-      accountName: card1.name,
-      toAccountId: null,
-      toAccountName: null,
-      category: 'Cloud Services & SaaS',
-      amountMinor: 450000,
-      occurredAt: today,
-      party: 'Vercel Pro & Supabase',
-      note: 'Production hosting infrastructure',
-      sourceRef: null,
-      createdAt: today,
-      hasAttachment: false,
-    },
-    {
-      id: 'tx-init-3',
-      kind: 'expense',
-      scope: 'personal',
-      accountId: acc2.id,
-      accountName: acc2.name,
-      toAccountId: null,
-      toAccountName: null,
-      category: 'Groceries & Household',
-      amountMinor: 285000,
-      occurredAt: today,
-      party: 'Nature Basket Supermarket',
-      note: 'Weekly essentials and pantry restock',
-      sourceRef: null,
-      createdAt: today,
-      hasAttachment: false,
-    },
-  ];
-
-  const initialLoans: LoanRecord[] = [
-    {
-      id: 'loan-init-1',
-      name: 'Prime Commercial Property Loan',
-      scope: 'business',
-      direction: 'borrowed',
-      counterparty: 'HDFC Home Loans',
-      principalMinor: 450000000,
-      remainingMinor: 382000000,
-      annualRateBps: 875,
-      tenureMonths: 180,
-      emiMinor: 4498000,
-      startDate: '2024-04-01',
-      nextDueDate: addMonthsISO(today, 1),
-      linkedAccountId: acc1.id,
-      status: 'active',
-      totalInterestPaidMinor: 12000000,
-      totalPrincipalPaidMinor: 68000000,
-      createdAt: today,
-    },
-  ];
-
-  const initialDues: PersonDueRecord[] = [
-    {
-      id: 'due-init-1',
-      personName: 'Rohan Sharma',
-      phone: '+919876543210',
-      direction: 'need',
-      scope: 'business',
-      amountMinor: 4500000,
-      settledMinor: 0,
-      remainingMinor: 4500000,
-      dueDate: addMonthsISO(today, 1),
-      status: 'open',
-      note: 'Pending invoice milestone 2',
-      createdAt: today,
-    },
-  ];
-
-  const initialChecklist: ChecklistItemRecord[] = [
-    { id: 'chk-1', noteId: 'note-init-1', text: 'Download AIS/TIS from Income Tax portal', done: true, sortOrder: 0 },
-    { id: 'chk-2', noteId: 'note-init-1', text: 'Collate Section 80D health insurance receipts', done: true, sortOrder: 1 },
-    { id: 'chk-3', noteId: 'note-init-1', text: 'Send consolidated CA Tax Pack to auditor', done: false, sortOrder: 2 },
-  ];
-
-  const initialNotes: NoteRecord[] = [
-    {
-      id: 'note-init-1',
-      scope: 'personal',
-      title: 'Tax Season Checklist & CA Review',
-      body: 'Documents to file for FY 2026-27:\n- Form 16 & Form 26AS AIS/TIS\n- Health insurance mediclaim (Sec 80D)\n- Bank interest certificates & capital gains statements',
-      tags: ['tax', 'ca', 'finance'],
-      color: 'honey',
-      pinned: true,
-      archived: false,
-      remindAt: null,
-      linkedTxId: null,
-      linkedDueId: null,
-      linkedLoanId: null,
-      linkedAccountId: null,
-      orderIndex: 0,
-      checklist: initialChecklist,
-      attachments: [],
-      createdAt: today,
-      updatedAt: today,
-    },
-  ];
-
-  const initialSheets: any[] = [
-    {
-      id: 'sheet-init-1',
-      name: 'Client Billing Ledger',
-      scope: 'business',
-      color: 'gold',
-      columns: [
-        { id: 'c1', name: 'Client Name', type: 'text', width: 180 },
-        { id: 'c2', name: 'Retainer Fee (₹)', type: 'currency', width: 160 },
-        { id: 'c3', name: 'Invoice Date', type: 'date', width: 140 },
-        { id: 'c4', name: 'Status', type: 'status', width: 140 },
-      ],
-      rows: [
-        {
-          id: 'r1',
-          data: {
-            c1: 'Acme Global Ventures',
-            c2: 250000,
-            c3: today,
-            c4: 'Paid',
-          },
-        },
-        {
-          id: 'r2',
-          data: {
-            c1: 'Apex Digital Systems',
-            c2: 180000,
-            c3: today,
-            c4: 'Pending',
-          },
-        },
-      ],
-      settings: {
-        customStatuses: [
-          { label: 'Paid', color: 'emerald' },
-          { label: 'Pending', color: 'amber' },
-          { label: 'Overdue', color: 'rose' },
-        ],
-      },
-      orderIndex: 0,
-    },
-  ];
-
-  const initialBills: RecurringBillRecord[] = [
-    {
-      id: 'bill-init-1',
-      title: 'Broadband & Fiber Lease',
-      scope: 'business',
-      kind: 'expense',
-      accountId: acc1.id,
-      accountName: acc1.name,
-      category: 'Utilities & Telecom',
-      amountMinor: 249900,
-      dueDay: 12,
-      active: true,
-      autoPost: false,
-      lastPaidMonth: null,
-      createdAt: today,
-    },
-  ];
-
-  const initialBudgets: ScopeBudgetRecord[] = [
-    { scope: 'personal', monthlyLimitMinor: 5000000 },
-    { scope: 'business', monthlyLimitMinor: 15000000 },
-    { scope: 'family', monthlyLimitMinor: 8000000 },
-  ];
-
   return {
-    accounts: initialAccounts,
-    transactions: initialTx,
-    recurringBills: initialBills,
-    budgets: initialBudgets,
-    loans: initialLoans,
-    dues: initialDues,
-    notes: initialNotes,
-    jobSheets: initialSheets,
+    accounts: [],
+    transactions: [],
+    recurringBills: [],
+    budgets: [
+      { scope: 'personal', monthlyLimitMinor: 5000000 },
+      { scope: 'business', monthlyLimitMinor: 15000000 },
+      { scope: 'family', monthlyLimitMinor: 8000000 },
+    ],
+    loans: [],
+    dues: [],
+    notes: [],
+    jobSheets: [],
   };
 }
 
@@ -384,9 +87,28 @@ class ClientDatabaseManager {
       console.warn('Failed to parse client database from localStorage', e);
     }
 
+    try {
+      localStorage.removeItem('pl_browser_db_v1');
+      localStorage.removeItem('pl_browser_db_v2');
+      localStorage.removeItem('pl_browser_db_v3');
+    } catch {}
+
     this.cache = getInitialDatabase();
     this.save();
     return this.cache;
+  }
+
+  resetToCleanSlate(): void {
+    this.cache = null;
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.removeItem(DB_STORAGE_KEY);
+      localStorage.removeItem('pl_browser_db_v1');
+      localStorage.removeItem('pl_browser_db_v2');
+      localStorage.removeItem('pl_browser_db_v3');
+      this.cache = getInitialDatabase();
+      this.save();
+    } catch {}
   }
 
   private save(): void {
@@ -905,6 +627,12 @@ class ClientDatabaseManager {
     return db.recurringBills[idx];
   }
 
+  public deleteRecurringBill(id: string): void {
+    const db = this.load();
+    db.recurringBills = db.recurringBills.filter((b) => b.id !== id);
+    this.save();
+  }
+
   public getBudgets(): ScopeBudgetRecord[] {
     return [...this.load().budgets];
   }
@@ -963,6 +691,21 @@ class ClientDatabaseManager {
     return { ok: true, loan };
   }
 
+  public updateLoan(id: string, body: any): LoanRecord {
+    const db = this.load();
+    const idx = db.loans.findIndex((l) => l.id === id);
+    if (idx === -1) throw new Error(`Loan not found: ${id}`);
+    db.loans[idx] = { ...db.loans[idx], ...body };
+    this.save();
+    return db.loans[idx];
+  }
+
+  public deleteLoan(id: string): void {
+    const db = this.load();
+    db.loans = db.loans.filter((l) => l.id !== id);
+    this.save();
+  }
+
   public getDues(): { data: PersonDueRecord[]; summaries: PersonNetSummary[] } {
     const db = this.load();
     const dash = this.getDashboard();
@@ -1001,6 +744,12 @@ class ClientDatabaseManager {
     due.status = due.remainingMinor === 0 ? 'settled' : 'partial';
     this.save();
     return { ok: true, due };
+  }
+
+  public deleteDue(id: string): void {
+    const db = this.load();
+    db.dues = db.dues.filter((d) => d.id !== id);
+    this.save();
   }
 
   public getNotes(): NoteRecord[] {

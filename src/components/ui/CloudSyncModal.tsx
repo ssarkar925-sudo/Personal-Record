@@ -13,6 +13,7 @@ import {
   ExternalLink,
   ShieldCheck,
   Zap,
+  Trash2,
 } from 'lucide-react';
 import { Button, Input, Modal } from './Primitives.tsx';
 import {
@@ -471,6 +472,41 @@ export function CloudSyncModal({ open, onClose, onDataRefreshed, notify }: Cloud
             </div>
           </div>
         )}
+
+        {/* Clean Slate / Purge Local Data Section */}
+        <div className="rounded-xl border border-rose-200 bg-rose-50/40 p-4 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <h4 className="font-semibold text-rose-900 text-xs flex items-center gap-1.5">
+              <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+              Clean Slate · Start Fresh
+            </h4>
+            <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
+              Zero Out All Data
+            </span>
+          </div>
+          <p className="text-[11px] text-rose-800/80 leading-relaxed">
+            Wipe all demo cards, sample accounts, mock transactions, loans, dues, notes, and sheets so you can start with a 100% empty, pristine ledger.
+          </p>
+          <div className="flex justify-end pt-1">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                if (window.confirm('Are you sure you want to purge all local ledger data and start with an empty clean slate? This action cannot be undone.')) {
+                  clientDb.resetToCleanSlate();
+                  notify?.('Clean slate initialized! All data cleared.', 'ok');
+                  onDataRefreshed?.();
+                  onClose();
+                  setTimeout(() => window.location.reload(), 250);
+                }
+              }}
+              className="gap-1.5 border-rose-300 bg-white text-rose-700 hover:bg-rose-50 hover:border-rose-400 cursor-pointer text-xs"
+            >
+              <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+              Reset All Local Data
+            </Button>
+          </div>
+        </div>
 
         {/* Multi-Device Setup Quick Checklist */}
         <div className="rounded-xl border border-slate-200/90 bg-slate-50/60 p-4 space-y-2">

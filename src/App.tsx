@@ -179,7 +179,26 @@ export function App() {
       setNotes(nts);
       setBridgeState(wa);
     } catch (err) {
-      setLoadError((err as Error).message);
+      console.warn('Initial load failed, falling back to local client storage', err);
+      try {
+        const { clientDb } = await import('./lib/client-db.ts');
+        const scopeParam = scopeFilter === 'all' ? undefined : scopeFilter;
+        setDashboard(clientDb.getDashboard(scopeParam));
+        setBriefing(clientDb.getAgentBriefing(scopeParam));
+        setAccounts(clientDb.getAccounts());
+        setTransactions(clientDb.getTransactions({}));
+        setRecurringBills(clientDb.getRecurringBills());
+        setBudgets(clientDb.getBudgets());
+        setLoans(clientDb.getLoans());
+        const duesRes = clientDb.getDues();
+        setDues(duesRes.data);
+        setDueSummaries(duesRes.summaries);
+        setNotes(clientDb.getNotes());
+        setBridgeState(clientDb.getWhatsAppStatus());
+        setLoadError('');
+      } catch (innerErr) {
+        setLoadError((err as Error).message);
+      }
     }
   }, [scopeFilter]);
 
@@ -257,11 +276,16 @@ export function App() {
   const handleSeedDemoData = async () => {
     try {
       notify('Seeding realistic demo financial data...');
-      const res = await fetch('/api/system/seed', { method: 'POST' });
-      if (!res.ok) throw new Error('Failed to seed data');
-      const json = await res.json();
-      notify(`Seeded ${json.data.accountsCount} accounts & ${json.data.txCount} transactions!`);
-      await loadAll();
+      try {
+        const res = await fetch('/api/system/seed', { method: 'POST' });
+        if (res.ok) {
+          const json = await res.json();
+          notify(`Seeded ${json.data?.accountsCount ?? 0} accounts!`);
+          await loadAll();
+          return;
+        }
+      } catch {}
+      notify('Demo seeding requires local server mode', 'err');
     } catch {
       notify('Failed to seed demo data', 'err');
     }
@@ -270,8 +294,11 @@ export function App() {
   const handleCleanData = async () => {
     try {
       notify('Resetting database to clean slate...');
-      const res = await fetch('/api/system/clean', { method: 'POST' });
-      if (!res.ok) throw new Error('Failed to clean data');
+      const { clientDb } = await import('./lib/client-db.ts');
+      clientDb.resetToCleanSlate();
+      try {
+        await fetch('/api/system/clean', { method: 'POST' });
+      } catch {}
       notify('Database cleared to pristine clean slate!');
       await loadAll();
     } catch {

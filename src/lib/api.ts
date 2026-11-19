@@ -997,7 +997,18 @@ export const api = {
       body: JSON.stringify({ paidAt }),
     }).then((r) => r.data),
 
-  deleteRecurringBill: (id: string) => request<{ ok: boolean }>(`/api/recurring-bills/${id}`, { method: 'DELETE' }),
+  deleteRecurringBill: async (id: string): Promise<{ ok: boolean }> => {
+    if (isStandaloneClient()) {
+      clientDb.deleteRecurringBill(id);
+      return { ok: true };
+    }
+    try {
+      return await request<{ ok: boolean }>(`/api/recurring-bills/${id}`, { method: 'DELETE' });
+    } catch {
+      clientDb.deleteRecurringBill(id);
+      return { ok: true };
+    }
+  },
 
   getBudgets: async (): Promise<ScopeBudgetRecord[]> => {
     if (isStandaloneClient()) return clientDb.getBudgets();
@@ -1073,7 +1084,7 @@ export const api = {
     }
   },
 
-  updateLoan: (
+  updateLoan: async (
     id: string,
     body: Partial<{
       name: string;
@@ -1090,7 +1101,14 @@ export const api = {
       linkedAccountId: string | null;
       status: 'active' | 'closed';
     }>,
-  ) => request<{ data: LoanRecord }>(`/api/loans/${id}`, { method: 'PATCH', body: JSON.stringify(body) }).then((r) => r.data),
+  ): Promise<LoanRecord> => {
+    if (isStandaloneClient()) return clientDb.updateLoan(id, body);
+    try {
+      return await request<{ data: LoanRecord }>(`/api/loans/${id}`, { method: 'PATCH', body: JSON.stringify(body) }).then((r) => r.data);
+    } catch {
+      return clientDb.updateLoan(id, body);
+    }
+  },
 
   payLoan: async (id: string, body: { amountMinor: number; accountId: string; paidAt: string; note?: string }): Promise<{ loan: LoanRecord; transaction: TransactionRecord }> => {
     if (isStandaloneClient()) return clientDb.recordLoanPayment(id, body);
@@ -1104,7 +1122,18 @@ export const api = {
     }
   },
 
-  deleteLoan: (id: string) => request<{ ok: boolean }>(`/api/loans/${id}`, { method: 'DELETE' }),
+  deleteLoan: async (id: string): Promise<{ ok: boolean }> => {
+    if (isStandaloneClient()) {
+      clientDb.deleteLoan(id);
+      return { ok: true };
+    }
+    try {
+      return await request<{ ok: boolean }>(`/api/loans/${id}`, { method: 'DELETE' });
+    } catch {
+      clientDb.deleteLoan(id);
+      return { ok: true };
+    }
+  },
 
   getDues: async (): Promise<{ data: PersonDueRecord[]; summaries: PersonNetSummary[] }> => {
     if (isStandaloneClient()) return clientDb.getDues();
@@ -1157,7 +1186,18 @@ export const api = {
     }
   },
 
-  deleteDue: (id: string) => request<{ ok: boolean }>(`/api/dues/${id}`, { method: 'DELETE' }),
+  deleteDue: async (id: string): Promise<{ ok: boolean }> => {
+    if (isStandaloneClient()) {
+      clientDb.deleteDue(id);
+      return { ok: true };
+    }
+    try {
+      return await request<{ ok: boolean }>(`/api/dues/${id}`, { method: 'DELETE' });
+    } catch {
+      clientDb.deleteDue(id);
+      return { ok: true };
+    }
+  },
 
   getNotes: async (search?: string): Promise<NoteRecord[]> => {
     if (isStandaloneClient()) return clientDb.getNotes();
@@ -1711,5 +1751,10 @@ export const api = {
       clientDb.deleteJobSheet(id);
       return { ok: true };
     }
+  },
+
+  resetToCleanSlate: async (): Promise<boolean> => {
+    clientDb.resetToCleanSlate();
+    return true;
   },
 };

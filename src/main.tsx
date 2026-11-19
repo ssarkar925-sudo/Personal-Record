@@ -6,7 +6,12 @@ import { ErrorBoundary } from './components/ui/ErrorBoundary.tsx';
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
-    void navigator.serviceWorker.register('/sw.js').catch(() => {});
+    void navigator.serviceWorker
+      .register('/sw.js')
+      .then((reg) => {
+        reg.update().catch(() => {});
+      })
+      .catch(() => {});
   });
 }
 
