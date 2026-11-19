@@ -227,6 +227,26 @@ export function subscribeToSupabaseRealtime(onChange: (table: string, eventType:
       { event: '*', schema: 'public', table: 'job_sheets' },
       () => onChange('job_sheets', 'change')
     )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'recurring_bills' },
+      () => onChange('recurring_bills', 'change')
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'vault_meta' },
+      () => onChange('vault_meta', 'change')
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'vault_entries' },
+      () => onChange('vault_entries', 'change')
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'app_preferences' },
+      () => onChange('app_preferences', 'change')
+    )
     .subscribe();
 
   return {

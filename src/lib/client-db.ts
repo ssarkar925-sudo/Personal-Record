@@ -1169,7 +1169,7 @@ class ClientDatabaseManager {
     if (!user) throw new Error('Please sign in to Supabase first.');
 
     const userId = user.id;
-    const [accRes, txRes, loanRes, dueRes, noteRes, sheetRes, billRes] = await Promise.all([
+    const [accRes, txRes, loanRes, dueRes, noteRes, sheetRes, billRes, vaultMetaRes, vaultEntriesRes, prefRes] = await Promise.all([
       client.from('accounts').select('*').eq('user_id', userId),
       client.from('transactions').select('*').eq('user_id', userId),
       client.from('loans').select('*').eq('user_id', userId),
@@ -1177,6 +1177,9 @@ class ClientDatabaseManager {
       client.from('notes').select('*').eq('user_id', userId),
       client.from('job_sheets').select('*').eq('user_id', userId),
       client.from('recurring_bills').select('*').eq('user_id', userId),
+      client.from('vault_meta').select('*').eq('user_id', userId).maybeSingle(),
+      client.from('vault_entries').select('*').eq('user_id', userId),
+      client.from('app_preferences').select('*').eq('user_id', userId).maybeSingle(),
     ]);
 
     const db = this.load();
@@ -1327,6 +1330,41 @@ class ClientDatabaseManager {
         };
       });
       totalItems += db.recurringBills.length;
+    }
+
+    if (vaultMetaRes && vaultMetaRes.data) {
+      db.vaultMeta = {
+        saltB64: vaultMetaRes.data.salt,
+        canaryIv: vaultMetaRes.data.canary_iv,
+        canaryCt: vaultMetaRes.data.canary_ciphertext,
+        recoverySaltB64: vaultMetaRes.data.recovery_salt || null,
+        recoveryIv: vaultMetaRes.data.recovery_iv || null,
+        recoveryCt: vaultMetaRes.data.recovery_ciphertext || null,
+        hasWaRecoveryKey: Boolean(vaultMetaRes.data.wa_recovery_key),
+        updatedAt: vaultMetaRes.data.updated_at || todayISO(),
+      };
+      totalItems += 1;
+    }
+
+    if (Array.isArray(vaultEntriesRes?.data)) {
+      db.vaultEntries = vaultEntriesRes.data.map((r: any) => ({
+        id: r.id,
+        label: r.label,
+        category: r.category,
+        iv: r.iv,
+        ciphertext: r.ciphertext,
+        lastRotatedAt: r.last_rotated_at,
+        updatedAt: r.updated_at || todayISO(),
+      }));
+      totalItems += db.vaultEntries.length;
+    }
+
+    if (prefRes && prefRes.data) {
+      this.updatePreferences({
+        systemLanguage: prefRes.data.system_language || undefined,
+        autoLockMinutes: prefRes.data.auto_lock_minutes ?? undefined,
+        hasAppPin: Boolean(prefRes.data.has_app_pin),
+      });
     }
 
     this.recomputeBalances();

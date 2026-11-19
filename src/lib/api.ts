@@ -32,6 +32,17 @@ import {
   dbFirstDeleteJobSheet,
   dbFirstCreateRecurringBill,
   dbFirstDeleteRecurringBill,
+  dbFirstGetVaultMeta,
+  dbFirstSaveVaultMeta,
+  dbFirstSaveVaultRecovery,
+  dbFirstGetVaultEntries,
+  dbFirstSaveVaultEntry,
+  dbFirstDeleteVaultEntry,
+  dbFirstRekeyVault,
+  dbFirstGetPreferences,
+  dbFirstUpdatePreferences,
+  dbFirstSetAppPin,
+  dbFirstClearAppPin,
 } from './database-first.ts';
 
 export class ApiError extends Error {
@@ -1310,11 +1321,11 @@ export const api = {
   }) => request<{ ok: boolean; count: number }>('/api/notes/bulk', { method: 'POST', body: JSON.stringify(body) }),
 
   getVaultMeta: async (): Promise<VaultMetaRecord | null> => {
-    if (isStandaloneClient()) return clientDb.getVaultMeta();
+    if (isStandaloneClient()) return dbFirstGetVaultMeta();
     try {
       return await request<{ data: VaultMetaRecord | null }>('/api/vault/meta').then((r) => r.data);
     } catch {
-      return clientDb.getVaultMeta();
+      return dbFirstGetVaultMeta();
     }
   },
 
@@ -1327,11 +1338,11 @@ export const api = {
     recoveryCt?: string | null;
     waRecoveryKey?: string | null;
   }): Promise<VaultMetaRecord> => {
-    if (isStandaloneClient()) return clientDb.saveVaultMeta(body);
+    if (isStandaloneClient()) return dbFirstSaveVaultMeta(body);
     try {
       return await request<{ data: VaultMetaRecord }>('/api/vault/meta', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
     } catch {
-      return clientDb.saveVaultMeta(body);
+      return dbFirstSaveVaultMeta(body);
     }
   },
 
@@ -1341,11 +1352,11 @@ export const api = {
     recoveryCt: string;
     waRecoveryKey?: string | null;
   }): Promise<VaultMetaRecord> => {
-    if (isStandaloneClient()) return clientDb.saveVaultRecovery(body);
+    if (isStandaloneClient()) return dbFirstSaveVaultRecovery(body);
     try {
       return await request<{ data: VaultMetaRecord }>('/api/vault/recovery', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
     } catch {
-      return clientDb.saveVaultRecovery(body);
+      return dbFirstSaveVaultRecovery(body);
     }
   },
 
@@ -1372,11 +1383,11 @@ export const api = {
   },
 
   getVaultEntries: async (): Promise<VaultEntryCipherRecord[]> => {
-    if (isStandaloneClient()) return clientDb.getVaultEntries();
+    if (isStandaloneClient()) return dbFirstGetVaultEntries();
     try {
       return await request<{ data: VaultEntryCipherRecord[] }>('/api/vault/entries').then((r) => r.data);
     } catch {
-      return clientDb.getVaultEntries();
+      return dbFirstGetVaultEntries();
     }
   },
 
@@ -1388,24 +1399,22 @@ export const api = {
     ciphertext: string;
     lastRotatedAt: string;
   }): Promise<VaultEntryCipherRecord> => {
-    if (isStandaloneClient()) return clientDb.saveVaultEntry(body);
+    if (isStandaloneClient()) return dbFirstSaveVaultEntry(body);
     try {
       return await request<{ data: VaultEntryCipherRecord }>('/api/vault/entries', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
     } catch {
-      return clientDb.saveVaultEntry(body);
+      return dbFirstSaveVaultEntry(body);
     }
   },
 
   deleteVaultEntry: async (id: string): Promise<{ ok: boolean }> => {
     if (isStandaloneClient()) {
-      clientDb.deleteVaultEntry(id);
-      return { ok: true };
+      return dbFirstDeleteVaultEntry(id);
     }
     try {
       return await request<{ ok: boolean }>(`/api/vault/entries/${id}`, { method: 'DELETE' });
     } catch {
-      clientDb.deleteVaultEntry(id);
-      return { ok: true };
+      return dbFirstDeleteVaultEntry(id);
     }
   },
 
@@ -1426,11 +1435,11 @@ export const api = {
       lastRotatedAt: string;
     }>;
   }): Promise<VaultMetaRecord> => {
-    if (isStandaloneClient()) return clientDb.rekeyVault(body);
+    if (isStandaloneClient()) return dbFirstRekeyVault(body);
     try {
       return await request<{ data: VaultMetaRecord }>('/api/vault/rekey', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
     } catch {
-      return clientDb.rekeyVault(body);
+      return dbFirstRekeyVault(body);
     }
   },
 
@@ -1495,11 +1504,11 @@ export const api = {
     request<{ ok: boolean }>('/api/whatsapp/test', { method: 'POST', body: JSON.stringify({ phone }) }),
 
   getPreferences: async (): Promise<AppPreferences> => {
-    if (isStandaloneClient()) return clientDb.getPreferences();
+    if (isStandaloneClient()) return dbFirstGetPreferences();
     try {
       return await request<{ data: AppPreferences }>('/api/preferences').then((r) => r.data);
     } catch {
-      return clientDb.getPreferences();
+      return dbFirstGetPreferences();
     }
   },
   updatePreferences: async (body: {
@@ -1513,18 +1522,18 @@ export const api = {
     autoBackupEnabled?: boolean;
     autoBackupDir?: string;
   }): Promise<AppPreferences> => {
-    if (isStandaloneClient()) return clientDb.updatePreferences(body);
+    if (isStandaloneClient()) return dbFirstUpdatePreferences(body);
     try {
       return await request<{ data: AppPreferences }>('/api/preferences', { method: 'PUT', body: JSON.stringify(body) }).then((r) => r.data);
     } catch {
-      return clientDb.updatePreferences(body);
+      return dbFirstUpdatePreferences(body);
     }
   },
 
   getAppLockStatus: async (): Promise<{ hasAppPin: boolean; unlocked: boolean; autoLockMinutes: number }> => {
     if (isStandaloneClient()) {
       try {
-        const prefs = await clientDb.getPreferences();
+        const prefs = await dbFirstGetPreferences();
         return { hasAppPin: !!prefs.hasAppPin, unlocked: true, autoLockMinutes: prefs.autoLockMinutes ?? 0 };
       } catch {
         return { hasAppPin: false, unlocked: true, autoLockMinutes: 0 };
@@ -1535,7 +1544,7 @@ export const api = {
         (r) => r.data,
       );
     } catch {
-      const prefs = await clientDb.getPreferences();
+      const prefs = await dbFirstGetPreferences();
       return { hasAppPin: !!prefs.hasAppPin, unlocked: true, autoLockMinutes: prefs.autoLockMinutes ?? 0 };
     }
   },
@@ -1548,11 +1557,11 @@ export const api = {
     }
   },
   setAppPin: async (body: { pin: string; currentPin?: string }) => {
-    if (isStandaloneClient()) return clientDb.updatePreferences({ hasAppPin: true });
+    if (isStandaloneClient()) return dbFirstSetAppPin(body.pin);
     try {
       return await request<{ data: AppPreferences }>('/api/app-lock/set', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
     } catch {
-      return clientDb.updatePreferences({ hasAppPin: true });
+      return dbFirstSetAppPin(body.pin);
     }
   },
   verifyAppPin: async (pin: string) => {
@@ -1564,11 +1573,11 @@ export const api = {
     }
   },
   clearAppPin: async (currentPin: string) => {
-    if (isStandaloneClient()) return clientDb.updatePreferences({ hasAppPin: false });
+    if (isStandaloneClient()) return dbFirstClearAppPin();
     try {
       return await request<{ data: AppPreferences }>('/api/app-lock/clear', { method: 'POST', body: JSON.stringify({ currentPin }) }).then((r) => r.data);
     } catch {
-      return clientDb.updatePreferences({ hasAppPin: false });
+      return dbFirstClearAppPin();
     }
   },
 

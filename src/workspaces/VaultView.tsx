@@ -213,13 +213,23 @@ export function VaultView({
   };
 
   useEffect(() => {
-    api
-      .getVaultMeta()
-      .then((m) => {
-        setMeta(m);
-      })
-      .finally(() => setLoadingMeta(false));
+    let mounted = true;
+    const fetchMeta = () => {
+      api
+        .getVaultMeta()
+        .then((m) => {
+          if (mounted) setMeta(m);
+        })
+        .finally(() => {
+          if (mounted) setLoadingMeta(false);
+        });
+    };
+
+    fetchMeta();
+    window.addEventListener('focus', fetchMeta);
     return () => {
+      mounted = false;
+      window.removeEventListener('focus', fetchMeta);
       setVaultKey(null);
       setEntries([]);
     };

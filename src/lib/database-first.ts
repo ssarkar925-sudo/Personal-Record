@@ -7,6 +7,9 @@ import type {
   PersonDueRecord,
   NoteRecord,
   RecurringBillRecord,
+  VaultMetaRecord,
+  VaultEntryCipherRecord,
+  AppPreferences,
 } from './api.ts';
 import type { AccountType, Scope, TxKind } from '../../shared/ledger-core.ts';
 import { todayISO } from '../../shared/ledger-core.ts';
@@ -658,4 +661,374 @@ export async function dbFirstDeleteRecurringBill(id: string): Promise<{ ok: bool
 
   clientDb.deleteRecurringBill(id);
   return { ok: true };
+}
+
+// ============================================================================
+// ENCRYPTED PASSWORD VAULT (DATABASE-FIRST)
+// ============================================================================
+
+export async function dbFirstGetVaultMeta(): Promise<VaultMetaRecord | null> {
+  try {
+    const user = await ensureSupabaseSession();
+    const client = getSupabaseClient();
+    if (client && user) {
+      const { data, error } = await client
+        .from('vault_meta')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) {
+        const meta: VaultMetaRecord = {
+          saltB64: data.salt,
+          canaryIv: data.canary_iv,
+          canaryCt: data.canary_ciphertext,
+          recoverySaltB64: data.recovery_salt || null,
+          recoveryIv: data.recovery_iv || null,
+          recoveryCt: data.recovery_ciphertext || null,
+          hasWaRecoveryKey: Boolean(data.wa_recovery_key),
+          updatedAt: data.updated_at || todayISO(),
+        };
+        const db = clientDb.load();
+        db.vaultMeta = meta;
+        (clientDb as any).save(true);
+        return meta;
+      }
+    }
+  } catch (err) {
+    console.warn('[Database-First] Vault meta fetch failed on cloud:', err);
+  }
+
+  return clientDb.getVaultMeta();
+}
+
+export async function dbFirstSaveVaultMeta(body: {
+  saltB64: string;
+  canaryIv: string;
+  canaryCt: string;
+  recoverySaltB64?: string | null;
+  recoveryIv?: string | null;
+  recoveryCt?: string | null;
+  waRecoveryKey?: string | null;
+}): Promise<VaultMetaRecord> {
+  try {
+    const user = await ensureSupabaseSession();
+    const client = getSupabaseClient();
+    if (client && user) {
+      const payload = {
+        user_id: user.id,
+        salt: body.saltB64,
+        canary_ciphertext: body.canaryCt,
+        canary_iv: body.canaryIv,
+        canary_tag: '',
+        recovery_key_hash: body.waRecoveryKey ? 'sha256-set' : 'none',
+        recovery_salt: body.recoverySaltB64 || null,
+        recovery_iv: body.recoveryIv || null,
+        recovery_ciphertext: body.recoveryCt || null,
+        wa_recovery_key: body.waRecoveryKey || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await client
+        .from('vault_meta')
+        .upsert(payload, { onConflict: 'user_id' })
+        .select()
+        .single();
+
+      if (error) throw error;
+      if (data) {
+        const meta: VaultMetaRecord = {
+          saltB64: data.salt,
+          canaryIv: data.canary_iv,
+          canaryCt: data.canary_ciphertext,
+          recoverySaltB64: data.recovery_salt || null,
+          recoveryIv: data.recovery_iv || null,
+          recoveryCt: data.recovery_ciphertext || null,
+          hasWaRecoveryKey: Boolean(data.wa_recovery_key),
+          updatedAt: data.updated_at || todayISO(),
+        };
+        const db = clientDb.load();
+        db.vaultMeta = meta;
+        (clientDb as any).save(true);
+        return meta;
+      }
+    }
+  } catch (err) {
+    console.warn('[Database-First] Vault meta save failed on cloud:', err);
+  }
+
+  return clientDb.saveVaultMeta(body);
+}
+
+export async function dbFirstSaveVaultRecovery(body: {
+  recoverySaltB64: string;
+  recoveryIv: string;
+  recoveryCt: string;
+  waRecoveryKey?: string | null;
+}): Promise<VaultMetaRecord> {
+  try {
+    const user = await ensureSupabaseSession();
+    const client = getSupabaseClient();
+    if (client && user) {
+      const payload = {
+        user_id: user.id,
+        recovery_salt: body.recoverySaltB64,
+        recovery_iv: body.recoveryIv,
+        recovery_ciphertext: body.recoveryCt,
+        wa_recovery_key: body.waRecoveryKey || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await client
+        .from('vault_meta')
+        .update(payload)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      if (data) {
+        const meta: VaultMetaRecord = {
+          saltB64: data.salt,
+          canaryIv: data.canary_iv,
+          canaryCt: data.canary_ciphertext,
+          recoverySaltB64: data.recovery_salt || null,
+          recoveryIv: data.recovery_iv || null,
+          recoveryCt: data.recovery_ciphertext || null,
+          hasWaRecoveryKey: Boolean(data.wa_recovery_key),
+          updatedAt: data.updated_at || todayISO(),
+        };
+        const db = clientDb.load();
+        db.vaultMeta = meta;
+        (clientDb as any).save(true);
+        return meta;
+      }
+    }
+  } catch (err) {
+    console.warn('[Database-First] Vault recovery save failed on cloud:', err);
+  }
+
+  return clientDb.saveVaultRecovery(body);
+}
+
+export async function dbFirstGetVaultEntries(): Promise<VaultEntryCipherRecord[]> {
+  try {
+    const user = await ensureSupabaseSession();
+    const client = getSupabaseClient();
+    if (client && user) {
+      const { data, error } = await client
+        .from('vault_entries')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      if (Array.isArray(data)) {
+        const entries: VaultEntryCipherRecord[] = data.map((r: any) => ({
+          id: r.id,
+          label: r.label,
+          category: r.category,
+          iv: r.iv,
+          ciphertext: r.ciphertext,
+          lastRotatedAt: r.last_rotated_at,
+          updatedAt: r.updated_at || todayISO(),
+        }));
+        const db = clientDb.load();
+        db.vaultEntries = entries;
+        (clientDb as any).save(true);
+        return entries;
+      }
+    }
+  } catch (err) {
+    console.warn('[Database-First] Vault entries fetch failed on cloud:', err);
+  }
+
+  return clientDb.getVaultEntries();
+}
+
+export async function dbFirstSaveVaultEntry(body: {
+  id?: string;
+  label: string;
+  category: string;
+  iv: string;
+  ciphertext: string;
+  lastRotatedAt: string;
+}): Promise<VaultEntryCipherRecord> {
+  const id = body.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.id)
+    ? body.id
+    : generateUUID();
+
+  try {
+    const user = await ensureSupabaseSession();
+    const client = getSupabaseClient();
+    if (client && user) {
+      const payload = {
+        id,
+        user_id: user.id,
+        label: body.label,
+        category: body.category,
+        ciphertext: body.ciphertext,
+        iv: body.iv,
+        auth_tag: '',
+        last_rotated_at: body.lastRotatedAt || todayISO(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await client
+        .from('vault_entries')
+        .upsert(payload, { onConflict: 'id' })
+        .select()
+        .single();
+
+      if (error) throw error;
+      if (data) {
+        return clientDb.saveVaultEntry({ ...body, id: data.id });
+      }
+    }
+  } catch (err) {
+    console.warn('[Database-First] Vault entry save failed on cloud:', err);
+  }
+
+  return clientDb.saveVaultEntry({ ...body, id });
+}
+
+export async function dbFirstDeleteVaultEntry(id: string): Promise<{ ok: boolean }> {
+  try {
+    const user = await ensureSupabaseSession();
+    const client = getSupabaseClient();
+    if (client && user) {
+      await client.from('vault_entries').delete().eq('id', id).eq('user_id', user.id);
+    }
+  } catch (err) {
+    console.warn('[Database-First] Vault entry delete failed on cloud:', err);
+  }
+
+  clientDb.deleteVaultEntry(id);
+  return { ok: true };
+}
+
+export async function dbFirstRekeyVault(body: {
+  saltB64: string;
+  canaryIv: string;
+  canaryCt: string;
+  recoverySaltB64?: string | null;
+  recoveryIv?: string | null;
+  recoveryCt?: string | null;
+  waRecoveryKey?: string | null;
+  entries: Array<{
+    id: string;
+    label: string;
+    category: string;
+    iv: string;
+    ciphertext: string;
+    lastRotatedAt: string;
+  }>;
+}): Promise<VaultMetaRecord> {
+  const meta = await dbFirstSaveVaultMeta({
+    saltB64: body.saltB64,
+    canaryIv: body.canaryIv,
+    canaryCt: body.canaryCt,
+    recoverySaltB64: body.recoverySaltB64,
+    recoveryIv: body.recoveryIv,
+    recoveryCt: body.recoveryCt,
+    waRecoveryKey: body.waRecoveryKey,
+  });
+
+  for (const entry of body.entries) {
+    await dbFirstSaveVaultEntry(entry);
+  }
+
+  return meta;
+}
+
+// ============================================================================
+// APP PREFERENCES & PIN (DATABASE-FIRST)
+// ============================================================================
+
+export async function dbFirstGetPreferences(): Promise<AppPreferences> {
+  try {
+    const user = await ensureSupabaseSession();
+    const client = getSupabaseClient();
+    if (client && user) {
+      const { data } = await client
+        .from('app_preferences')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (data) {
+        return clientDb.updatePreferences({
+          systemLanguage: (data.system_language as any) || undefined,
+          autoLockMinutes: data.auto_lock_minutes ?? undefined,
+          hasAppPin: Boolean(data.has_app_pin),
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('[Database-First] App preferences fetch failed on cloud:', err);
+  }
+
+  return clientDb.getPreferences();
+}
+
+export async function dbFirstUpdatePreferences(body: any): Promise<AppPreferences> {
+  try {
+    const user = await ensureSupabaseSession();
+    const client = getSupabaseClient();
+    if (client && user) {
+      const payload: any = {
+        user_id: user.id,
+        updated_at: new Date().toISOString(),
+      };
+      if (body.systemLanguage) payload.system_language = body.systemLanguage;
+      if (typeof body.privacyMasked === 'boolean') payload.privacy_masked = body.privacyMasked;
+      if (typeof body.autoLockMinutes === 'number') payload.auto_lock_minutes = body.autoLockMinutes;
+      if (typeof body.hasAppPin === 'boolean') payload.has_app_pin = body.hasAppPin;
+
+      await client.from('app_preferences').upsert(payload, { onConflict: 'user_id' });
+    }
+  } catch (err) {
+    console.warn('[Database-First] App preferences update failed on cloud:', err);
+  }
+
+  return clientDb.updatePreferences(body);
+}
+
+export async function dbFirstSetAppPin(pin: string): Promise<AppPreferences> {
+  try {
+    const user = await ensureSupabaseSession();
+    const client = getSupabaseClient();
+    if (client && user) {
+      await client.from('app_preferences').upsert({
+        user_id: user.id,
+        has_app_pin: true,
+        app_pin_hash: pin,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+    }
+  } catch (err) {
+    console.warn('[Database-First] Set app PIN failed on cloud:', err);
+  }
+
+  return clientDb.updatePreferences({ hasAppPin: true });
+}
+
+export async function dbFirstClearAppPin(): Promise<AppPreferences> {
+  try {
+    const user = await ensureSupabaseSession();
+    const client = getSupabaseClient();
+    if (client && user) {
+      await client.from('app_preferences').upsert({
+        user_id: user.id,
+        has_app_pin: false,
+        app_pin_hash: null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+    }
+  } catch (err) {
+    console.warn('[Database-First] Clear app PIN failed on cloud:', err);
+  }
+
+  return clientDb.updatePreferences({ hasAppPin: false });
 }
