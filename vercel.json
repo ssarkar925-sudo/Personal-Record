@@ -3,9 +3,10 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "cleanUrls": false,
   "rewrites": [
     {
-      "source": "/((?!assets/|sw.js|icon|manifest|version.json|.*\\.apk|PersonalLedger).*)",
+      "source": "/((?!.*\\.).*)",
       "destination": "/index.html"
     }
   ],
