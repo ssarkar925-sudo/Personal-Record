@@ -70,14 +70,10 @@ export function AuthModal({
         const res = await signUpWithEmail(cleanEmail, password);
         if (res.user) {
           onUserChange(res.user);
-          if (res.session) {
-            setSuccessMsg(`Account created! Welcome, ${cleanEmail}. Syncing your ledger...`);
-            notify?.(`Account created! Welcome, ${cleanEmail}.`, 'ok');
-            await handlePostAuthSync();
-          } else {
-            setSuccessMsg('Account created! A confirmation email has been dispatched. Once confirmed, you can log in.');
-            notify?.('Confirmation link sent! Please check your email.', 'ok');
-          }
+          setSuccessMsg(`Account created! Welcome, ${cleanEmail}. Syncing your ledger...`);
+          notify?.(`Account created! Welcome, ${cleanEmail}.`, 'ok');
+          await handlePostAuthSync();
+          onClose();
         }
       } else {
         const res = await signInWithEmail(cleanEmail, password);
@@ -86,6 +82,7 @@ export function AuthModal({
           setSuccessMsg(`Welcome back, ${res.user.email}! Syncing your cloud records...`);
           notify?.(`Signed in as ${res.user.email}!`, 'ok');
           await handlePostAuthSync();
+          onClose();
         }
       }
       setPassword('');
@@ -120,8 +117,10 @@ export function AuthModal({
   const handleSignOut = async () => {
     try {
       await signOut();
+      clientDb.resetToCleanSlate();
       onUserChange(null);
-      notify?.('Signed out successfully. Data remains stored locally.', 'ok');
+      onClose();
+      notify?.('Signed out successfully. All records locked.', 'ok');
       setSuccessMsg('');
       setErrorMsg('');
     } catch (err) {

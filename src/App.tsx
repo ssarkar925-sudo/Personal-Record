@@ -46,6 +46,7 @@ import { InstallPwaPrompt } from './components/ui/InstallPwaPrompt.tsx';
 import { LanSyncModal } from './components/ui/LanSyncModal.tsx';
 import { CloudSyncModal } from './components/ui/CloudSyncModal.tsx';
 import { AuthModal } from './workspaces/AuthModal.tsx';
+import { AuthScreen } from './workspaces/AuthScreen.tsx';
 import { subscribeToSupabaseRealtime } from './lib/supabase-sync.ts';
 import type { User } from './lib/supabase.ts';
 import { AgentDrawer } from './components/AgentDrawer.tsx';
@@ -81,6 +82,7 @@ export function App() {
   const [cloudSyncOpen, setCloudSyncOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authChecking, setAuthChecking] = useState(true);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
   const [queuedAgentCommand, setQueuedAgentCommand] = useState<{ id: number; commandText: string } | null>(null);
@@ -156,8 +158,28 @@ export function App() {
     updatedAt: '',
   });
 
+  const resetAllState = useCallback(() => {
+    setDashboard(null);
+    setBriefing(null);
+    setAccounts([]);
+    setTransactions([]);
+    setRecurringBills([]);
+    setBudgets([]);
+    setLoans([]);
+    setDues([]);
+    setDueSummaries([]);
+    setNotes([]);
+  }, []);
+
   const loadAll = useCallback(async () => {
     try {
+      const { getCurrentUser } = await import('./lib/supabase.ts');
+      const user = await getCurrentUser();
+      if (!user) {
+        resetAllState();
+        return;
+      }
+
       setLoadError('');
       const [lockStatus, prefs] = await Promise.all([api.getAppLockStatus(), api.getPreferences()]);
       setPreferences(prefs);
@@ -194,6 +216,13 @@ export function App() {
     } catch (err) {
       console.warn('Initial load failed, falling back to local client storage', err);
       try {
+        const { getCurrentUser } = await import('./lib/supabase.ts');
+        const user = await getCurrentUser();
+        if (!user) {
+          resetAllState();
+          return;
+        }
+
         const { clientDb } = await import('./lib/client-db.ts');
         const scopeParam = scopeFilter === 'all' ? undefined : scopeFilter;
         setDashboard(clientDb.getDashboard(scopeParam));
@@ -214,58 +243,68 @@ export function App() {
         try {
           const { clientDb } = await import('./lib/client-db.ts');
           clientDb.resetToCleanSlate();
-          setAccounts([]);
-          setTransactions([]);
-          setRecurringBills([]);
-          setBudgets([]);
-          setLoans([]);
-          setDues([]);
-          setNotes([]);
+          resetAllState();
           setLoadError('');
         } catch {
           setLoadError('Initializing ledger storage. Please tap to retry.');
         }
       }
     }
-  }, [scopeFilter]);
-
-  useEffect(() => {
-    void loadAll();
-  }, [loadAll]);
+  }, [scopeFilter, resetAllState]);
 
   // Real-time multi-device cloud synchronization listener & initial cloud hydration
   useEffect(() => {
     let sub: { unsubscribe: () => void } | null = null;
     let authSub: { unsubscribe: () => void } | null = null;
+    let isMounted = true;
+
     void (async () => {
       try {
         const { ensureSupabaseSession, onAuthStateChange } = await import('./lib/supabase.ts');
         const user = await ensureSupabaseSession();
+        if (!isMounted) return;
         setCurrentUser(user);
+        setAuthChecking(false);
+
         if (user) {
           const { clientDb } = await import('./lib/client-db.ts');
           await clientDb.pullDataFromSupabase({ force: true }).catch(() => {});
           void loadAll();
+        } else {
+          const { clientDb } = await import('./lib/client-db.ts');
+          clientDb.resetToCleanSlate();
+          resetAllState();
         }
 
         authSub = onAuthStateChange(async (event, session) => {
+          if (!isMounted) return;
           const nextUser = session?.user ?? null;
           setCurrentUser(nextUser);
           if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
-            const { clientDb } = await import('./lib/client-db.ts');
-            await clientDb.pullDataFromSupabase({ force: true }).catch(() => {});
-            void loadAll();
+            if (nextUser) {
+              const { clientDb } = await import('./lib/client-db.ts');
+              await clientDb.pullDataFromSupabase({ force: true }).catch(() => {});
+              void loadAll();
+            }
           } else if (event === 'SIGNED_OUT') {
             setCurrentUser(null);
-            void loadAll();
+            const { clientDb } = await import('./lib/client-db.ts');
+            clientDb.resetToCleanSlate();
+            resetAllState();
           }
         });
       } catch (e) {
-        console.warn('Initial cloud pull skipped:', e);
+        console.warn('Initial session check notice:', e);
+        if (isMounted) {
+          setCurrentUser(null);
+          setAuthChecking(false);
+          resetAllState();
+        }
       }
 
       let debounceTimer: ReturnType<typeof setTimeout> | null = null;
       sub = subscribeToSupabaseRealtime(() => {
+        if (!isMounted) return;
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(async () => {
           try {
@@ -280,10 +319,11 @@ export function App() {
     })();
 
     return () => {
+      isMounted = false;
       sub?.unsubscribe();
       authSub?.unsubscribe();
     };
-  }, [loadAll]);
+  }, [loadAll, resetAllState]);
 
   const triggerServerLock = useCallback(() => {
     void api.lockApp().catch(() => {});
@@ -444,6 +484,37 @@ export function App() {
     business: dashboard?.allMonthExpenseByScope?.business ?? dashboard?.monthByScope.business.expenseMinor ?? 0,
     family: dashboard?.allMonthExpenseByScope?.family ?? dashboard?.monthByScope.family.expenseMinor ?? 0,
   };
+
+  if (authChecking) {
+    return (
+      <div className="min-h-screen bg-[#0E1015] flex flex-col items-center justify-center p-4 text-white">
+        <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl overflow-hidden border border-[#C59B27]/60 shadow-[0_0_25px_rgba(197,155,39,0.35)] animate-pulse mb-4">
+          <AppLogo size={56} className="h-full w-full object-contain" />
+        </div>
+        <div className="font-display text-lg font-bold text-[#E5C158] tracking-wider">
+          PERSONAL LEDGER
+        </div>
+        <div className="text-xs text-slate-400 font-mono-data mt-1 flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-[#E5C158] animate-ping" />
+          Verifying Sovereign Security Session...
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <AuthScreen
+        onLoginSuccess={(user) => {
+          setCurrentUser(user);
+          void loadAll();
+        }}
+        systemLanguage={preferences.systemLanguage}
+        onLanguageChange={(lang) => setPreferences((prev) => ({ ...prev, systemLanguage: lang }))}
+        notify={notify}
+      />
+    );
+  }
 
   return (
     <div className="relative min-h-screen flex flex-col canvas-studio text-[#111318]">
