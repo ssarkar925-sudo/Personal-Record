@@ -12,6 +12,7 @@ import {
   Shield,
   Unplug,
   Upload,
+  UserCheck,
   Zap,
 } from 'lucide-react';
 import {
@@ -50,6 +51,7 @@ export function AlertsSettingsModal({
   systemLanguage = 'en',
   onRefresh,
   onOpenCloudSync,
+  onOpenAuthModal,
 }: {
   open: boolean;
   onClose: () => void;
@@ -60,6 +62,7 @@ export function AlertsSettingsModal({
   systemLanguage?: AppLanguage;
   onRefresh: () => void;
   onOpenCloudSync?: () => void;
+  onOpenAuthModal?: () => void;
 }) {
   const dict = UI_STRINGS[systemLanguage];
   const [tab, setTab] = useState<ModalTab>('whatsapp');
@@ -758,7 +761,21 @@ export function AlertsSettingsModal({
               <p className="text-slate-600 text-xs leading-relaxed">
                 Replicate your encrypted ledger between desktop, tablet, and mobile devices using your private Supabase project. All data remains 100% sovereign under your control.
               </p>
-              <div className="flex justify-end pt-1">
+              <div className="flex flex-wrap justify-end gap-2 pt-1">
+                {onOpenAuthModal && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      onClose();
+                      onOpenAuthModal();
+                    }}
+                    className="gap-1.5 bg-[#111318] text-[#E5C158] hover:bg-[#1B1E26] border border-[#C59B27]/40 text-xs cursor-pointer font-bold"
+                  >
+                    <UserCheck className="h-3.5 w-3.5 text-[#E5C158]" />
+                    Sovereign Account &amp; Sync
+                  </Button>
+                )}
                 <Button
                   variant="secondary"
                   size="sm"
@@ -769,7 +786,7 @@ export function AlertsSettingsModal({
                   className="gap-1.5 border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-xs cursor-pointer"
                 >
                   <Cloud className="h-3.5 w-3.5 text-emerald-600" />
-                  Configure Multi-Device Cloud Sync
+                  Database Credentials
                 </Button>
               </div>
             </div>

@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import {
   Cloud,
   CheckCircle2,
-  AlertCircle,
   Database,
   RefreshCw,
   UploadCloud,
@@ -21,8 +20,6 @@ import {
   setSupabaseConfig,
   clearSupabaseConfig,
   testSupabaseConnection,
-  signInWithEmail,
-  signUpWithEmail,
   signOut,
   getCurrentUser,
   type User,
@@ -34,10 +31,11 @@ interface CloudSyncModalProps {
   open: boolean;
   onClose: () => void;
   onDataRefreshed?: () => void;
+  onOpenAuthModal?: () => void;
   notify?: (msg: string, kind?: 'ok' | 'err') => void;
 }
 
-export function CloudSyncModal({ open, onClose, onDataRefreshed, notify }: CloudSyncModalProps) {
+export function CloudSyncModal({ open, onClose, onDataRefreshed, onOpenAuthModal, notify }: CloudSyncModalProps) {
   const [config, setConfig] = useState(getSupabaseConfig());
   const [urlInput, setUrlInput] = useState(config.url);
   const [anonKeyInput, setAnonKeyInput] = useState(config.anonKey);
@@ -46,11 +44,6 @@ export function CloudSyncModal({ open, onClose, onDataRefreshed, notify }: Cloud
 
   // Auth state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [authEmail, setAuthEmail] = useState('');
-  const [authPassword, setAuthPassword] = useState('');
-  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
-  const [authLoading, setAuthLoading] = useState(false);
-  const [authError, setAuthError] = useState('');
 
   // Sync state
   const [syncing, setSyncing] = useState(false);
@@ -109,33 +102,6 @@ export function CloudSyncModal({ open, onClose, onDataRefreshed, notify }: Cloud
     setTestResult(null);
     setCurrentUser(null);
     notify?.('Supabase configuration reset.', 'ok');
-  };
-
-  const handleAuthSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError('');
-    setAuthLoading(true);
-    try {
-      if (authMode === 'signup') {
-        const res = await signUpWithEmail(authEmail.trim(), authPassword);
-        if (res.user && !res.session) {
-          notify?.('Confirmation link sent! Please check your email inbox.', 'ok');
-        } else {
-          notify?.('Signed up successfully!', 'ok');
-          setCurrentUser(res.user);
-        }
-      } else {
-        const res = await signInWithEmail(authEmail.trim(), authPassword);
-        notify?.(`Welcome back, ${res.user.email}!`, 'ok');
-        setCurrentUser(res.user);
-      }
-      setAuthPassword('');
-    } catch (err) {
-      setAuthError((err as Error).message);
-      notify?.((err as Error).message, 'err');
-    } finally {
-      setAuthLoading(false);
-    }
   };
 
   const handleSignOut = async () => {
@@ -324,98 +290,54 @@ export function CloudSyncModal({ open, onClose, onDataRefreshed, notify }: Cloud
                   <p className="font-semibold text-slate-900">{currentUser.email}</p>
                   <p className="text-[10px] text-slate-500 font-mono mt-0.5">UID: {currentUser.id}</p>
                 </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => void handleSignOut()}
-                  className="gap-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 cursor-pointer"
-                >
-                  <LogOut className="h-3.5 w-3.5" />
-                  Sign Out
-                </Button>
-              </div>
-            ) : (
-              <form onSubmit={handleAuthSubmit} className="space-y-3">
-                <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
-                  <button
-                    type="button"
-                    onClick={() => setAuthMode('signin')}
-                    className={`font-semibold pb-1 cursor-pointer transition-colors ${
-                      authMode === 'signin'
-                        ? 'text-blue-600 border-b-2 border-blue-600 -mb-2'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    Sign In
-                  </button>
-                  <span className="text-slate-300">|</span>
-                  <button
-                    type="button"
-                    onClick={() => setAuthMode('signup')}
-                    className={`font-semibold pb-1 cursor-pointer transition-colors ${
-                      authMode === 'signup'
-                        ? 'text-blue-600 border-b-2 border-blue-600 -mb-2'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    Create Account
-                  </button>
-                </div>
-
-                {authError && (
-                  <div className="flex items-center gap-2 rounded-lg bg-red-50 p-2.5 text-[11px] text-red-700 border border-red-200">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    <span>{authError}</span>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                      Email Address
-                    </label>
-                    <Input
-                      type="email"
-                      placeholder="user@example.com"
-                      value={authEmail}
-                      onChange={(e) => setAuthEmail(e.target.value)}
-                      required
-                      className="text-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                      Password
-                    </label>
-                    <Input
-                      type="password"
-                      placeholder="••••••••••••"
-                      value={authPassword}
-                      onChange={(e) => setAuthPassword(e.target.value)}
-                      required
-                      minLength={6}
-                      className="text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end pt-1">
+                <div className="flex items-center gap-2">
+                  {onOpenAuthModal && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        onClose();
+                        onOpenAuthModal();
+                      }}
+                      className="cursor-pointer text-xs"
+                    >
+                      Manage Account
+                    </Button>
+                  )}
                   <Button
-                    type="submit"
-                    variant="primary"
+                    variant="secondary"
                     size="sm"
-                    disabled={authLoading}
-                    className="gap-1.5 cursor-pointer"
+                    onClick={() => void handleSignOut()}
+                    className="gap-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 cursor-pointer text-xs"
                   >
-                    {authLoading ? (
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <LogIn className="h-3.5 w-3.5" />
-                    )}
-                    {authMode === 'signin' ? 'Sign In' : 'Create Account'}
+                    <LogOut className="h-3.5 w-3.5" />
+                    Sign Out
                   </Button>
                 </div>
-              </form>
+              </div>
+            ) : (
+              <div className="rounded-lg bg-slate-50 p-3.5 border border-slate-200 text-center sm:text-left flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <p className="font-semibold text-slate-800">Not Signed In</p>
+                  <p className="text-[11px] text-slate-500">
+                    Sign in with your Sovereign Account on our dedicated login page to sync across all devices in real time.
+                  </p>
+                </div>
+                {onOpenAuthModal && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      onClose();
+                      onOpenAuthModal();
+                    }}
+                    className="gap-1.5 bg-[#111318] text-[#E5C158] hover:bg-[#1B1E26] border border-[#C59B27]/40 shrink-0 font-bold"
+                  >
+                    <LogIn className="h-3.5 w-3.5" />
+                    Open Dedicated Sign In Page
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         )}

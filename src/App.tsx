@@ -13,6 +13,7 @@ import {
   Landmark,
   LayoutDashboard,
   Lock,
+  LogIn,
   NotebookPen,
   Plus,
   Search,
@@ -44,7 +45,9 @@ import { CommandPalette } from './components/ui/CommandPalette.tsx';
 import { InstallPwaPrompt } from './components/ui/InstallPwaPrompt.tsx';
 import { LanSyncModal } from './components/ui/LanSyncModal.tsx';
 import { CloudSyncModal } from './components/ui/CloudSyncModal.tsx';
+import { AuthModal } from './workspaces/AuthModal.tsx';
 import { subscribeToSupabaseRealtime } from './lib/supabase-sync.ts';
+import type { User } from './lib/supabase.ts';
 import { AgentDrawer } from './components/AgentDrawer.tsx';
 import { DashboardView, type WorkspaceId } from './workspaces/DashboardView.tsx';
 import { AlertsSettingsModal } from './workspaces/AlertsSettingsModal.tsx';
@@ -76,6 +79,8 @@ export function App() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [lanSyncOpen, setLanSyncOpen] = useState(false);
   const [cloudSyncOpen, setCloudSyncOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
   const [queuedAgentCommand, setQueuedAgentCommand] = useState<{ id: number; commandText: string } | null>(null);
@@ -236,16 +241,22 @@ export function App() {
       try {
         const { ensureSupabaseSession, onAuthStateChange } = await import('./lib/supabase.ts');
         const user = await ensureSupabaseSession();
+        setCurrentUser(user);
         if (user) {
           const { clientDb } = await import('./lib/client-db.ts');
-          await clientDb.pullDataFromSupabase().catch(() => {});
+          await clientDb.pullDataFromSupabase({ force: true }).catch(() => {});
           void loadAll();
         }
 
-        authSub = onAuthStateChange(async (event) => {
+        authSub = onAuthStateChange(async (event, session) => {
+          const nextUser = session?.user ?? null;
+          setCurrentUser(nextUser);
           if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
             const { clientDb } = await import('./lib/client-db.ts');
             await clientDb.pullDataFromSupabase({ force: true }).catch(() => {});
+            void loadAll();
+          } else if (event === 'SIGNED_OUT') {
+            setCurrentUser(null);
             void loadAll();
           }
         });
@@ -566,6 +577,36 @@ export function App() {
                   )}
                 </button>
 
+                {/* Dedicated Sovereign Account / Realtime Sync Button */}
+                {currentUser ? (
+                  <button
+                    type="button"
+                    onClick={() => setAuthModalOpen(true)}
+                    title={`Sovereign Account: ${currentUser.email} • Realtime Cloud Sync Active`}
+                    className="inline-flex h-9 sm:h-8 items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50/90 px-2 sm:px-2.5 text-xs font-semibold text-emerald-900 shadow-2xs hover:bg-emerald-100 transition-all cursor-pointer"
+                  >
+                    <span className="relative flex h-2 w-2 shrink-0">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                    </span>
+                    <span className="max-w-[100px] sm:max-w-[140px] truncate font-mono-data text-[11px]">
+                      {currentUser.email}
+                    </span>
+                  </button>
+                ) : (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="h-9 sm:h-8 border-[#C59B27]/40 bg-[#111318] text-[#E5C158] hover:bg-[#1B1E26] px-2.5 sm:px-3 font-bold text-xs"
+                    onClick={() => setAuthModalOpen(true)}
+                    title="Sign into Sovereign Account to sync across mobile and web"
+                  >
+                    <LogIn className="h-3.5 w-3.5 text-[#E5C158]" />
+                    <span className="hidden sm:inline">Sign In to Sync</span>
+                    <span className="sm:hidden">Sign In</span>
+                  </Button>
+                )}
+
                 <Button
                   variant="secondary"
                   size="sm"
@@ -823,6 +864,7 @@ export function App() {
           systemLanguage={preferences.systemLanguage}
           onRefresh={() => void loadAll()}
           onOpenCloudSync={() => setCloudSyncOpen(true)}
+          onOpenAuthModal={() => setAuthModalOpen(true)}
         />
 
         {appLocked && preferences.hasAppPin && (
@@ -949,6 +991,18 @@ export function App() {
         <CloudSyncModal
           open={cloudSyncOpen}
           onClose={() => setCloudSyncOpen(false)}
+          onDataRefreshed={loadAll}
+          onOpenAuthModal={() => setAuthModalOpen(true)}
+          notify={notify}
+        />
+        <AuthModal
+          open={authModalOpen}
+          onClose={() => setAuthModalOpen(false)}
+          currentUser={currentUser}
+          onUserChange={(u) => {
+            setCurrentUser(u);
+            void loadAll();
+          }}
           onDataRefreshed={loadAll}
           notify={notify}
         />

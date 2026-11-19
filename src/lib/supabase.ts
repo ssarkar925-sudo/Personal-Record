@@ -184,24 +184,13 @@ export async function getCurrentUser(): Promise<User | null> {
 
 /**
  * Ensures an active Supabase user session exists.
- * If the current client has no stored session, automatically authenticates
- * as the primary sovereign ledger owner to enable seamless multi-device sync out of the box.
+ * Returns the currently signed-in user or null if unauthenticated.
  */
 export async function ensureSupabaseSession(): Promise<User | null> {
   const client = getSupabaseClient();
   if (!client) return null;
   try {
-    const existing = await getCurrentUser();
-    if (existing) return existing;
-    const { data, error } = await client.auth.signInWithPassword({
-      email: DEFAULT_LEDGER_EMAIL,
-      password: DEFAULT_LEDGER_PASS,
-    });
-    if (error) {
-      console.warn('Auto ledger session notice:', error.message);
-      return null;
-    }
-    return data.user;
+    return await getCurrentUser();
   } catch (err) {
     console.warn('ensureSupabaseSession error:', err);
     return null;
