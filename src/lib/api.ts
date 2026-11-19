@@ -44,7 +44,9 @@ import {
   dbFirstUpdatePreferences,
   dbFirstSetAppPin,
   dbFirstClearAppPin,
+  dbFirstCommitImport,
 } from './database-first.ts';
+import { parseStatementInput } from './statement-parser.ts';
 
 export class ApiError extends Error {
   status: number;
@@ -1758,14 +1760,38 @@ export const api = {
     },
   ) => request<{ data: { goal: SavingsGoalRecord } }>(`/api/goals/${id}/contribute`, { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data),
   deleteGoal: (id: string) => request<{ ok: boolean }>(`/api/goals/${id}`, { method: 'DELETE' }),
-  previewImport: (body: { text: string; defaultAccountId?: string; defaultScope?: Scope }) =>
-    request<{ data: ParsedImportCandidate[] }>('/api/import/preview', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data),
+  previewImport: async (body: { text: string; defaultAccountId?: string; defaultScope?: Scope }): Promise<ParsedImportCandidate[]> => {
+    if (isStandaloneClient()) {
+      const accounts = await clientDb.getAccounts();
+      const existing = await clientDb.getTransactions();
+      return parseStatementInput({
+        rawText: body.text,
+        accounts,
+        existingTransactions: existing,
+        defaultAccountId: body.defaultAccountId,
+        defaultScope: body.defaultScope,
+      });
+    }
+    try {
+      return await request<{ data: ParsedImportCandidate[] }>('/api/import/preview', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
+    } catch {
+      const accounts = await clientDb.getAccounts();
+      const existing = await clientDb.getTransactions();
+      return parseStatementInput({
+        rawText: body.text,
+        accounts,
+        existingTransactions: existing,
+        defaultAccountId: body.defaultAccountId,
+        defaultScope: body.defaultScope,
+      });
+    }
+  },
   previewImportPdf: (body: { pdfBase64: string; password?: string; defaultAccountId?: string; defaultScope?: Scope }) =>
     request<{ data: ParsedImportCandidate[]; pageCount: number; extractedText: string }>('/api/import/preview-pdf', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  commitImport: (
+  commitImport: async (
     items: Array<{
       kind: 'income' | 'expense';
       scope: Scope;
@@ -1776,7 +1802,16 @@ export const api = {
       party: string;
       note: string;
     }>,
-  ) => request<{ data: { count: number } }>('/api/import/commit', { method: 'POST', body: JSON.stringify({ items }) }).then((r) => r.data),
+  ): Promise<{ count: number }> => {
+    if (isStandaloneClient()) {
+      return dbFirstCommitImport(items);
+    }
+    try {
+      return await request<{ data: { count: number } }>('/api/import/commit', { method: 'POST', body: JSON.stringify({ items }) }).then((r) => r.data);
+    } catch {
+      return dbFirstCommitImport(items);
+    }
+  },
   parseReceipt: (body: { imageBase64?: string; mimeType?: string; receiptText?: string }) =>
     request<{ data: ExtractedReceiptFields }>('/api/receipt/parse', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data),
   getAgentHistory: () => request<{ data: AgentHistoryRecord[] }>('/api/agent/history').then((r) => r.data),

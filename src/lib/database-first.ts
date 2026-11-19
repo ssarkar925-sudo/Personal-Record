@@ -340,6 +340,89 @@ export async function dbFirstBulkTransactions(body: {
   return { ok: true, count: res.count };
 }
 
+export async function dbFirstCommitImport(items: Array<{
+  kind: 'income' | 'expense';
+  scope: Scope;
+  accountId: string;
+  category: string;
+  amountMinor: number;
+  occurredAt: string;
+  party: string;
+  note: string;
+}>): Promise<{ count: number }> {
+  try {
+    const user = await ensureSupabaseSession();
+    const client = getSupabaseClient();
+    if (client && user && items.length > 0) {
+      const payloads = items.map((item) => ({
+        id: generateUUID(),
+        user_id: user.id,
+        kind: item.kind,
+        scope: item.scope,
+        account_id: item.accountId,
+        to_account_id: null,
+        category: item.category,
+        amount_minor: item.amountMinor,
+        occurred_at: item.occurredAt,
+        party: item.party || '',
+        note: item.note || '',
+        source_ref: 'statement_import',
+      }));
+
+      const { data, error } = await client.from('transactions').insert(payloads).select();
+      if (error) throw error;
+
+      if (data) {
+        const db = clientDb.load();
+        for (const row of data) {
+          const acc = db.accounts.find((a) => a.id === row.account_id);
+          const tx: TransactionRecord = {
+            id: row.id,
+            kind: row.kind,
+            scope: row.scope,
+            accountId: row.account_id,
+            accountName: acc?.name || 'Account',
+            toAccountId: null,
+            toAccountName: null,
+            category: row.category,
+            amountMinor: row.amount_minor,
+            occurredAt: row.occurred_at,
+            party: row.party,
+            note: row.note,
+            sourceRef: 'statement_import',
+            createdAt: row.created_at || new Date().toISOString(),
+          };
+          db.transactions.unshift(tx);
+        }
+        clientDb.recomputeBalances();
+        clientDb.save(true);
+        smartCache.invalidate('transactions');
+        smartCache.invalidate('dashboard');
+        smartCache.invalidate('accounts');
+        return { count: data.length };
+      }
+    }
+  } catch (err) {
+    console.warn('[Database-First] Commit import failed on cloud, saving locally:', err);
+  }
+
+  let created = 0;
+  for (const item of items) {
+    clientDb.createTransaction({
+      kind: item.kind,
+      scope: item.scope,
+      accountId: item.accountId,
+      category: item.category,
+      amountMinor: item.amountMinor,
+      occurredAt: item.occurredAt,
+      party: item.party,
+      note: item.note,
+    });
+    created++;
+  }
+  return { count: created };
+}
+
 // ============================================================================
 // LOANS & EMIs (DATABASE-FIRST)
 // ============================================================================
