@@ -12,6 +12,27 @@ import type {
 } from '../../shared/ledger-core.ts';
 import type { AppLanguage } from '../../shared/i18n.ts';
 import { clientDb } from './client-db.ts';
+import {
+  dbFirstCreateAccount,
+  dbFirstUpdateAccount,
+  dbFirstDeleteAccount,
+  dbFirstCreateTransaction,
+  dbFirstUpdateTransaction,
+  dbFirstDeleteTransaction,
+  dbFirstBulkTransactions,
+  dbFirstCreateLoan,
+  dbFirstPayLoan,
+  dbFirstDeleteLoan,
+  dbFirstCreateDue,
+  dbFirstSettleDue,
+  dbFirstDeleteDue,
+  dbFirstUpsertNote,
+  dbFirstDeleteNote,
+  dbFirstSaveJobSheet,
+  dbFirstDeleteJobSheet,
+  dbFirstCreateRecurringBill,
+  dbFirstDeleteRecurringBill,
+} from './database-first.ts';
 
 export class ApiError extends Error {
   status: number;
@@ -754,11 +775,11 @@ export const api = {
     statementDay?: number;
     dueDay?: number;
   }): Promise<AccountRecord> => {
-    if (isStandaloneClient()) return clientDb.createAccount(body);
+    if (isStandaloneClient()) return dbFirstCreateAccount(body);
     try {
       return await request<{ data: AccountRecord }>('/api/accounts', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
     } catch {
-      return clientDb.createAccount(body);
+      return dbFirstCreateAccount(body);
     }
   },
 
@@ -778,11 +799,11 @@ export const api = {
       dueDay: number;
     }>,
   ): Promise<AccountRecord> => {
-    if (isStandaloneClient()) return clientDb.updateAccount(id, body);
+    if (isStandaloneClient()) return dbFirstUpdateAccount(id, body);
     try {
       return await request<{ data: AccountRecord }>(`/api/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }).then((r) => r.data);
     } catch {
-      return clientDb.updateAccount(id, body);
+      return dbFirstUpdateAccount(id, body);
     }
   },
 
@@ -820,14 +841,12 @@ export const api = {
 
   deleteAccount: async (id: string): Promise<{ ok: boolean }> => {
     if (isStandaloneClient()) {
-      clientDb.deleteAccount(id);
-      return { ok: true };
+      return dbFirstDeleteAccount(id);
     }
     try {
       return await request<{ ok: boolean }>(`/api/accounts/${id}`, { method: 'DELETE' });
     } catch {
-      clientDb.deleteAccount(id);
-      return { ok: true };
+      return dbFirstDeleteAccount(id);
     }
   },
 
@@ -868,11 +887,11 @@ export const api = {
     split?: { participants: string[]; includeSelf: boolean; dueDate?: string | null };
     attachment?: { filename: string; mimeType: string; dataBase64: string };
   }): Promise<TransactionRecord> => {
-    if (isStandaloneClient()) return clientDb.createTransaction(body);
+    if (isStandaloneClient()) return dbFirstCreateTransaction(body);
     try {
       return await request<{ data: TransactionRecord }>('/api/transactions', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
     } catch {
-      return clientDb.createTransaction(body);
+      return dbFirstCreateTransaction(body);
     }
   },
 
@@ -895,24 +914,22 @@ export const api = {
       note?: string;
     },
   ): Promise<TransactionRecord> => {
-    if (isStandaloneClient()) return clientDb.updateTransaction(id, body);
+    if (isStandaloneClient()) return dbFirstUpdateTransaction(id, body);
     try {
       return await request<{ data: TransactionRecord }>(`/api/transactions/${id}`, { method: 'PATCH', body: JSON.stringify(body) }).then((r) => r.data);
     } catch {
-      return clientDb.updateTransaction(id, body);
+      return dbFirstUpdateTransaction(id, body);
     }
   },
 
   deleteTransaction: async (id: string): Promise<{ ok: boolean }> => {
     if (isStandaloneClient()) {
-      clientDb.deleteTransaction(id);
-      return { ok: true };
+      return dbFirstDeleteTransaction(id);
     }
     try {
       return await request<{ ok: boolean }>(`/api/transactions/${id}`, { method: 'DELETE' });
     } catch {
-      clientDb.deleteTransaction(id);
-      return { ok: true };
+      return dbFirstDeleteTransaction(id);
     }
   },
 
@@ -922,8 +939,7 @@ export const api = {
     patch?: { scope?: Scope; category?: string };
   }): Promise<{ ok: boolean; count: number }> => {
     if (isStandaloneClient()) {
-      const res = clientDb.bulkTransactions(body);
-      return { ok: true, count: res.count };
+      return dbFirstBulkTransactions(body);
     }
     try {
       return await request<{ ok: boolean; count: number }>('/api/transactions/bulk', {
@@ -931,8 +947,7 @@ export const api = {
         body: JSON.stringify(body),
       });
     } catch {
-      const res = clientDb.bulkTransactions(body);
-      return { ok: true, count: res.count };
+      return dbFirstBulkTransactions(body);
     }
   },
 
@@ -955,11 +970,11 @@ export const api = {
     dueDay: number;
     autoPost?: boolean;
   }): Promise<RecurringBillRecord> => {
-    if (isStandaloneClient()) return clientDb.createRecurringBill(body);
+    if (isStandaloneClient()) return dbFirstCreateRecurringBill(body);
     try {
       return await request<{ data: RecurringBillRecord }>('/api/recurring-bills', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
     } catch {
-      return clientDb.createRecurringBill(body);
+      return dbFirstCreateRecurringBill(body);
     }
   },
 
@@ -999,14 +1014,12 @@ export const api = {
 
   deleteRecurringBill: async (id: string): Promise<{ ok: boolean }> => {
     if (isStandaloneClient()) {
-      clientDb.deleteRecurringBill(id);
-      return { ok: true };
+      return dbFirstDeleteRecurringBill(id);
     }
     try {
       return await request<{ ok: boolean }>(`/api/recurring-bills/${id}`, { method: 'DELETE' });
     } catch {
-      clientDb.deleteRecurringBill(id);
-      return { ok: true };
+      return dbFirstDeleteRecurringBill(id);
     }
   },
 
@@ -1076,11 +1089,11 @@ export const api = {
     nextDueDate: string;
     linkedAccountId?: string | null;
   }): Promise<LoanRecord> => {
-    if (isStandaloneClient()) return clientDb.createLoan(body);
+    if (isStandaloneClient()) return dbFirstCreateLoan(body);
     try {
       return await request<{ data: LoanRecord }>('/api/loans', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
     } catch {
-      return clientDb.createLoan(body);
+      return dbFirstCreateLoan(body);
     }
   },
 
@@ -1111,27 +1124,25 @@ export const api = {
   },
 
   payLoan: async (id: string, body: { amountMinor: number; accountId: string; paidAt: string; note?: string }): Promise<{ loan: LoanRecord; transaction: TransactionRecord }> => {
-    if (isStandaloneClient()) return clientDb.recordLoanPayment(id, body);
+    if (isStandaloneClient()) return dbFirstPayLoan(id, body);
     try {
       return await request<{ data: { loan: LoanRecord; transaction: TransactionRecord } }>(`/api/loans/${id}/payments`, {
         method: 'POST',
         body: JSON.stringify(body),
       }).then((r) => r.data);
     } catch {
-      return clientDb.recordLoanPayment(id, body);
+      return dbFirstPayLoan(id, body);
     }
   },
 
   deleteLoan: async (id: string): Promise<{ ok: boolean }> => {
     if (isStandaloneClient()) {
-      clientDb.deleteLoan(id);
-      return { ok: true };
+      return dbFirstDeleteLoan(id);
     }
     try {
       return await request<{ ok: boolean }>(`/api/loans/${id}`, { method: 'DELETE' });
     } catch {
-      clientDb.deleteLoan(id);
-      return { ok: true };
+      return dbFirstDeleteLoan(id);
     }
   },
 
@@ -1153,11 +1164,11 @@ export const api = {
     dueDate?: string | null;
     note?: string;
   }): Promise<PersonDueRecord> => {
-    if (isStandaloneClient()) return clientDb.createDue(body);
+    if (isStandaloneClient()) return dbFirstCreateDue(body);
     try {
       return await request<{ data: PersonDueRecord }>('/api/dues', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
     } catch {
-      return clientDb.createDue(body);
+      return dbFirstCreateDue(body);
     }
   },
 
@@ -1175,27 +1186,25 @@ export const api = {
   ) => request<{ data: PersonDueRecord }>(`/api/dues/${id}`, { method: 'PATCH', body: JSON.stringify(body) }).then((r) => r.data),
 
   settleDue: async (id: string, body: { amountMinor: number; accountId?: string | null; settledAt: string; note?: string }): Promise<{ due: PersonDueRecord; transaction: TransactionRecord | null }> => {
-    if (isStandaloneClient()) return clientDb.settleDue(id, body);
+    if (isStandaloneClient()) return dbFirstSettleDue(id, body);
     try {
       return await request<{ data: { due: PersonDueRecord; transaction: TransactionRecord | null } }>(`/api/dues/${id}/settle`, {
         method: 'POST',
         body: JSON.stringify(body),
       }).then((r) => r.data);
     } catch {
-      return clientDb.settleDue(id, body);
+      return dbFirstSettleDue(id, body);
     }
   },
 
   deleteDue: async (id: string): Promise<{ ok: boolean }> => {
     if (isStandaloneClient()) {
-      clientDb.deleteDue(id);
-      return { ok: true };
+      return dbFirstDeleteDue(id);
     }
     try {
       return await request<{ ok: boolean }>(`/api/dues/${id}`, { method: 'DELETE' });
     } catch {
-      clientDb.deleteDue(id);
-      return { ok: true };
+      return dbFirstDeleteDue(id);
     }
   },
 
@@ -1229,11 +1238,11 @@ export const api = {
     linkedAccountId?: string | null;
     checklist: Array<{ id?: string; text: string; done: boolean }>;
   }): Promise<NoteRecord> => {
-    if (isStandaloneClient()) return clientDb.upsertNote(body);
+    if (isStandaloneClient()) return dbFirstUpsertNote(body);
     try {
       return await request<{ data: NoteRecord }>('/api/notes', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
     } catch {
-      return clientDb.upsertNote(body);
+      return dbFirstUpsertNote(body);
     }
   },
 
@@ -1255,11 +1264,11 @@ export const api = {
       checklist: Array<{ id?: string; text: string; done: boolean }>;
     },
   ): Promise<NoteRecord> => {
-    if (isStandaloneClient()) return clientDb.upsertNote({ id, ...body });
+    if (isStandaloneClient()) return dbFirstUpsertNote({ id, ...body });
     try {
       return await request<{ data: NoteRecord }>(`/api/notes/${id}`, { method: 'PUT', body: JSON.stringify(body) }).then((r) => r.data);
     } catch {
-      return clientDb.upsertNote({ id, ...body });
+      return dbFirstUpsertNote({ id, ...body });
     }
   },
 
@@ -1283,14 +1292,12 @@ export const api = {
 
   deleteNote: async (id: string): Promise<{ ok: boolean }> => {
     if (isStandaloneClient()) {
-      clientDb.deleteNote(id);
-      return { ok: true };
+      return dbFirstDeleteNote(id);
     }
     try {
       return await request<{ ok: boolean }>(`/api/notes/${id}`, { method: 'DELETE' });
     } catch {
-      clientDb.deleteNote(id);
-      return { ok: true };
+      return dbFirstDeleteNote(id);
     }
   },
 
@@ -1804,37 +1811,35 @@ export const api = {
     }
   },
   createJobSheet: async (body: any): Promise<any> => {
-    if (isStandaloneClient()) return clientDb.saveJobSheet({ id: `sheet-${Date.now()}`, ...body });
+    if (isStandaloneClient()) return dbFirstSaveJobSheet(body);
     try {
       return await request<{ data: any }>('/api/job-sheets', {
         method: 'POST',
         body: JSON.stringify(body),
       }).then((r) => r.data);
     } catch {
-      return clientDb.saveJobSheet({ id: `sheet-${Date.now()}`, ...body });
+      return dbFirstSaveJobSheet(body);
     }
   },
   updateJobSheet: async (id: string, body: any): Promise<any> => {
-    if (isStandaloneClient()) return clientDb.saveJobSheet({ id, ...body });
+    if (isStandaloneClient()) return dbFirstSaveJobSheet({ id, ...body });
     try {
       return await request<{ data: any }>(`/api/job-sheets/${id}`, {
         method: 'PUT',
         body: JSON.stringify(body),
       }).then((r) => r.data);
     } catch {
-      return clientDb.saveJobSheet({ id, ...body });
+      return dbFirstSaveJobSheet({ id, ...body });
     }
   },
   deleteJobSheet: async (id: string): Promise<{ ok: boolean }> => {
     if (isStandaloneClient()) {
-      clientDb.deleteJobSheet(id);
-      return { ok: true };
+      return dbFirstDeleteJobSheet(id);
     }
     try {
       return await request<{ ok: boolean }>(`/api/job-sheets/${id}`, { method: 'DELETE' });
     } catch {
-      clientDb.deleteJobSheet(id);
-      return { ok: true };
+      return dbFirstDeleteJobSheet(id);
     }
   },
 

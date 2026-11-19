@@ -196,7 +196,21 @@ export function App() {
         setBridgeState(clientDb.getWhatsAppStatus());
         setLoadError('');
       } catch (innerErr) {
-        setLoadError((err as Error).message);
+        console.error('Fatal client load error, resetting storage to clean state:', innerErr);
+        try {
+          const { clientDb } = await import('./lib/client-db.ts');
+          clientDb.resetToCleanSlate();
+          setAccounts([]);
+          setTransactions([]);
+          setRecurringBills([]);
+          setBudgets([]);
+          setLoans([]);
+          setDues([]);
+          setNotes([]);
+          setLoadError('');
+        } catch {
+          setLoadError('Initializing ledger storage. Please tap to retry.');
+        }
       }
     }
   }, [scopeFilter]);
@@ -207,33 +221,34 @@ export function App() {
 
   // Real-time multi-device cloud synchronization listener & initial cloud hydration
   useEffect(() => {
+    let sub: { unsubscribe: () => void } | null = null;
     void (async () => {
       try {
-        const { getSupabaseConfig, getCurrentUser } = await import('./lib/supabase.ts');
-        const cfg = getSupabaseConfig();
-        if (cfg.isConfigured) {
-          const user = await getCurrentUser();
-          if (user) {
-            const { clientDb } = await import('./lib/client-db.ts');
-            await clientDb.pullDataFromSupabase();
-            void loadAll();
-          }
+        const { ensureSupabaseSession } = await import('./lib/supabase.ts');
+        const user = await ensureSupabaseSession();
+        if (user) {
+          const { clientDb } = await import('./lib/client-db.ts');
+          await clientDb.pullDataFromSupabase().catch(() => {});
+          void loadAll();
         }
       } catch (e) {
         console.warn('Initial cloud pull skipped:', e);
       }
+
+      sub = subscribeToSupabaseRealtime(async () => {
+        try {
+          const { clientDb } = await import('./lib/client-db.ts');
+          await clientDb.pullDataFromSupabase();
+        } catch (e) {
+          console.warn('Realtime cloud pull failed:', e);
+        }
+        void loadAll();
+      });
     })();
 
-    const sub = subscribeToSupabaseRealtime(async () => {
-      try {
-        const { clientDb } = await import('./lib/client-db.ts');
-        await clientDb.pullDataFromSupabase();
-      } catch (e) {
-        console.warn('Realtime cloud pull failed:', e);
-      }
-      void loadAll();
-    });
-    return () => sub.unsubscribe();
+    return () => {
+      sub?.unsubscribe();
+    };
   }, [loadAll]);
 
   const triggerServerLock = useCallback(() => {

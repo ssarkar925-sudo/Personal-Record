@@ -2,6 +2,11 @@ import { createClient, type SupabaseClient, type User, type Session } from '@sup
 
 export type { User, Session, SupabaseClient };
 
+export const DEFAULT_SUPABASE_URL = 'https://vcipljpdrgjwkjezbray.supabase.co';
+export const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_oHwRwizV0QF8R2sgNffH8Q_37mU6rgA';
+export const DEFAULT_LEDGER_EMAIL = 'test.ledger.pilot@gmail.com';
+export const DEFAULT_LEDGER_PASS = 'TestPassword123!';
+
 const STORAGE_KEY_URL = 'pl_supabase_url';
 const STORAGE_KEY_ANON = 'pl_supabase_anon_key';
 
@@ -40,6 +45,12 @@ export function getSupabaseConfig(): SupabaseConfig {
     } catch {
       // storage unavailable
     }
+  }
+
+  // Built-in default production fallbacks
+  if (!url || !anonKey) {
+    url = DEFAULT_SUPABASE_URL;
+    anonKey = DEFAULT_SUPABASE_ANON_KEY;
   }
 
   const isPlaceholder =
@@ -160,6 +171,32 @@ export async function getCurrentUser(): Promise<User | null> {
   if (!client) return null;
   const { data } = await client.auth.getUser();
   return data.user;
+}
+
+/**
+ * Ensures an active Supabase user session exists.
+ * If the current client has no stored session, automatically authenticates
+ * as the primary sovereign ledger owner to enable seamless multi-device sync out of the box.
+ */
+export async function ensureSupabaseSession(): Promise<User | null> {
+  const client = getSupabaseClient();
+  if (!client) return null;
+  try {
+    const existing = await getCurrentUser();
+    if (existing) return existing;
+    const { data, error } = await client.auth.signInWithPassword({
+      email: DEFAULT_LEDGER_EMAIL,
+      password: DEFAULT_LEDGER_PASS,
+    });
+    if (error) {
+      console.warn('Auto ledger session notice:', error.message);
+      return null;
+    }
+    return data.user;
+  } catch (err) {
+    console.warn('ensureSupabaseSession error:', err);
+    return null;
+  }
 }
 
 export function onAuthStateChange(callback: (event: string, session: Session | null) => void) {

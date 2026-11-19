@@ -39,6 +39,17 @@ import type {
 import { getSupabaseClient, getCurrentUser } from './supabase.ts';
 import { scheduleAutoCloudSync } from './supabase-sync.ts';
 
+export function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 const DB_STORAGE_KEY = 'pl_browser_db_v4';
 const PREFS_STORAGE_KEY = 'pl_app_preferences_v1';
 
@@ -77,7 +88,7 @@ function getInitialDatabase(): ClientDatabaseSchema {
 class ClientDatabaseManager {
   private cache: ClientDatabaseSchema | null = null;
 
-  private load(): ClientDatabaseSchema {
+  public load(): ClientDatabaseSchema {
     if (this.cache) return this.cache;
     if (typeof window === 'undefined') return getInitialDatabase();
 
@@ -118,7 +129,7 @@ class ClientDatabaseManager {
     } catch {}
   }
 
-  private save(skipAutoSync = false): void {
+  public save(skipAutoSync = false): void {
     if (typeof window === 'undefined' || !this.cache) return;
     try {
       localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(this.cache));
@@ -128,7 +139,7 @@ class ClientDatabaseManager {
     }
   }
 
-  private recomputeBalances(): void {
+  public recomputeBalances(): void {
     if (!this.cache) return;
     const refDate = todayISO();
     for (const acc of this.cache.accounts) {
@@ -193,7 +204,7 @@ class ClientDatabaseManager {
     dueDay?: number;
   }): AccountRecord {
     const db = this.load();
-    const id = `acc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const id = generateUUID();
     const newAcc: AccountRecord = {
       id,
       name: body.name,
@@ -277,7 +288,7 @@ class ClientDatabaseManager {
     const acc = db.accounts.find((a) => a.id === body.accountId);
     const toAcc = body.toAccountId ? db.accounts.find((a) => a.id === body.toAccountId) : null;
 
-    const id = `tx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const id = generateUUID();
     const newTx: TransactionRecord = {
       id,
       kind: body.kind,
@@ -604,7 +615,7 @@ class ClientDatabaseManager {
 
   public createRecurringBill(body: any): RecurringBillRecord {
     const db = this.load();
-    const id = `bill-${Date.now()}`;
+    const id = generateUUID();
     const acc = db.accounts.find((a) => a.id === body.accountId);
     const newBill: RecurringBillRecord = {
       id,
@@ -659,7 +670,7 @@ class ClientDatabaseManager {
 
   public createLoan(body: any): LoanRecord {
     const db = this.load();
-    const id = `loan-${Date.now()}`;
+    const id = generateUUID();
     const newLoan: LoanRecord = {
       id,
       name: body.name,
@@ -722,7 +733,7 @@ class ClientDatabaseManager {
 
   public createDue(body: any): PersonDueRecord {
     const db = this.load();
-    const id = `due-${Date.now()}`;
+    const id = generateUUID();
     const newDue: PersonDueRecord = {
       id,
       personName: body.personName,
@@ -779,7 +790,7 @@ class ClientDatabaseManager {
       return db.notes[existingIdx];
     }
 
-    const id = body.id || `note-${Date.now()}`;
+    const id = body.id || generateUUID();
     const newNote: NoteRecord = {
       id,
       scope: (body.scope || 'personal') as NoteScope,
@@ -898,7 +909,7 @@ class ClientDatabaseManager {
   }): VaultEntryCipherRecord {
     const db = this.load();
     if (!db.vaultEntries) db.vaultEntries = [];
-    const id = body.id || `v-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const id = body.id || generateUUID();
     const existingIdx = db.vaultEntries.findIndex((e) => e.id === id);
     const entry: VaultEntryCipherRecord = {
       id,
@@ -1158,19 +1169,20 @@ class ClientDatabaseManager {
     if (!user) throw new Error('Please sign in to Supabase first.');
 
     const userId = user.id;
-    const [accRes, txRes, loanRes, dueRes, noteRes, sheetRes] = await Promise.all([
+    const [accRes, txRes, loanRes, dueRes, noteRes, sheetRes, billRes] = await Promise.all([
       client.from('accounts').select('*').eq('user_id', userId),
       client.from('transactions').select('*').eq('user_id', userId),
       client.from('loans').select('*').eq('user_id', userId),
       client.from('people_dues').select('*').eq('user_id', userId),
       client.from('notes').select('*').eq('user_id', userId),
       client.from('job_sheets').select('*').eq('user_id', userId),
+      client.from('recurring_bills').select('*').eq('user_id', userId),
     ]);
 
     const db = this.load();
     let totalItems = 0;
 
-    if (accRes.data && accRes.data.length > 0) {
+    if (Array.isArray(accRes.data)) {
       db.accounts = accRes.data.map((r: any) => ({
         id: r.id,
         name: r.name,
@@ -1191,7 +1203,7 @@ class ClientDatabaseManager {
       totalItems += db.accounts.length;
     }
 
-    if (txRes.data && txRes.data.length > 0) {
+    if (Array.isArray(txRes.data)) {
       db.transactions = txRes.data.map((r: any) => {
         const acc = db.accounts.find((a) => a.id === r.account_id);
         const toAcc = r.to_account_id ? db.accounts.find((a) => a.id === r.to_account_id) : null;
@@ -1216,7 +1228,7 @@ class ClientDatabaseManager {
       totalItems += db.transactions.length;
     }
 
-    if (loanRes.data && loanRes.data.length > 0) {
+    if (Array.isArray(loanRes.data)) {
       db.loans = loanRes.data.map((r: any) => ({
         id: r.id,
         name: r.name,
@@ -1239,7 +1251,7 @@ class ClientDatabaseManager {
       totalItems += db.loans.length;
     }
 
-    if (dueRes.data && dueRes.data.length > 0) {
+    if (Array.isArray(dueRes.data)) {
       db.dues = dueRes.data.map((r: any) => ({
         id: r.id,
         personName: r.person_name,
@@ -1257,7 +1269,7 @@ class ClientDatabaseManager {
       totalItems += db.dues.length;
     }
 
-    if (noteRes.data && noteRes.data.length > 0) {
+    if (Array.isArray(noteRes.data)) {
       db.notes = noteRes.data.map((r: any) => ({
         id: r.id,
         title: r.title,
@@ -1281,7 +1293,7 @@ class ClientDatabaseManager {
       totalItems += db.notes.length;
     }
 
-    if (sheetRes.data && sheetRes.data.length > 0) {
+    if (Array.isArray(sheetRes.data)) {
       db.jobSheets = sheetRes.data.map((r: any) => ({
         id: r.id,
         name: r.name,
@@ -1293,6 +1305,28 @@ class ClientDatabaseManager {
         orderIndex: r.order_index ?? 0,
       }));
       totalItems += db.jobSheets.length;
+    }
+
+    if (Array.isArray(billRes.data)) {
+      db.recurringBills = billRes.data.map((r: any) => {
+        const acc = db.accounts.find((a) => a.id === r.account_id);
+        return {
+          id: r.id,
+          title: r.title,
+          scope: r.scope,
+          kind: r.kind,
+          accountId: r.account_id,
+          accountName: acc ? acc.name : 'Unknown Account',
+          category: r.category,
+          amountMinor: r.amount_minor,
+          dueDay: r.day_of_month || 1,
+          autoPost: Boolean(r.auto_post),
+          active: Boolean(r.active),
+          lastPaidMonth: null,
+          createdAt: r.created_at || todayISO(),
+        };
+      });
+      totalItems += db.recurringBills.length;
     }
 
     this.recomputeBalances();
