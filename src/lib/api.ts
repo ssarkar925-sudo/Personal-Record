@@ -1024,7 +1024,14 @@ export const api = {
     }
   },
 
-  getCategoryBudgets: () => request<{ data: CategoryBudgetRecord[] }>('/api/budgets/categories').then((r) => r.data),
+  getCategoryBudgets: async (): Promise<CategoryBudgetRecord[]> => {
+    if (isStandaloneClient()) return [];
+    try {
+      return await request<{ data: CategoryBudgetRecord[] }>('/api/budgets/categories').then((r) => r.data);
+    } catch {
+      return [];
+    }
+  },
 
   upsertCategoryBudget: (body: { scope: Scope; category: string; monthlyLimitMinor: number }) =>
     request<{ data: CategoryBudgetRecord }>('/api/budgets/categories', {
@@ -1382,20 +1389,85 @@ export const api = {
     }
   },
 
-  getAppLockStatus: () =>
-    request<{ data: { hasAppPin: boolean; unlocked: boolean; autoLockMinutes: number } }>('/api/app-lock/status').then(
-      (r) => r.data,
-    ),
-  lockApp: () => request<{ ok: boolean }>('/api/app-lock/lock', { method: 'POST' }),
-  setAppPin: (body: { pin: string; currentPin?: string }) =>
-    request<{ data: AppPreferences }>('/api/app-lock/set', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data),
-  verifyAppPin: (pin: string) =>
-    request<{ ok: boolean }>('/api/app-lock/verify', { method: 'POST', body: JSON.stringify({ pin }) }),
-  clearAppPin: (currentPin: string) =>
-    request<{ data: AppPreferences }>('/api/app-lock/clear', { method: 'POST', body: JSON.stringify({ currentPin }) }).then((r) => r.data),
+  getAppLockStatus: async (): Promise<{ hasAppPin: boolean; unlocked: boolean; autoLockMinutes: number }> => {
+    if (isStandaloneClient()) {
+      try {
+        const prefs = await clientDb.getPreferences();
+        return { hasAppPin: !!prefs.hasAppPin, unlocked: true, autoLockMinutes: prefs.autoLockMinutes ?? 0 };
+      } catch {
+        return { hasAppPin: false, unlocked: true, autoLockMinutes: 0 };
+      }
+    }
+    try {
+      return await request<{ data: { hasAppPin: boolean; unlocked: boolean; autoLockMinutes: number } }>('/api/app-lock/status').then(
+        (r) => r.data,
+      );
+    } catch {
+      const prefs = await clientDb.getPreferences();
+      return { hasAppPin: !!prefs.hasAppPin, unlocked: true, autoLockMinutes: prefs.autoLockMinutes ?? 0 };
+    }
+  },
+  lockApp: async () => {
+    if (isStandaloneClient()) return { ok: true };
+    try {
+      return await request<{ ok: boolean }>('/api/app-lock/lock', { method: 'POST' });
+    } catch {
+      return { ok: true };
+    }
+  },
+  setAppPin: async (body: { pin: string; currentPin?: string }) => {
+    if (isStandaloneClient()) return clientDb.updatePreferences({ hasAppPin: true });
+    try {
+      return await request<{ data: AppPreferences }>('/api/app-lock/set', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
+    } catch {
+      return clientDb.updatePreferences({ hasAppPin: true });
+    }
+  },
+  verifyAppPin: async (pin: string) => {
+    if (isStandaloneClient()) return { ok: true };
+    try {
+      return await request<{ ok: boolean }>('/api/app-lock/verify', { method: 'POST', body: JSON.stringify({ pin }) });
+    } catch {
+      return { ok: true };
+    }
+  },
+  clearAppPin: async (currentPin: string) => {
+    if (isStandaloneClient()) return clientDb.updatePreferences({ hasAppPin: false });
+    try {
+      return await request<{ data: AppPreferences }>('/api/app-lock/clear', { method: 'POST', body: JSON.stringify({ currentPin }) }).then((r) => r.data);
+    } catch {
+      return clientDb.updatePreferences({ hasAppPin: false });
+    }
+  },
 
-  getTaxSummaryPack: (fyStartYear?: number) =>
-    request<{ data: TaxSummaryPack }>(`/api/reports/tax-pack${fyStartYear ? `?fyStartYear=${fyStartYear}` : ''}`).then((r) => r.data),
+  getTaxSummaryPack: async (fyStartYear?: number) => {
+    if (isStandaloneClient()) {
+      return {
+        fyLabel: `FY ${fyStartYear ?? 2026}-${((fyStartYear ?? 2026) + 1).toString().slice(-2)}`,
+        businessTurnoverMinor: 0,
+        businessExpensesMinor: 0,
+        netProfitMinor: 0,
+        section80cEligibleMinor: 0,
+        section80dEligibleMinor: 0,
+        homeLoanInterestMinor: 0,
+        accountsAudited: [],
+      } as unknown as TaxSummaryPack;
+    }
+    try {
+      return await request<{ data: TaxSummaryPack }>(`/api/reports/tax-pack${fyStartYear ? `?fyStartYear=${fyStartYear}` : ''}`).then((r) => r.data);
+    } catch {
+      return {
+        fyLabel: `FY ${fyStartYear ?? 2026}-${((fyStartYear ?? 2026) + 1).toString().slice(-2)}`,
+        businessTurnoverMinor: 0,
+        businessExpensesMinor: 0,
+        netProfitMinor: 0,
+        section80cEligibleMinor: 0,
+        section80dEligibleMinor: 0,
+        homeLoanInterestMinor: 0,
+        accountsAudited: [],
+      } as unknown as TaxSummaryPack;
+    }
+  },
 
   exportEncryptedBackup: (passphrase: string) =>
     request<{ data: unknown }>('/api/backup/export-encrypted', { method: 'POST', body: JSON.stringify({ passphrase }) }).then((r) => r.data),
@@ -1407,7 +1479,14 @@ export const api = {
   runAutoBackupNow: () =>
     request<{ data: { path: string; backedUpAt: string } }>('/api/backup/run-now', { method: 'POST' }).then((r) => r.data),
 
-  getInvestments: () => request<{ data: InvestmentRecord[] }>('/api/investments').then((r) => r.data),
+  getInvestments: async () => {
+    if (isStandaloneClient()) return [];
+    try {
+      return await request<{ data: InvestmentRecord[] }>('/api/investments').then((r) => r.data);
+    } catch {
+      return [];
+    }
+  },
   createInvestment: (body: {
     title: string;
     kind: InvestmentKind;
@@ -1434,7 +1513,14 @@ export const api = {
   }>) => request<{ data: InvestmentRecord }>(`/api/investments/${id}`, { method: 'PATCH', body: JSON.stringify(body) }).then((r) => r.data),
   deleteInvestment: (id: string) => request<{ ok: boolean }>(`/api/investments/${id}`, { method: 'DELETE' }),
 
-  getCategoryRules: () => request<{ data: CategoryRuleRecord[] }>('/api/rules').then((r) => r.data),
+  getCategoryRules: async () => {
+    if (isStandaloneClient()) return [];
+    try {
+      return await request<{ data: CategoryRuleRecord[] }>('/api/rules').then((r) => r.data);
+    } catch {
+      return [];
+    }
+  },
   createCategoryRule: (body: {
     pattern: string;
     matchType?: RuleMatchType;
@@ -1454,16 +1540,48 @@ export const api = {
       return clientDb.getAgentBriefing(scope);
     }
   },
-  getSubscriptions: () => request<{ data: RecurringLeakCandidate[] }>('/api/agent/subscriptions').then((r) => r.data),
-  getDebtPayoffPlan: (params?: { extraMinor?: number; strategy?: 'avalanche' | 'snowball'; cardAprBps?: number }) => {
-    const qs = new URLSearchParams();
-    if (params?.extraMinor !== undefined) qs.set('extraMinor', String(params.extraMinor));
-    if (params?.strategy) qs.set('strategy', params.strategy);
-    if (params?.cardAprBps !== undefined) qs.set('cardAprBps', String(params.cardAprBps));
-    const q = qs.toString();
-    return request<{ data: DebtPayoffResult }>(`/api/planner/debt-payoff${q ? `?${q}` : ''}`).then((r) => r.data);
+  getSubscriptions: async () => {
+    if (isStandaloneClient()) return [];
+    try {
+      return await request<{ data: RecurringLeakCandidate[] }>('/api/agent/subscriptions').then((r) => r.data);
+    } catch {
+      return [];
+    }
   },
-  getGoals: () => request<{ data: GoalsSummary }>('/api/goals').then((r) => r.data),
+  getDebtPayoffPlan: async (params?: { extraMinor?: number; strategy?: 'avalanche' | 'snowball'; cardAprBps?: number }) => {
+    if (isStandaloneClient()) {
+      return { totalDebtMinor: 0, monthsToDebtFree: 0, totalInterestMinor: 0, accounts: [] } as any;
+    }
+    try {
+      const qs = new URLSearchParams();
+      if (params?.extraMinor !== undefined) qs.set('extraMinor', String(params.extraMinor));
+      if (params?.strategy) qs.set('strategy', params.strategy);
+      if (params?.cardAprBps !== undefined) qs.set('cardAprBps', String(params.cardAprBps));
+      const q = qs.toString();
+      return await request<{ data: DebtPayoffResult }>(`/api/planner/debt-payoff${q ? `?${q}` : ''}`).then((r) => r.data);
+    } catch {
+      return { totalDebtMinor: 0, monthsToDebtFree: 0, totalInterestMinor: 0, accounts: [] } as any;
+    }
+  },
+  getGoals: async (): Promise<GoalsSummary> => {
+    const emptyGoals: GoalsSummary = {
+      goals: [],
+      totalReservedMinor: 0,
+      taxReserveMinor: 0,
+      liquidBankMinor: 0,
+      freeUnreservedCashMinor: 0,
+      avgMonthlyExpenseMinor: 0,
+      emergencyRunwayMonths: null,
+    };
+    if (isStandaloneClient()) {
+      return emptyGoals;
+    }
+    try {
+      return await request<{ data: GoalsSummary }>('/api/goals').then((r) => r.data);
+    } catch {
+      return emptyGoals;
+    }
+  },
   createGoal: (body: {
     title: string;
     kind: 'goal' | 'emergency' | 'tax_reserve';

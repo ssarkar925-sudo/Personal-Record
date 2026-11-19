@@ -560,7 +560,7 @@ export function App() {
                   variant="secondary"
                   className="h-7 text-xs bg-white text-slate-800 border-amber-300 hover:bg-amber-100/50"
                   onClick={() => {
-                    setLoadError(null);
+                    setLoadError('');
                     void loadAll();
                   }}
                 >
