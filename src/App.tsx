@@ -345,8 +345,8 @@ export function App() {
   const handleCleanData = async () => {
     try {
       notify('Resetting database to clean slate...');
-      const { clientDb } = await import('./lib/client-db.ts');
-      clientDb.resetToCleanSlate();
+      const { dbFirstCleanSlate } = await import('./lib/database-first.ts');
+      await dbFirstCleanSlate();
       try {
         await fetch('/api/system/clean', { method: 'POST' });
       } catch {}

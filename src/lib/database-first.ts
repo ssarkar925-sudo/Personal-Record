@@ -1153,3 +1153,38 @@ export async function dbFirstClearAppPin(): Promise<AppPreferences> {
   smartCache.set('preferences', updated, 120_000);
   return updated;
 }
+
+export async function dbFirstCleanSlate(): Promise<{ ok: boolean }> {
+  try {
+    const user = await ensureSupabaseSession();
+    const client = getSupabaseClient();
+    if (client && user) {
+      await Promise.allSettled([
+        client.from('transactions').delete().eq('user_id', user.id),
+        client.from('receipt_attachments').delete().eq('user_id', user.id),
+        client.from('accounts').delete().eq('user_id', user.id),
+        client.from('loan_payments').delete().eq('user_id', user.id),
+        client.from('loans').delete().eq('user_id', user.id),
+        client.from('person_due_settlements').delete().eq('user_id', user.id),
+        client.from('people_dues').delete().eq('user_id', user.id),
+        client.from('notes').delete().eq('user_id', user.id),
+        client.from('job_sheets').delete().eq('user_id', user.id),
+        client.from('recurring_bills').delete().eq('user_id', user.id),
+        client.from('category_rules').delete().eq('user_id', user.id),
+        client.from('category_budgets').delete().eq('user_id', user.id),
+        client.from('scope_budgets').delete().eq('user_id', user.id),
+        client.from('savings_contributions').delete().eq('user_id', user.id),
+        client.from('savings_goals').delete().eq('user_id', user.id),
+        client.from('investments').delete().eq('user_id', user.id),
+        client.from('vault_entries').delete().eq('user_id', user.id),
+        client.from('vault_meta').delete().eq('user_id', user.id),
+      ]);
+    }
+  } catch (err) {
+    console.warn('[Database-First] Clean slate cloud purge failed:', err);
+  }
+
+  clientDb.resetToCleanSlate();
+  smartCache.clear();
+  return { ok: true };
+}
