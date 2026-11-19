@@ -205,9 +205,32 @@ export function App() {
     void loadAll();
   }, [loadAll]);
 
-  // Real-time multi-device cloud synchronization listener
+  // Real-time multi-device cloud synchronization listener & initial cloud hydration
   useEffect(() => {
-    const sub = subscribeToSupabaseRealtime(() => {
+    void (async () => {
+      try {
+        const { getSupabaseConfig, getCurrentUser } = await import('./lib/supabase.ts');
+        const cfg = getSupabaseConfig();
+        if (cfg.isConfigured) {
+          const user = await getCurrentUser();
+          if (user) {
+            const { clientDb } = await import('./lib/client-db.ts');
+            await clientDb.pullDataFromSupabase();
+            void loadAll();
+          }
+        }
+      } catch (e) {
+        console.warn('Initial cloud pull skipped:', e);
+      }
+    })();
+
+    const sub = subscribeToSupabaseRealtime(async () => {
+      try {
+        const { clientDb } = await import('./lib/client-db.ts');
+        await clientDb.pullDataFromSupabase();
+      } catch (e) {
+        console.warn('Realtime cloud pull failed:', e);
+      }
       void loadAll();
     });
     return () => sub.unsubscribe();

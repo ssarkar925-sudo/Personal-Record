@@ -1302,9 +1302,16 @@ export const api = {
     tag?: string;
   }) => request<{ ok: boolean; count: number }>('/api/notes/bulk', { method: 'POST', body: JSON.stringify(body) }),
 
-  getVaultMeta: () => request<{ data: VaultMetaRecord | null }>('/api/vault/meta').then((r) => r.data),
+  getVaultMeta: async (): Promise<VaultMetaRecord | null> => {
+    if (isStandaloneClient()) return clientDb.getVaultMeta();
+    try {
+      return await request<{ data: VaultMetaRecord | null }>('/api/vault/meta').then((r) => r.data);
+    } catch {
+      return clientDb.getVaultMeta();
+    }
+  },
 
-  saveVaultMeta: (body: {
+  saveVaultMeta: async (body: {
     saltB64: string;
     canaryIv: string;
     canaryCt: string;
@@ -1312,23 +1319,40 @@ export const api = {
     recoveryIv?: string | null;
     recoveryCt?: string | null;
     waRecoveryKey?: string | null;
-  }) => request<{ data: VaultMetaRecord }>('/api/vault/meta', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data),
+  }): Promise<VaultMetaRecord> => {
+    if (isStandaloneClient()) return clientDb.saveVaultMeta(body);
+    try {
+      return await request<{ data: VaultMetaRecord }>('/api/vault/meta', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
+    } catch {
+      return clientDb.saveVaultMeta(body);
+    }
+  },
 
-  saveVaultRecovery: (body: {
+  saveVaultRecovery: async (body: {
     recoverySaltB64: string;
     recoveryIv: string;
     recoveryCt: string;
     waRecoveryKey?: string | null;
-  }) => request<{ data: VaultMetaRecord }>('/api/vault/recovery', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data),
+  }): Promise<VaultMetaRecord> => {
+    if (isStandaloneClient()) return clientDb.saveVaultRecovery(body);
+    try {
+      return await request<{ data: VaultMetaRecord }>('/api/vault/recovery', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
+    } catch {
+      return clientDb.saveVaultRecovery(body);
+    }
+  },
 
-  requestWhatsAppVaultRecovery: () =>
-    request<{ ok: boolean; phoneMasked: string; expiresMinutes: number }>('/api/vault/recovery/whatsapp-request', {
+  requestWhatsAppVaultRecovery: async () => {
+    if (isStandaloneClient()) throw new Error('WhatsApp OTP recovery requires local server mode');
+    return request<{ ok: boolean; phoneMasked: string; expiresMinutes: number }>('/api/vault/recovery/whatsapp-request', {
       method: 'POST',
       body: JSON.stringify({}),
-    }),
+    });
+  },
 
-  verifyWhatsAppVaultRecovery: (code: string) =>
-    request<{
+  verifyWhatsAppVaultRecovery: async (code: string) => {
+    if (isStandaloneClient()) throw new Error('WhatsApp OTP recovery requires local server mode');
+    return request<{
       ok: boolean;
       recoveryKey: string;
       recoverySaltB64: string;
@@ -1337,22 +1361,48 @@ export const api = {
     }>('/api/vault/recovery/whatsapp-verify', {
       method: 'POST',
       body: JSON.stringify({ code }),
-    }),
+    });
+  },
 
-  getVaultEntries: () => request<{ data: VaultEntryCipherRecord[] }>('/api/vault/entries').then((r) => r.data),
+  getVaultEntries: async (): Promise<VaultEntryCipherRecord[]> => {
+    if (isStandaloneClient()) return clientDb.getVaultEntries();
+    try {
+      return await request<{ data: VaultEntryCipherRecord[] }>('/api/vault/entries').then((r) => r.data);
+    } catch {
+      return clientDb.getVaultEntries();
+    }
+  },
 
-  saveVaultEntry: (body: {
+  saveVaultEntry: async (body: {
     id?: string;
     label: string;
     category: string;
     iv: string;
     ciphertext: string;
     lastRotatedAt: string;
-  }) => request<{ data: VaultEntryCipherRecord }>('/api/vault/entries', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data),
+  }): Promise<VaultEntryCipherRecord> => {
+    if (isStandaloneClient()) return clientDb.saveVaultEntry(body);
+    try {
+      return await request<{ data: VaultEntryCipherRecord }>('/api/vault/entries', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
+    } catch {
+      return clientDb.saveVaultEntry(body);
+    }
+  },
 
-  deleteVaultEntry: (id: string) => request<{ ok: boolean }>(`/api/vault/entries/${id}`, { method: 'DELETE' }),
+  deleteVaultEntry: async (id: string): Promise<{ ok: boolean }> => {
+    if (isStandaloneClient()) {
+      clientDb.deleteVaultEntry(id);
+      return { ok: true };
+    }
+    try {
+      return await request<{ ok: boolean }>(`/api/vault/entries/${id}`, { method: 'DELETE' });
+    } catch {
+      clientDb.deleteVaultEntry(id);
+      return { ok: true };
+    }
+  },
 
-  rekeyVault: (body: {
+  rekeyVault: async (body: {
     saltB64: string;
     canaryIv: string;
     canaryCt: string;
@@ -1368,20 +1418,55 @@ export const api = {
       ciphertext: string;
       lastRotatedAt: string;
     }>;
-  }) => request<{ data: VaultMetaRecord }>('/api/vault/rekey', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data),
+  }): Promise<VaultMetaRecord> => {
+    if (isStandaloneClient()) return clientDb.rekeyVault(body);
+    try {
+      return await request<{ data: VaultMetaRecord }>('/api/vault/rekey', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
+    } catch {
+      return clientDb.rekeyVault(body);
+    }
+  },
 
-  recordVaultEvent: (eventType: 'failed_unlock' | 'vault_unlocked', detail = '') =>
-    request<{ ok: boolean }>('/api/vault/events', { method: 'POST', body: JSON.stringify({ eventType, detail }) }),
+  recordVaultEvent: async (_eventType: 'failed_unlock' | 'vault_unlocked', _detail = '') => {
+    if (isStandaloneClient()) return { ok: true };
+    try {
+      return await request<{ ok: boolean }>('/api/vault/events', { method: 'POST', body: JSON.stringify({ eventType: _eventType, detail: _detail }) });
+    } catch {
+      return { ok: true };
+    }
+  },
 
-  getAlerts: () => request<{ data: AlertDeliveryRecord[] }>('/api/alerts').then((r) => r.data),
+  getAlerts: async (): Promise<AlertDeliveryRecord[]> => {
+    if (isStandaloneClient()) return [];
+    try {
+      return await request<{ data: AlertDeliveryRecord[] }>('/api/alerts').then((r) => r.data);
+    } catch {
+      return [];
+    }
+  },
 
-  markAllAlertsRead: () => request<{ ok: boolean }>('/api/alerts/read-all', { method: 'POST' }),
+  markAllAlertsRead: async () => {
+    if (isStandaloneClient()) return { ok: true };
+    try {
+      return await request<{ ok: boolean }>('/api/alerts/read-all', { method: 'POST' });
+    } catch {
+      return { ok: true };
+    }
+  },
 
-  checkAlertsNow: () =>
-    request<{ data: { evaluated: number; queuedWhatsApp: number; sentWhatsApp: number; suppressedQuietHours: boolean } }>(
-      '/api/alerts/check-now',
-      { method: 'POST' },
-    ).then((r) => r.data),
+  checkAlertsNow: async () => {
+    if (isStandaloneClient()) {
+      return { evaluated: 0, queuedWhatsApp: 0, sentWhatsApp: 0, suppressedQuietHours: false };
+    }
+    try {
+      return await request<{ data: { evaluated: number; queuedWhatsApp: number; sentWhatsApp: number; suppressedQuietHours: boolean } }>(
+        '/api/alerts/check-now',
+        { method: 'POST' },
+      ).then((r) => r.data);
+    } catch {
+      return { evaluated: 0, queuedWhatsApp: 0, sentWhatsApp: 0, suppressedQuietHours: false };
+    }
+  },
 
   getAlertSettings: () => request<{ data: AlertSettings }>('/api/alerts/settings').then((r) => r.data),
 

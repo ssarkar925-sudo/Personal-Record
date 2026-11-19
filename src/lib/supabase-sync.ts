@@ -169,6 +169,24 @@ export async function pushLocalDataToSupabase(): Promise<{
   };
 }
 
+let autoSyncTimer: any = null;
+
+export function scheduleAutoCloudSync() {
+  if (typeof window === 'undefined') return;
+  if (autoSyncTimer) clearTimeout(autoSyncTimer);
+  autoSyncTimer = setTimeout(async () => {
+    try {
+      const client = getSupabaseClient();
+      if (!client) return;
+      const user = await getCurrentUser();
+      if (!user) return;
+      await pushLocalDataToSupabase();
+    } catch (e) {
+      console.warn('Background auto cloud sync skipped:', e);
+    }
+  }, 1500);
+}
+
 /**
  * Subscribes to real-time database changes from Supabase PostgreSQL.
  * Wakes up whenever an insert/update/delete happens on accounts or transactions.

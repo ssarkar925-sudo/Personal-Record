@@ -33,8 +33,11 @@ import type {
   TransactionRecord,
   WhatsAppBridgeState,
   AppPreferences,
+  VaultMetaRecord,
+  VaultEntryCipherRecord,
 } from './api.ts';
 import { getSupabaseClient, getCurrentUser } from './supabase.ts';
+import { scheduleAutoCloudSync } from './supabase-sync.ts';
 
 const DB_STORAGE_KEY = 'pl_browser_db_v4';
 const PREFS_STORAGE_KEY = 'pl_app_preferences_v1';
@@ -48,6 +51,8 @@ interface ClientDatabaseSchema {
   dues: PersonDueRecord[];
   notes: NoteRecord[];
   jobSheets: any[];
+  vaultMeta?: VaultMetaRecord | null;
+  vaultEntries?: VaultEntryCipherRecord[];
 }
 
 function getInitialDatabase(): ClientDatabaseSchema {
@@ -64,6 +69,8 @@ function getInitialDatabase(): ClientDatabaseSchema {
     dues: [],
     notes: [],
     jobSheets: [],
+    vaultMeta: null,
+    vaultEntries: [],
   };
 }
 
@@ -111,10 +118,11 @@ class ClientDatabaseManager {
     } catch {}
   }
 
-  private save(): void {
+  private save(skipAutoSync = false): void {
     if (typeof window === 'undefined' || !this.cache) return;
     try {
       localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(this.cache));
+      if (!skipAutoSync) scheduleAutoCloudSync();
     } catch (e) {
       console.error('Failed to save client database to localStorage', e);
     }
@@ -825,6 +833,136 @@ class ClientDatabaseManager {
     this.save();
   }
 
+  public getVaultMeta(): VaultMetaRecord | null {
+    const db = this.load();
+    return db.vaultMeta ?? null;
+  }
+
+  public saveVaultMeta(body: {
+    saltB64: string;
+    canaryIv: string;
+    canaryCt: string;
+    recoverySaltB64?: string | null;
+    recoveryIv?: string | null;
+    recoveryCt?: string | null;
+    waRecoveryKey?: string | null;
+  }): VaultMetaRecord {
+    const db = this.load();
+    const meta: VaultMetaRecord = {
+      saltB64: body.saltB64,
+      canaryIv: body.canaryIv,
+      canaryCt: body.canaryCt,
+      recoverySaltB64: body.recoverySaltB64 || null,
+      recoveryIv: body.recoveryIv || null,
+      recoveryCt: body.recoveryCt || null,
+      hasWaRecoveryKey: Boolean(body.waRecoveryKey),
+      updatedAt: todayISO(),
+    };
+    db.vaultMeta = meta;
+    this.save();
+    return meta;
+  }
+
+  public saveVaultRecovery(body: {
+    recoverySaltB64: string;
+    recoveryIv: string;
+    recoveryCt: string;
+    waRecoveryKey?: string | null;
+  }): VaultMetaRecord {
+    const db = this.load();
+    if (!db.vaultMeta) throw new Error('Vault is not initialized');
+    db.vaultMeta = {
+      ...db.vaultMeta,
+      recoverySaltB64: body.recoverySaltB64,
+      recoveryIv: body.recoveryIv,
+      recoveryCt: body.recoveryCt,
+      hasWaRecoveryKey: Boolean(body.waRecoveryKey),
+      updatedAt: todayISO(),
+    };
+    this.save();
+    return db.vaultMeta;
+  }
+
+  public getVaultEntries(): VaultEntryCipherRecord[] {
+    const db = this.load();
+    return db.vaultEntries ?? [];
+  }
+
+  public saveVaultEntry(body: {
+    id?: string;
+    label: string;
+    category: string;
+    iv: string;
+    ciphertext: string;
+    lastRotatedAt: string;
+  }): VaultEntryCipherRecord {
+    const db = this.load();
+    if (!db.vaultEntries) db.vaultEntries = [];
+    const id = body.id || `v-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const existingIdx = db.vaultEntries.findIndex((e) => e.id === id);
+    const entry: VaultEntryCipherRecord = {
+      id,
+      label: body.label,
+      category: body.category,
+      iv: body.iv,
+      ciphertext: body.ciphertext,
+      lastRotatedAt: body.lastRotatedAt,
+      updatedAt: todayISO(),
+    };
+    if (existingIdx >= 0) {
+      db.vaultEntries[existingIdx] = entry;
+    } else {
+      db.vaultEntries.push(entry);
+    }
+    this.save();
+    return entry;
+  }
+
+  public deleteVaultEntry(id: string): void {
+    const db = this.load();
+    if (db.vaultEntries) {
+      db.vaultEntries = db.vaultEntries.filter((e) => e.id !== id);
+      this.save();
+    }
+  }
+
+  public rekeyVault(body: {
+    saltB64: string;
+    canaryIv: string;
+    canaryCt: string;
+    recoverySaltB64?: string | null;
+    recoveryIv?: string | null;
+    recoveryCt?: string | null;
+    waRecoveryKey?: string | null;
+    entries: Array<{
+      id: string;
+      label: string;
+      category: string;
+      iv: string;
+      ciphertext: string;
+      lastRotatedAt: string;
+    }>;
+  }): VaultMetaRecord {
+    const db = this.load();
+    const meta: VaultMetaRecord = {
+      saltB64: body.saltB64,
+      canaryIv: body.canaryIv,
+      canaryCt: body.canaryCt,
+      recoverySaltB64: body.recoverySaltB64 || null,
+      recoveryIv: body.recoveryIv || null,
+      recoveryCt: body.recoveryCt || null,
+      hasWaRecoveryKey: Boolean(body.waRecoveryKey),
+      updatedAt: todayISO(),
+    };
+    db.vaultMeta = meta;
+    db.vaultEntries = body.entries.map((e) => ({
+      ...e,
+      updatedAt: todayISO(),
+    }));
+    this.save();
+    return meta;
+  }
+
   public getPreferences(): AppPreferences {
     if (typeof window === 'undefined') {
       return {
@@ -1158,7 +1296,7 @@ class ClientDatabaseManager {
     }
 
     this.recomputeBalances();
-    this.save();
+    this.save(true);
     return { count: totalItems };
   }
 }
