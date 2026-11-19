@@ -373,7 +373,28 @@ CREATE POLICY "Users can delete their own receipts" ON storage.objects
     USING (bucket_id = 'receipts' AND (storage.foldername(name))[1] = auth.uid()::text);
 
 -- ==============================================================================
--- 14. REALTIME REPLICATION (Instant Multi-Device Sync)
+-- 14. JOB SHEETS (Custom Tabular Worksheets & Registers)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.job_sheets (
+    id TEXT PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL DEFAULT auth.uid(),
+    name TEXT NOT NULL,
+    scope TEXT NOT NULL CHECK (scope IN ('personal', 'business', 'family')),
+    color TEXT NOT NULL DEFAULT 'gold',
+    columns_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    rows_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    settings_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    order_index INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE public.job_sheets ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own job sheets" ON public.job_sheets
+    FOR ALL USING (auth.uid() = user_id);
+
+-- ==============================================================================
+-- 15. REALTIME REPLICATION (Instant Multi-Device Sync)
 -- ==============================================================================
 ALTER PUBLICATION supabase_realtime ADD TABLE 
     public.accounts, 
@@ -381,4 +402,5 @@ ALTER PUBLICATION supabase_realtime ADD TABLE
     public.recurring_bills, 
     public.loans, 
     public.people_dues, 
-    public.notes;
+    public.notes,
+    public.job_sheets;

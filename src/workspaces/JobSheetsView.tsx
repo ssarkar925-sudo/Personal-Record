@@ -221,6 +221,10 @@ export function JobSheetsView({
     label: string;
   } | null>(null);
 
+  // Mobile-first Row Drawer and View Mode (< 768px)
+  const [mobileViewMode, setMobileViewMode] = useState<'table' | 'cards'>('table');
+  const [mobileDrawerRowIndex, setMobileDrawerRowIndex] = useState<number | null>(null);
+
   const autoSaveTimerRef = useRef<number | null>(null);
   const pendingSheetRef = useRef<JobSheetRecord | null>(null);
 
@@ -1464,6 +1468,34 @@ export function JobSheetsView({
                   <Plus className="h-3.5 w-3.5 text-[#059669]" /> + Row
                 </Button>
 
+                {/* Mobile View Mode Switcher (< 768px: Table vs Cards) */}
+                <div className="flex md:hidden items-center rounded-lg border border-[#E6E1D6] bg-white p-0.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setMobileViewMode('table')}
+                    className={cn(
+                      'px-2.5 py-1 text-[11px] font-semibold rounded cursor-pointer transition-colors',
+                      mobileViewMode === 'table'
+                        ? 'bg-[#111318] text-[#E5C158]'
+                        : 'text-[#686E78] hover:text-[#111318]',
+                    )}
+                  >
+                    Table
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileViewMode('cards')}
+                    className={cn(
+                      'px-2.5 py-1 text-[11px] font-semibold rounded cursor-pointer transition-colors',
+                      mobileViewMode === 'cards'
+                        ? 'bg-[#111318] text-[#E5C158]'
+                        : 'text-[#686E78] hover:text-[#111318]',
+                    )}
+                  >
+                    Cards
+                  </button>
+                </div>
+
                 <Button variant="secondary" size="sm" onClick={() => setAddColOpen(true)}>
                   <Columns className="h-3.5 w-3.5 text-[#8C6D1F]" /> + Column
                 </Button>
@@ -1534,9 +1566,132 @@ export function JobSheetsView({
           </div>
         )}
 
+        {/* Mobile Cards View (< 768px when Cards view mode is active) */}
+        {activeSheet && mobileViewMode === 'cards' && (
+          <div className="md:hidden space-y-3">
+            {displayedRows.length === 0 ? (
+              <div className="py-10 text-center text-xs text-[#686E78] bg-[#FAF8F5] rounded-xl border border-[#E6E1D6]">
+                No rows match the current filter. Click <strong>+ Row</strong> to add an entry.
+              </div>
+            ) : (
+              displayedRows.map(({ row, originalIndex }) => {
+                const firstTextCol =
+                  activeSheet.columns.find((c) => c.type === 'text') ?? activeSheet.columns[0];
+                const rowPreviewText =
+                  (firstTextCol ? row.cells[firstTextCol.id] : '') || `Row #${originalIndex + 1}`;
+                const statusCol = activeSheet.columns.find((c) => c.type === 'status');
+                const statusVal = statusCol ? row.cells[statusCol.id] ?? '' : '';
+                const statusColor = statusCol
+                  ? inferStatusColor(statusVal || 'In Progress', activeStatusOptions)
+                  : 'gold';
+                const statusTheme = TAB_COLOR_META[statusColor] ?? TAB_COLOR_META.gold;
+
+                const currencyCols = activeSheet.columns.filter(
+                  (c) => c.type === 'currency' || c.type === 'number',
+                );
+                const dateCols = activeSheet.columns.filter((c) => c.type === 'date');
+
+                return (
+                  <div
+                    key={row.id}
+                    className="rounded-xl border border-[#E6E1D6] bg-white p-3.5 shadow-sm space-y-2.5 transition-all"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="inline-flex h-5 w-6 items-center justify-center rounded bg-[#FAF8F5] border border-[#E6E1D6] text-[#686E78] font-mono text-xs font-bold shrink-0">
+                          #{originalIndex + 1}
+                        </span>
+                        <h4 className="font-semibold text-xs text-[#111318] truncate">
+                          {rowPreviewText}
+                        </h4>
+                      </div>
+                      {statusCol && (
+                        <span
+                          className={cn(
+                            'shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold border',
+                            statusTheme.badgeBg,
+                            statusTheme.badgeText,
+                            statusTheme.badgeBorder,
+                          )}
+                        >
+                          {statusVal || 'In Progress'}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Numeric & Date Summary Matrix */}
+                    <div className="grid grid-cols-2 gap-2 text-xs bg-[#FAF8F5] rounded-lg p-2 border border-[#E6E1D6]/60">
+                      {dateCols.slice(0, 1).map((dCol) => (
+                        <div key={dCol.id} className="min-w-0">
+                          <span className="text-[10px] text-[#686E78] block truncate">{dCol.label}</span>
+                          <span className="font-mono text-xs font-semibold text-[#111318]">
+                            {row.cells[dCol.id] || '—'}
+                          </span>
+                        </div>
+                      ))}
+                      {currencyCols.slice(0, 2).map((cCol) => {
+                        const rawVal = row.cells[cCol.id] ?? '';
+                        const isFormula = rawVal.trim().startsWith('=');
+                        const evaluated = isFormula
+                          ? evaluateCellFormula(rawVal, activeSheet.columns, activeSheet.rows)
+                          : rawVal;
+                        return (
+                          <div key={cCol.id} className="min-w-0 text-right">
+                            <span className="text-[10px] text-[#686E78] block truncate">{cCol.label}</span>
+                            <span className="font-mono text-xs font-bold text-[#8C6D1F]">
+                              {evaluated ? `₹${evaluated}` : '₹0'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Card Tap-to-Edit and Quick Actions */}
+                    <div className="flex items-center justify-between pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setMobileDrawerRowIndex(originalIndex)}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#111318] text-[#E5C158] px-3 py-1.5 text-xs font-bold min-h-[36px] cursor-pointer"
+                      >
+                        <Edit3 className="h-3.5 w-3.5" /> Tap to Edit Row
+                      </button>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleDuplicateRow(originalIndex)}
+                          className="rounded-lg p-2 text-[#686E78] hover:bg-[#FAF8F5] min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer"
+                          title="Duplicate row"
+                          aria-label="Duplicate row"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDeleteRowTarget({
+                              rowIndex: originalIndex,
+                              previewLabel: rowPreviewText,
+                            })
+                          }
+                          className="rounded-lg p-2 text-[#686E78] hover:bg-rose-50 hover:text-rose-600 min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer"
+                          title="Delete row"
+                          aria-label="Delete row"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
         {/* 3. Interactive Google Sheets Grid Table */}
         {activeSheet && (
-          <div className="overflow-x-auto">
+          <div className={cn('overflow-x-auto', mobileViewMode === 'cards' ? 'hidden md:block' : 'block')}>
             <table className="w-full border-collapse text-left text-xs">
               <thead>
                 <tr className="bg-[#F3EFEA] border-b border-[#E6E1D6] text-[#52504C]">
@@ -1619,7 +1774,11 @@ export function JobSheetsView({
                         key={row.id}
                         className="hover:bg-[#FAF8F5]/75 transition-colors group"
                       >
-                        <td className="border-r border-[#E6E1D6] bg-[#FAF8F5] px-2 py-1.5 text-center font-mono text-[11px] font-semibold text-[#686E78]">
+                        <td
+                          onClick={() => setMobileDrawerRowIndex(originalIndex)}
+                          className="border-r border-[#E6E1D6] bg-[#FAF8F5] px-2 py-1.5 text-center font-mono text-[11px] font-semibold text-[#686E78] cursor-pointer hover:bg-[#F3EFEA] hover:text-[#111318]"
+                          title="Tap to open mobile edit drawer"
+                        >
                           {originalIndex + 1}
                         </td>
 
@@ -1739,9 +1898,18 @@ export function JobSheetsView({
                           );
                         })}
 
-                        {/* Row Actions (Duplicate / Confirmed Delete) */}
+                        {/* Row Actions (Drawer Edit / Duplicate / Confirmed Delete) */}
                         <td className="px-2 py-1.5 text-center">
                           <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setMobileDrawerRowIndex(originalIndex)}
+                              className="rounded p-1 text-[#686E78] hover:bg-[#FAF8F5] hover:text-[#111318] cursor-pointer"
+                              title="Edit row in mobile drawer"
+                              aria-label="Edit row in drawer"
+                            >
+                              <Edit3 className="h-3 w-3 text-[#C59B27]" />
+                            </button>
                             <button
                               type="button"
                               onClick={() => handleDuplicateRow(originalIndex)}
@@ -2277,6 +2445,190 @@ export function JobSheetsView({
         onConfirm={() => void handleConfirmDeleteTab()}
         onClose={() => setDeleteTabTarget(null)}
       />
+
+      {/* Modal 5: Mobile Card Row Drawer (< 768px Touch Ergonomics) */}
+      <Dialog
+        open={mobileDrawerRowIndex !== null && Boolean(activeSheet?.rows[mobileDrawerRowIndex])}
+        onClose={() => setMobileDrawerRowIndex(null)}
+        title={
+          mobileDrawerRowIndex !== null
+            ? `Edit Row #${mobileDrawerRowIndex + 1} · ${activeSheet?.name ?? 'Sheet'}`
+            : 'Edit Row'
+        }
+        maxWidth="max-w-md"
+      >
+        {mobileDrawerRowIndex !== null && activeSheet?.rows[mobileDrawerRowIndex] && (
+          <div className="space-y-4">
+            {/* Row Navigation (Previous / Next) */}
+            <div className="flex items-center justify-between gap-2 border-b border-[#E6E1D6] pb-3 text-xs">
+              <span className="font-mono font-semibold text-[#686E78]">
+                Row {mobileDrawerRowIndex + 1} of {activeSheet.rows.length}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={mobileDrawerRowIndex <= 0}
+                  onClick={() => setMobileDrawerRowIndex((idx) => (idx !== null && idx > 0 ? idx - 1 : idx))}
+                  className="h-8 px-2.5 text-xs"
+                >
+                  ← Prev
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={mobileDrawerRowIndex >= activeSheet.rows.length - 1}
+                  onClick={() =>
+                    setMobileDrawerRowIndex((idx) =>
+                      idx !== null && idx < activeSheet.rows.length - 1 ? idx + 1 : idx,
+                    )
+                  }
+                  className="h-8 px-2.5 text-xs"
+                >
+                  Next →
+                </Button>
+              </div>
+            </div>
+
+            {/* Vertical Stacked Column Fields with 44px Touch Targets */}
+            <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
+              {activeSheet.columns.map((col, colIdx) => {
+                const cellVal = activeSheet.rows[mobileDrawerRowIndex!].cells[col.id] ?? '';
+                const letter = indexToColumnLetter(colIdx);
+                const isFormula = cellVal.trim().startsWith('=');
+                const evaluatedVal = isFormula
+                  ? evaluateCellFormula(cellVal, activeSheet.columns, activeSheet.rows)
+                  : cellVal;
+
+                return (
+                  <div key={col.id} className="space-y-1 rounded-xl bg-[#FAF8F5] border border-[#E6E1D6] p-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <label htmlFor={`mob-col-${col.id}`} className="mb-0 flex items-center gap-1.5 font-bold text-[#111318] cursor-pointer">
+                        <span className="inline-flex h-4 w-5 items-center justify-center rounded bg-[#111318] text-[#E5C158] font-mono text-[10px] font-bold">
+                          {letter}
+                        </span>
+                        <span>{col.label}</span>
+                      </label>
+                      <span className="text-[10px] font-mono text-[#686E78] uppercase">{col.type}</span>
+                    </div>
+
+                    {col.type === 'status' ? (
+                      <div className="pt-1">
+                        <select
+                          id={`mob-col-${col.id}`}
+                          value={cellVal || activeStatusOptions[0]?.label || 'In Progress'}
+                          onChange={(e) => {
+                            if (e.target.value === '__ADD_CUSTOM_STATUS__') {
+                              setPendingStatusCellTarget({
+                                rowIndex: mobileDrawerRowIndex!,
+                                colId: col.id,
+                              });
+                              setStatusModalOpen(true);
+                              return;
+                            }
+                            handleCellChange(mobileDrawerRowIndex!, col.id, e.target.value);
+                          }}
+                          className="w-full min-h-[44px] rounded-lg border border-[#E6E1D6] bg-white px-3 text-xs font-semibold text-[#111318] focus:border-[#111318] focus:outline-none"
+                        >
+                          {activeStatusOptions.map((opt) => (
+                            <option key={opt.label} value={opt.label}>
+                              {opt.label}
+                            </option>
+                          ))}
+                          <option value="__ADD_CUSTOM_STATUS__">➕ Add Custom Status Option...</option>
+                        </select>
+                      </div>
+                    ) : col.type === 'date' ? (
+                      <input
+                        id={`mob-col-${col.id}`}
+                        type="date"
+                        value={cellVal}
+                        onChange={(e) => handleCellChange(mobileDrawerRowIndex!, col.id, e.target.value)}
+                        className="w-full min-h-[44px] rounded-lg border border-[#E6E1D6] bg-white px-3 text-xs text-[#111318] focus:border-[#111318] focus:outline-none font-mono"
+                      />
+                    ) : (
+                      <div className="space-y-1">
+                        <div className="relative">
+                          {(col.type === 'currency' || col.type === 'number') && (
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#8C6D1F]">
+                              ₹
+                            </span>
+                          )}
+                          <input
+                            id={`mob-col-${col.id}`}
+                            type="text"
+                            inputMode={col.type === 'currency' || col.type === 'number' ? 'decimal' : 'text'}
+                            value={cellVal}
+                            onChange={(e) => handleCellChange(mobileDrawerRowIndex!, col.id, e.target.value)}
+                            className={cn(
+                              'w-full min-h-[44px] rounded-lg border border-[#E6E1D6] bg-white text-xs text-[#111318] focus:border-[#111318] focus:outline-none',
+                              col.type === 'currency' || col.type === 'number'
+                                ? 'pl-7 pr-3 font-mono font-semibold'
+                                : 'px-3',
+                            )}
+                            placeholder={col.type === 'currency' ? '0.00' : '...'}
+                          />
+                        </div>
+                        {isFormula && (
+                          <div className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
+                            <span>Computed:</span>
+                            <span className="font-bold">= {evaluatedVal}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Bottom Actions */}
+            <div className="flex items-center justify-between gap-2 border-t border-[#E6E1D6] pt-3">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    handleDuplicateRow(mobileDrawerRowIndex!);
+                  }}
+                  className="min-h-[40px] px-3 text-xs"
+                >
+                  <Copy className="h-3.5 w-3.5" /> Duplicate
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    const firstTextCol =
+                      activeSheet.columns.find((c) => c.type === 'text') ?? activeSheet.columns[0];
+                    const rowPreviewText =
+                      (firstTextCol
+                        ? activeSheet.rows[mobileDrawerRowIndex!].cells[firstTextCol.id]
+                        : '') || `Row #${mobileDrawerRowIndex! + 1}`;
+                    setDeleteRowTarget({
+                      rowIndex: mobileDrawerRowIndex!,
+                      previewLabel: rowPreviewText,
+                    });
+                    setMobileDrawerRowIndex(null);
+                  }}
+                  className="min-h-[40px] px-3 text-xs text-rose-600 hover:bg-rose-50 hover:border-rose-300"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                </Button>
+              </div>
+
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setMobileDrawerRowIndex(null)}
+                className="min-h-[40px] px-4 text-xs bg-[#111318] hover:bg-[#1E232D] text-white border-[#111318]"
+              >
+                <Check className="h-3.5 w-3.5 text-[#E5C158]" /> Done
+              </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
 
       {/* Confirmation Dialog 2: Delete Row (Not 1-Click Delete) */}
       <ConfirmDialog

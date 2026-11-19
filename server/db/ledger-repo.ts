@@ -284,8 +284,7 @@ export function createTransaction(
     createdAt,
   );
 
-  return listTransactions(db, { limit: 1 }).find((t) => t.id === id) ??
-    listTransactions(db, { limit: 100 }).find((t) => t.id === id)!;
+  return getTransactionById(db, id)!;
 }
 
 export function updateTransaction(

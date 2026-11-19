@@ -264,7 +264,7 @@ export function Dialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/35 p-4 flex items-center justify-center"
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/35 p-2 sm:p-4 flex items-center justify-center"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -274,11 +274,11 @@ export function Dialog({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          'my-auto w-full rounded-2xl border border-slate-200 bg-white shadow-[0_24px_56px_-12px_rgba(15,23,42,0.22)] animate-panel-in max-h-[calc(100dvh-2rem)] flex flex-col',
+          'my-auto w-full rounded-2xl border border-slate-200 bg-white shadow-[0_24px_56px_-12px_rgba(15,23,42,0.22)] animate-panel-in max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col',
           maxWidth,
         )}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 shrink-0">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-4 py-3 sm:px-5 sm:py-4 shrink-0">
           <div>
             <h2 className="font-display text-base font-bold text-slate-950">{title}</h2>
             {description && <p className="mt-0.5 text-xs text-slate-500">{description}</p>}
@@ -287,12 +287,12 @@ export function Dialog({
             type="button"
             onClick={onClose}
             aria-label="Close modal"
-            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-blue-600 cursor-pointer"
+            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-blue-600 cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="overflow-y-auto px-5 py-4">{children}</div>
+        <div className="overflow-y-auto px-4 py-3.5 sm:px-5 sm:py-4">{children}</div>
       </div>
     </div>,
     document.body,

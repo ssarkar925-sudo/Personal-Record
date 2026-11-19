@@ -18,6 +18,7 @@ export async function pushLocalDataToSupabase(): Promise<{
   loansCount: number;
   duesCount: number;
   notesCount: number;
+  jobSheetsCount: number;
 }> {
   const client = getSupabaseClient();
   if (!client) throw new Error('Supabase client is not configured.');
@@ -26,12 +27,13 @@ export async function pushLocalDataToSupabase(): Promise<{
   if (!user) throw new Error('Please sign in to Supabase before syncing.');
 
   // 1. Gather all local data
-  const [accounts, transactions, loans, duesRes, notes] = await Promise.all([
+  const [accounts, transactions, loans, duesRes, notes, jobSheets] = await Promise.all([
     api.getAccounts(),
     api.getTransactions({}),
     api.getLoans(),
     api.getDues(),
     api.getNotes(),
+    api.getJobSheets().catch(() => []),
   ]);
 
   const userId = user.id;
@@ -139,12 +141,31 @@ export async function pushLocalDataToSupabase(): Promise<{
     if (noteErr) throw new Error(`Notes sync failed: ${noteErr.message}`);
   }
 
+  // 7. Upsert Job Sheets (aligned with public.job_sheets schema)
+  if (jobSheets && jobSheets.length > 0) {
+    const jobSheetsPayload = jobSheets.map((s: any) => ({
+      id: s.id,
+      user_id: userId,
+      name: s.name,
+      scope: s.scope,
+      color: s.color || 'gold',
+      columns_json: s.columns,
+      rows_json: s.rows,
+      settings_json: s.settings ?? {},
+      order_index: s.orderIndex ?? 0,
+    }));
+
+    const { error: sheetErr } = await client.from('job_sheets').upsert(jobSheetsPayload, { onConflict: 'id' });
+    if (sheetErr) throw new Error(`Job Sheets sync failed: ${sheetErr.message}`);
+  }
+
   return {
     accountsCount: accounts.length,
     transactionsCount: transactions.length,
     loansCount: loans.length,
     duesCount: duesRes.data.length,
     notesCount: notes.length,
+    jobSheetsCount: jobSheets?.length ?? 0,
   };
 }
 
@@ -182,6 +203,11 @@ export function subscribeToSupabaseRealtime(onChange: (table: string, eventType:
       'postgres_changes',
       { event: '*', schema: 'public', table: 'notes' },
       () => onChange('notes', 'change')
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'job_sheets' },
+      () => onChange('job_sheets', 'change')
     )
     .subscribe();
 

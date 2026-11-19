@@ -19,9 +19,16 @@
     "test": "node --experimental-strip-types --test shared/*.test.ts server/*.test.ts",
     "test:stress": "node --experimental-strip-types --test server/stress.test.ts",
     "test:maintenance": "node --experimental-strip-types --test server/db/maintenance.test.ts",
-    "test:all": "node --experimental-strip-types --test server/*.test.ts server/db/*.test.ts server/watcher/*.test.ts server/sync/*.test.ts shared/*.test.ts"
+    "test:all": "node --experimental-strip-types --test server/*.test.ts server/db/*.test.ts server/watcher/*.test.ts server/sync/*.test.ts shared/*.test.ts",
+    "test:prod": "node --experimental-strip-types scripts/test-production-suite.ts",
+    "test:user": "node --experimental-strip-types scripts/test-real-user-journey.ts",
+    "test:supabase": "node --experimental-strip-types scripts/test-live-supabase-sync.ts",
+    "build:apk": "vite build && npx cap sync android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/cli": "^8.6.2",
+    "@capacitor/core": "^8.6.2",
     "@supabase/supabase-js": "^2.119.0",
     "@tesseract.js-data/eng": "^1.0.0",
     "@whiskeysockets/baileys": "^7.0.0-rc14",
