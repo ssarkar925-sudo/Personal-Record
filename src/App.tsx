@@ -222,15 +222,24 @@ export function App() {
   // Real-time multi-device cloud synchronization listener & initial cloud hydration
   useEffect(() => {
     let sub: { unsubscribe: () => void } | null = null;
+    let authSub: { unsubscribe: () => void } | null = null;
     void (async () => {
       try {
-        const { ensureSupabaseSession } = await import('./lib/supabase.ts');
+        const { ensureSupabaseSession, onAuthStateChange } = await import('./lib/supabase.ts');
         const user = await ensureSupabaseSession();
         if (user) {
           const { clientDb } = await import('./lib/client-db.ts');
           await clientDb.pullDataFromSupabase().catch(() => {});
           void loadAll();
         }
+
+        authSub = onAuthStateChange(async (event) => {
+          if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
+            const { clientDb } = await import('./lib/client-db.ts');
+            await clientDb.pullDataFromSupabase({ force: true }).catch(() => {});
+            void loadAll();
+          }
+        });
       } catch (e) {
         console.warn('Initial cloud pull skipped:', e);
       }
@@ -252,6 +261,7 @@ export function App() {
 
     return () => {
       sub?.unsubscribe();
+      authSub?.unsubscribe();
     };
   }, [loadAll]);
 

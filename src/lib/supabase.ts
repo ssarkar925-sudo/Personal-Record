@@ -126,7 +126,16 @@ export function isSupabaseConfigured(): boolean {
 export async function signUpWithEmail(email: string, password: string) {
   const client = getSupabaseClient();
   if (!client) throw new Error('Supabase is not configured. Please provide Project URL and Anon Key.');
-  const { data, error } = await client.auth.signUp({ email, password });
+  const redirectTo = typeof window !== 'undefined' && window.location?.origin
+    ? `${window.location.origin}/`
+    : 'https://personal-ledger-amber.vercel.app/';
+  const { data, error } = await client.auth.signUp({
+    email,
+    password,
+    options: {
+      emailRedirectTo: redirectTo,
+    },
+  });
   if (error) throw error;
   return data;
 }
