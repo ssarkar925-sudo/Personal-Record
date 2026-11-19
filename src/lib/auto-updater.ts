@@ -40,7 +40,7 @@ export async function checkForAppUpdate(): Promise<UpdateCheckResult> {
       latestVersion: CURRENT_APP_VERSION,
       build: CURRENT_BUILD_NUMBER,
       releaseDate: '',
-      apkUrl: 'https://personal-ledger-amber.vercel.app/PersonalLedger-latest.apk',
+      apkUrl: 'https://github.com/ssarkar925-sudo/Personal-Record/raw/main/public/PersonalLedger-latest.apk',
       changelog: '',
     };
   }
@@ -54,7 +54,7 @@ function evaluateUpdate(manifest: VersionManifest): UpdateCheckResult {
     latestVersion: manifest.version,
     build: manifest.build,
     releaseDate: manifest.releaseDate,
-    apkUrl: manifest.apkUrl || 'https://personal-ledger-amber.vercel.app/PersonalLedger-latest.apk',
+    apkUrl: manifest.apkUrl || 'https://github.com/ssarkar925-sudo/Personal-Record/raw/main/public/PersonalLedger-latest.apk',
     changelog: manifest.changelog || 'Performance improvements and security updates.',
   };
 }

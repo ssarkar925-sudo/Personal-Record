@@ -1009,7 +1009,7 @@ export function AlertsSettingsModal({
                   variant="primary"
                   size="sm"
                   className="shrink-0 bg-[#C59B27] hover:bg-[#D97706] text-[#111318] font-bold"
-                  onClick={() => triggerApkDownload('https://personal-ledger-amber.vercel.app/PersonalLedger-latest.apk')}
+                  onClick={() => triggerApkDownload('https://github.com/ssarkar925-sudo/Personal-Record/raw/main/public/PersonalLedger-latest.apk')}
                 >
                   <Download className="h-3.5 w-3.5 mr-1.5" />
                   Download APK
