@@ -4,6 +4,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Cloud,
   Copy,
   CreditCard,
   Download,
@@ -91,11 +92,13 @@ export function VaultView({
   systemLanguage = 'en',
   onNotify,
   onNavigate,
+  onOpenCloudSync,
 }: {
   accounts?: AccountRecord[];
   systemLanguage?: AppLanguage;
   onNotify?: (msg: string, kind?: 'ok' | 'err') => void;
   onNavigate?: (tab: 'dashboard' | 'cards' | 'money' | 'loans_dues' | 'reports' | 'notes' | 'sheets' | 'vault') => void;
+  onOpenCloudSync?: () => void;
 }) {
   const dict = UI_STRINGS[systemLanguage];
   const [meta, setMeta] = useState<VaultMetaRecord | null>(null);
@@ -1588,6 +1591,17 @@ export function VaultView({
             >
               <Upload className="h-3.5 w-3.5" /> Restore
             </Button>
+
+            {onOpenCloudSync && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onOpenCloudSync}
+                title="Multi-Device Cloud Sync"
+              >
+                <Cloud className="h-3.5 w-3.5 text-[#059669]" /> Cloud Sync
+              </Button>
+            )}
 
             <Button variant="secondary" size="sm" onClick={lockVault}>
               <Lock className="h-3.5 w-3.5" /> {dict.vault.lockNow}

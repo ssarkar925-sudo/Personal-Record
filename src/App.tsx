@@ -4,7 +4,6 @@ import {
   Bell,
   Bot,
   Building2,
-  Cloud,
   Command,
   CreditCard,
   Eye,
@@ -481,18 +480,6 @@ export function App() {
                   </kbd>
                 </button>
 
-                {/* Supabase Cloud Sync — accessible on mobile too */}
-                <button
-                  type="button"
-                  onClick={() => setCloudSyncOpen(true)}
-                  title="Supabase Cloud & Multi-Device Sync"
-                  aria-label="Cloud Sync"
-                  className="inline-flex h-9 min-w-9 sm:h-8 sm:min-w-8 items-center justify-center gap-1.5 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#111318] hover:bg-[#F3EFEA] transition-colors cursor-pointer"
-                >
-                  <Cloud className="h-3.5 w-3.5 text-[#059669]" />
-                  <span className="hidden xl:inline text-xs font-medium">Sync</span>
-                </button>
-
                 <button
                   type="button"
                   onClick={() => setSearchOpen(true)}
@@ -699,6 +686,7 @@ export function App() {
                     systemLanguage={preferences.systemLanguage}
                     onNotify={notify}
                     onNavigate={setActiveTab}
+                    onOpenCloudSync={() => setCloudSyncOpen(true)}
                   />
                 )}
               </Suspense>
@@ -739,6 +727,7 @@ export function App() {
           onPreferencesChange={setPreferences}
           systemLanguage={preferences.systemLanguage}
           onRefresh={() => void loadAll()}
+          onOpenCloudSync={() => setCloudSyncOpen(true)}
         />
 
         {appLocked && preferences.hasAppPin && (
