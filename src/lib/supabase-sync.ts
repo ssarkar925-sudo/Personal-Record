@@ -1,4 +1,5 @@
 import { getSupabaseClient, getCurrentUser } from './supabase.ts';
+import { smartCache } from './smart-cache.ts';
 import { api, type AccountRecord, type TransactionRecord, type LoanRecord, type PersonDueRecord, type NoteRecord } from './api.ts';
 
 export interface CloudSyncStatus {
@@ -195,57 +196,69 @@ export function subscribeToSupabaseRealtime(onChange: (table: string, eventType:
   const client = getSupabaseClient();
   if (!client) return { unsubscribe: () => {} };
 
+  const handleTableChange = (table: string, eventType: string) => {
+    // Invalidate targeted cache keys
+    if (table === 'vault_meta') {
+      smartCache.invalidate('vault:meta');
+    } else if (table === 'vault_entries') {
+      smartCache.invalidate('vault:entries');
+    } else if (table === 'app_preferences') {
+      smartCache.invalidate('preferences');
+    }
+    onChange(table, eventType);
+  };
+
   const channel = client
     .channel('ledger-cloud-sync')
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'accounts' },
-      () => onChange('accounts', 'change')
+      () => handleTableChange('accounts', 'change')
     )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'transactions' },
-      () => onChange('transactions', 'change')
+      () => handleTableChange('transactions', 'change')
     )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'loans' },
-      () => onChange('loans', 'change')
+      () => handleTableChange('loans', 'change')
     )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'people_dues' },
-      () => onChange('people_dues', 'change')
+      () => handleTableChange('people_dues', 'change')
     )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'notes' },
-      () => onChange('notes', 'change')
+      () => handleTableChange('notes', 'change')
     )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'job_sheets' },
-      () => onChange('job_sheets', 'change')
+      () => handleTableChange('job_sheets', 'change')
     )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'recurring_bills' },
-      () => onChange('recurring_bills', 'change')
+      () => handleTableChange('recurring_bills', 'change')
     )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'vault_meta' },
-      () => onChange('vault_meta', 'change')
+      () => handleTableChange('vault_meta', 'change')
     )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'vault_entries' },
-      () => onChange('vault_entries', 'change')
+      () => handleTableChange('vault_entries', 'change')
     )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'app_preferences' },
-      () => onChange('app_preferences', 'change')
+      () => handleTableChange('app_preferences', 'change')
     )
     .subscribe();
 

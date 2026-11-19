@@ -12,6 +12,7 @@ import type {
 } from '../../shared/ledger-core.ts';
 import type { AppLanguage } from '../../shared/i18n.ts';
 import { clientDb } from './client-db.ts';
+import { smartCache, type CacheTelemetry } from './smart-cache.ts';
 import {
   dbFirstCreateAccount,
   dbFirstUpdateAccount,
@@ -1850,6 +1851,12 @@ export const api = {
     } catch {
       return dbFirstDeleteJobSheet(id);
     }
+  },
+
+  getCacheTelemetry: (): CacheTelemetry => smartCache.getTelemetry(),
+  purgeCache: (): void => {
+    smartCache.clear();
+    clientDb.resetCloudPullThrottle();
   },
 
   resetToCleanSlate: async (): Promise<boolean> => {

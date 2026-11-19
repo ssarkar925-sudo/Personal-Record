@@ -235,14 +235,18 @@ export function App() {
         console.warn('Initial cloud pull skipped:', e);
       }
 
-      sub = subscribeToSupabaseRealtime(async () => {
-        try {
-          const { clientDb } = await import('./lib/client-db.ts');
-          await clientDb.pullDataFromSupabase();
-        } catch (e) {
-          console.warn('Realtime cloud pull failed:', e);
-        }
-        void loadAll();
+      let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+      sub = subscribeToSupabaseRealtime(() => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(async () => {
+          try {
+            const { clientDb } = await import('./lib/client-db.ts');
+            await clientDb.pullDataFromSupabase({ force: true });
+          } catch (e) {
+            console.warn('Realtime cloud pull failed:', e);
+          }
+          void loadAll();
+        }, 350);
       });
     })();
 

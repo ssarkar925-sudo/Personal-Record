@@ -1,4 +1,4 @@
-const CACHE_NAME = 'personal-ledger-shell-v8';
+const CACHE_NAME = 'personal-ledger-shell-v9';
 const PRECACHE_URLS = ['/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {

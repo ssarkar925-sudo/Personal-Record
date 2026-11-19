@@ -1,5 +1,6 @@
 import { getSupabaseClient, ensureSupabaseSession } from './supabase.ts';
 import { clientDb, generateUUID } from './client-db.ts';
+import { smartCache } from './smart-cache.ts';
 import type {
   AccountRecord,
   TransactionRecord,
@@ -664,43 +665,49 @@ export async function dbFirstDeleteRecurringBill(id: string): Promise<{ ok: bool
 }
 
 // ============================================================================
-// ENCRYPTED PASSWORD VAULT (DATABASE-FIRST)
+// ENCRYPTED PASSWORD VAULT (DATABASE-FIRST + SMART SWR CACHE)
 // ============================================================================
 
 export async function dbFirstGetVaultMeta(): Promise<VaultMetaRecord | null> {
-  try {
-    const user = await ensureSupabaseSession();
-    const client = getSupabaseClient();
-    if (client && user) {
-      const { data, error } = await client
-        .from('vault_meta')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
+  return smartCache.fetchWithCache<VaultMetaRecord | null>(
+    'vault:meta',
+    async () => {
+      try {
+        const user = await ensureSupabaseSession();
+        const client = getSupabaseClient();
+        if (client && user) {
+          const { data, error } = await client
+            .from('vault_meta')
+            .select('*')
+            .eq('user_id', user.id)
+            .maybeSingle();
 
-      if (error) throw error;
-      if (data) {
-        const meta: VaultMetaRecord = {
-          saltB64: data.salt,
-          canaryIv: data.canary_iv,
-          canaryCt: data.canary_ciphertext,
-          recoverySaltB64: data.recovery_salt || null,
-          recoveryIv: data.recovery_iv || null,
-          recoveryCt: data.recovery_ciphertext || null,
-          hasWaRecoveryKey: Boolean(data.wa_recovery_key),
-          updatedAt: data.updated_at || todayISO(),
-        };
-        const db = clientDb.load();
-        db.vaultMeta = meta;
-        (clientDb as any).save(true);
-        return meta;
+          if (error) throw error;
+          if (data) {
+            const meta: VaultMetaRecord = {
+              saltB64: data.salt,
+              canaryIv: data.canary_iv,
+              canaryCt: data.canary_ciphertext,
+              recoverySaltB64: data.recovery_salt || null,
+              recoveryIv: data.recovery_iv || null,
+              recoveryCt: data.recovery_ciphertext || null,
+              hasWaRecoveryKey: Boolean(data.wa_recovery_key),
+              updatedAt: data.updated_at || todayISO(),
+            };
+            const db = clientDb.load();
+            db.vaultMeta = meta;
+            (clientDb as any).save(true);
+            return meta;
+          }
+        }
+      } catch (err) {
+        console.warn('[Database-First] Vault meta fetch failed on cloud:', err);
       }
-    }
-  } catch (err) {
-    console.warn('[Database-First] Vault meta fetch failed on cloud:', err);
-  }
 
-  return clientDb.getVaultMeta();
+      return clientDb.getVaultMeta();
+    },
+    { ttlMs: 60_000, swr: true },
+  );
 }
 
 export async function dbFirstSaveVaultMeta(body: {
@@ -751,6 +758,7 @@ export async function dbFirstSaveVaultMeta(body: {
         const db = clientDb.load();
         db.vaultMeta = meta;
         (clientDb as any).save(true);
+        smartCache.set('vault:meta', meta, 60_000);
         return meta;
       }
     }
@@ -758,7 +766,9 @@ export async function dbFirstSaveVaultMeta(body: {
     console.warn('[Database-First] Vault meta save failed on cloud:', err);
   }
 
-  return clientDb.saveVaultMeta(body);
+  const saved = clientDb.saveVaultMeta(body);
+  smartCache.set('vault:meta', saved, 60_000);
+  return saved;
 }
 
 export async function dbFirstSaveVaultRecovery(body: {
@@ -802,6 +812,7 @@ export async function dbFirstSaveVaultRecovery(body: {
         const db = clientDb.load();
         db.vaultMeta = meta;
         (clientDb as any).save(true);
+        smartCache.set('vault:meta', meta, 60_000);
         return meta;
       }
     }
@@ -809,42 +820,50 @@ export async function dbFirstSaveVaultRecovery(body: {
     console.warn('[Database-First] Vault recovery save failed on cloud:', err);
   }
 
-  return clientDb.saveVaultRecovery(body);
+  const saved = clientDb.saveVaultRecovery(body);
+  smartCache.set('vault:meta', saved, 60_000);
+  return saved;
 }
 
 export async function dbFirstGetVaultEntries(): Promise<VaultEntryCipherRecord[]> {
-  try {
-    const user = await ensureSupabaseSession();
-    const client = getSupabaseClient();
-    if (client && user) {
-      const { data, error } = await client
-        .from('vault_entries')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+  return smartCache.fetchWithCache<VaultEntryCipherRecord[]>(
+    'vault:entries',
+    async () => {
+      try {
+        const user = await ensureSupabaseSession();
+        const client = getSupabaseClient();
+        if (client && user) {
+          const { data, error } = await client
+            .from('vault_entries')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      if (Array.isArray(data)) {
-        const entries: VaultEntryCipherRecord[] = data.map((r: any) => ({
-          id: r.id,
-          label: r.label,
-          category: r.category,
-          iv: r.iv,
-          ciphertext: r.ciphertext,
-          lastRotatedAt: r.last_rotated_at,
-          updatedAt: r.updated_at || todayISO(),
-        }));
-        const db = clientDb.load();
-        db.vaultEntries = entries;
-        (clientDb as any).save(true);
-        return entries;
+          if (error) throw error;
+          if (Array.isArray(data)) {
+            const entries: VaultEntryCipherRecord[] = data.map((r: any) => ({
+              id: r.id,
+              label: r.label,
+              category: r.category,
+              iv: r.iv,
+              ciphertext: r.ciphertext,
+              lastRotatedAt: r.last_rotated_at,
+              updatedAt: r.updated_at || todayISO(),
+            }));
+            const db = clientDb.load();
+            db.vaultEntries = entries;
+            (clientDb as any).save(true);
+            return entries;
+          }
+        }
+      } catch (err) {
+        console.warn('[Database-First] Vault entries fetch failed on cloud:', err);
       }
-    }
-  } catch (err) {
-    console.warn('[Database-First] Vault entries fetch failed on cloud:', err);
-  }
 
-  return clientDb.getVaultEntries();
+      return clientDb.getVaultEntries();
+    },
+    { ttlMs: 60_000, swr: true },
+  );
 }
 
 export async function dbFirstSaveVaultEntry(body: {
@@ -883,14 +902,18 @@ export async function dbFirstSaveVaultEntry(body: {
 
       if (error) throw error;
       if (data) {
-        return clientDb.saveVaultEntry({ ...body, id: data.id });
+        const saved = clientDb.saveVaultEntry({ ...body, id: data.id });
+        smartCache.invalidate('vault:entries');
+        return saved;
       }
     }
   } catch (err) {
     console.warn('[Database-First] Vault entry save failed on cloud:', err);
   }
 
-  return clientDb.saveVaultEntry({ ...body, id });
+  const saved = clientDb.saveVaultEntry({ ...body, id });
+  smartCache.invalidate('vault:entries');
+  return saved;
 }
 
 export async function dbFirstDeleteVaultEntry(id: string): Promise<{ ok: boolean }> {
@@ -905,6 +928,7 @@ export async function dbFirstDeleteVaultEntry(id: string): Promise<{ ok: boolean
   }
 
   clientDb.deleteVaultEntry(id);
+  smartCache.invalidate('vault:entries');
   return { ok: true };
 }
 
@@ -939,37 +963,45 @@ export async function dbFirstRekeyVault(body: {
     await dbFirstSaveVaultEntry(entry);
   }
 
+  smartCache.set('vault:meta', meta, 60_000);
+  smartCache.invalidate('vault:entries');
   return meta;
 }
 
 // ============================================================================
-// APP PREFERENCES & PIN (DATABASE-FIRST)
+// APP PREFERENCES & PIN (DATABASE-FIRST + SMART SWR CACHE)
 // ============================================================================
 
 export async function dbFirstGetPreferences(): Promise<AppPreferences> {
-  try {
-    const user = await ensureSupabaseSession();
-    const client = getSupabaseClient();
-    if (client && user) {
-      const { data } = await client
-        .from('app_preferences')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
+  return smartCache.fetchWithCache<AppPreferences>(
+    'preferences',
+    async () => {
+      try {
+        const user = await ensureSupabaseSession();
+        const client = getSupabaseClient();
+        if (client && user) {
+          const { data } = await client
+            .from('app_preferences')
+            .select('*')
+            .eq('user_id', user.id)
+            .maybeSingle();
 
-      if (data) {
-        return clientDb.updatePreferences({
-          systemLanguage: (data.system_language as any) || undefined,
-          autoLockMinutes: data.auto_lock_minutes ?? undefined,
-          hasAppPin: Boolean(data.has_app_pin),
-        });
+          if (data) {
+            return clientDb.updatePreferences({
+              systemLanguage: (data.system_language as any) || undefined,
+              autoLockMinutes: data.auto_lock_minutes ?? undefined,
+              hasAppPin: Boolean(data.has_app_pin),
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[Database-First] App preferences fetch failed on cloud:', err);
       }
-    }
-  } catch (err) {
-    console.warn('[Database-First] App preferences fetch failed on cloud:', err);
-  }
 
-  return clientDb.getPreferences();
+      return clientDb.getPreferences();
+    },
+    { ttlMs: 120_000, swr: true },
+  );
 }
 
 export async function dbFirstUpdatePreferences(body: any): Promise<AppPreferences> {
@@ -992,7 +1024,9 @@ export async function dbFirstUpdatePreferences(body: any): Promise<AppPreference
     console.warn('[Database-First] App preferences update failed on cloud:', err);
   }
 
-  return clientDb.updatePreferences(body);
+  const updated = clientDb.updatePreferences(body);
+  smartCache.set('preferences', updated, 120_000);
+  return updated;
 }
 
 export async function dbFirstSetAppPin(pin: string): Promise<AppPreferences> {
@@ -1011,7 +1045,9 @@ export async function dbFirstSetAppPin(pin: string): Promise<AppPreferences> {
     console.warn('[Database-First] Set app PIN failed on cloud:', err);
   }
 
-  return clientDb.updatePreferences({ hasAppPin: true });
+  const updated = clientDb.updatePreferences({ hasAppPin: true });
+  smartCache.set('preferences', updated, 120_000);
+  return updated;
 }
 
 export async function dbFirstClearAppPin(): Promise<AppPreferences> {
@@ -1030,5 +1066,7 @@ export async function dbFirstClearAppPin(): Promise<AppPreferences> {
     console.warn('[Database-First] Clear app PIN failed on cloud:', err);
   }
 
-  return clientDb.updatePreferences({ hasAppPin: false });
+  const updated = clientDb.updatePreferences({ hasAppPin: false });
+  smartCache.set('preferences', updated, 120_000);
+  return updated;
 }

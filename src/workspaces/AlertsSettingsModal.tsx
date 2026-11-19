@@ -12,6 +12,7 @@ import {
   Shield,
   Unplug,
   Upload,
+  Zap,
 } from 'lucide-react';
 import {
   api,
@@ -745,6 +746,38 @@ export function AlertsSettingsModal({
                 >
                   <Cloud className="h-3.5 w-3.5 text-emerald-600" />
                   Configure Multi-Device Cloud Sync
+                </Button>
+              </div>
+            </div>
+
+            {/* Smart SWR Client Cache & Server Telemetry */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-amber-600" />
+                  <h3 className="text-sm font-semibold text-slate-900">Smart SWR Client Cache</h3>
+                </div>
+                <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">Active · 0ms Reads</Badge>
+              </div>
+              <p className="text-slate-600 text-xs leading-relaxed">
+                Prevents repeated server round trips by serving instant cached reads with Stale-While-Revalidate (SWR) and in-flight request coalescing. Realtime CDC keeps data synchronized across devices without hammering the server.
+              </p>
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <span className="text-[11px] font-mono text-slate-500">
+                  ⚡ {api.getCacheTelemetry().serverCallsPrevented} server calls prevented ({api.getCacheTelemetry().hits} hits)
+                </span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    api.purgeCache();
+                    setStatusMsg('Client cache purged · Fresh cloud sync requested ✓');
+                    onRefresh();
+                  }}
+                  className="gap-1.5 border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-xs cursor-pointer"
+                >
+                  <RefreshCw className="h-3.5 w-3.5 text-slate-500" />
+                  Purge Cache & Re-Sync
                 </Button>
               </div>
             </div>

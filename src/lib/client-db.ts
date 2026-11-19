@@ -38,6 +38,7 @@ import type {
 } from './api.ts';
 import { getSupabaseClient, getCurrentUser } from './supabase.ts';
 import { scheduleAutoCloudSync } from './supabase-sync.ts';
+import { smartCache } from './smart-cache.ts';
 
 export function generateUUID(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -1162,25 +1163,46 @@ class ClientDatabaseManager {
     };
   }
 
-  public async pullDataFromSupabase(): Promise<{ count: number }> {
-    const client = getSupabaseClient();
-    if (!client) throw new Error('Supabase is not configured.');
-    const user = await getCurrentUser();
-    if (!user) throw new Error('Please sign in to Supabase first.');
+  private lastCloudPullTimestamp = 0;
+  private inFlightPullPromise: Promise<{ count: number; skipped?: boolean }> | null = null;
 
-    const userId = user.id;
-    const [accRes, txRes, loanRes, dueRes, noteRes, sheetRes, billRes, vaultMetaRes, vaultEntriesRes, prefRes] = await Promise.all([
-      client.from('accounts').select('*').eq('user_id', userId),
-      client.from('transactions').select('*').eq('user_id', userId),
-      client.from('loans').select('*').eq('user_id', userId),
-      client.from('people_dues').select('*').eq('user_id', userId),
-      client.from('notes').select('*').eq('user_id', userId),
-      client.from('job_sheets').select('*').eq('user_id', userId),
-      client.from('recurring_bills').select('*').eq('user_id', userId),
-      client.from('vault_meta').select('*').eq('user_id', userId).maybeSingle(),
-      client.from('vault_entries').select('*').eq('user_id', userId),
-      client.from('app_preferences').select('*').eq('user_id', userId).maybeSingle(),
-    ]);
+  public resetCloudPullThrottle(): void {
+    this.lastCloudPullTimestamp = 0;
+    this.inFlightPullPromise = null;
+  }
+
+  public async pullDataFromSupabase(options: { force?: boolean } = {}): Promise<{ count: number; skipped?: boolean }> {
+    const now = Date.now();
+    // Cache guard: Don't call server if pulled within the last 15 seconds unless forced
+    if (!options.force && now - this.lastCloudPullTimestamp < 15_000) {
+      return { count: 0, skipped: true };
+    }
+
+    if (this.inFlightPullPromise) {
+      return this.inFlightPullPromise;
+    }
+
+    this.inFlightPullPromise = (async () => {
+      try {
+        const client = getSupabaseClient();
+        if (!client) throw new Error('Supabase is not configured.');
+        const user = await getCurrentUser();
+        if (!user) throw new Error('Please sign in to Supabase first.');
+
+        this.lastCloudPullTimestamp = Date.now();
+        const userId = user.id;
+        const [accRes, txRes, loanRes, dueRes, noteRes, sheetRes, billRes, vaultMetaRes, vaultEntriesRes, prefRes] = await Promise.all([
+          client.from('accounts').select('*').eq('user_id', userId),
+          client.from('transactions').select('*').eq('user_id', userId),
+          client.from('loans').select('*').eq('user_id', userId),
+          client.from('people_dues').select('*').eq('user_id', userId),
+          client.from('notes').select('*').eq('user_id', userId),
+          client.from('job_sheets').select('*').eq('user_id', userId),
+          client.from('recurring_bills').select('*').eq('user_id', userId),
+          client.from('vault_meta').select('*').eq('user_id', userId).maybeSingle(),
+          client.from('vault_entries').select('*').eq('user_id', userId),
+          client.from('app_preferences').select('*').eq('user_id', userId).maybeSingle(),
+        ]);
 
     const db = this.load();
     let totalItems = 0;
@@ -1343,6 +1365,7 @@ class ClientDatabaseManager {
         hasWaRecoveryKey: Boolean(vaultMetaRes.data.wa_recovery_key),
         updatedAt: vaultMetaRes.data.updated_at || todayISO(),
       };
+      smartCache.set('vault:meta', db.vaultMeta, 60_000);
       totalItems += 1;
     }
 
@@ -1356,20 +1379,28 @@ class ClientDatabaseManager {
         lastRotatedAt: r.last_rotated_at,
         updatedAt: r.updated_at || todayISO(),
       }));
+      smartCache.set('vault:entries', db.vaultEntries, 60_000);
       totalItems += db.vaultEntries.length;
     }
 
     if (prefRes && prefRes.data) {
-      this.updatePreferences({
+      const updatedPrefs = this.updatePreferences({
         systemLanguage: prefRes.data.system_language || undefined,
         autoLockMinutes: prefRes.data.auto_lock_minutes ?? undefined,
         hasAppPin: Boolean(prefRes.data.has_app_pin),
       });
+      smartCache.set('preferences', updatedPrefs, 120_000);
     }
 
     this.recomputeBalances();
     this.save(true);
     return { count: totalItems };
+      } finally {
+        this.inFlightPullPromise = null;
+      }
+    })();
+
+    return this.inFlightPullPromise;
   }
 }
 
