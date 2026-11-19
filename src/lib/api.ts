@@ -11,6 +11,7 @@ import type {
   TxKind,
 } from '../../shared/ledger-core.ts';
 import type { AppLanguage } from '../../shared/i18n.ts';
+import { clientDb } from './client-db.ts';
 
 export class ApiError extends Error {
   status: number;
@@ -25,6 +26,12 @@ export class ApiError extends Error {
   }
 }
 
+export function isStandaloneClient(): boolean {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname;
+  return host !== 'localhost' && host !== '127.0.0.1';
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
@@ -34,7 +41,19 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     },
   });
   const text = await res.text();
-  const payload = text ? JSON.parse(text) : {};
+  if (!text || text.trim().startsWith('<') || (res.headers.get('content-type') || '').includes('text/html')) {
+    throw new ApiError(
+      res.status,
+      'STANDALONE_FALLBACK',
+      `API server not answering on ${url} (received HTML). Routing to client storage.`,
+    );
+  }
+  let payload: any = {};
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw new ApiError(res.status, 'INVALID_JSON', `Failed to parse response JSON from ${url}`);
+  }
   if (!res.ok) {
     const err = payload?.error;
     throw new ApiError(
@@ -684,21 +703,45 @@ export interface AgentExecutionResult {
 }
 
 export const api = {
-  getDashboard: (scope?: Scope) =>
-    request<DashboardSummary>(`/api/dashboard${scope ? `?scope=${scope}` : ''}`),
-
-  getReports: (params: { fromDate: string; toDate: string; scope?: Scope }) => {
-    const qs = new URLSearchParams({ fromDate: params.fromDate, toDate: params.toDate });
-    if (params.scope) qs.set('scope', params.scope);
-    return request<DetailedReports>(`/api/reports?${qs.toString()}`);
+  getDashboard: async (scope?: Scope): Promise<DashboardSummary> => {
+    if (isStandaloneClient()) return clientDb.getDashboard(scope);
+    try {
+      return await request<DashboardSummary>(`/api/dashboard${scope ? `?scope=${scope}` : ''}`);
+    } catch {
+      return clientDb.getDashboard(scope);
+    }
   },
 
-  globalSearch: (query: string) =>
-    request<{ data: GlobalSearchResult }>(`/api/search?q=${encodeURIComponent(query)}`).then((r) => r.data),
+  getReports: async (params: { fromDate: string; toDate: string; scope?: Scope }): Promise<DetailedReports> => {
+    if (isStandaloneClient()) return clientDb.getReports(params);
+    try {
+      const qs = new URLSearchParams({ fromDate: params.fromDate, toDate: params.toDate });
+      if (params.scope) qs.set('scope', params.scope);
+      return await request<DetailedReports>(`/api/reports?${qs.toString()}`);
+    } catch {
+      return clientDb.getReports(params);
+    }
+  },
 
-  getAccounts: () => request<{ data: AccountRecord[] }>('/api/accounts').then((r) => r.data),
+  globalSearch: async (query: string): Promise<GlobalSearchResult> => {
+    if (isStandaloneClient()) return clientDb.globalSearch(query);
+    try {
+      return await request<{ data: GlobalSearchResult }>(`/api/search?q=${encodeURIComponent(query)}`).then((r) => r.data);
+    } catch {
+      return clientDb.globalSearch(query);
+    }
+  },
 
-  createAccount: (body: {
+  getAccounts: async (): Promise<AccountRecord[]> => {
+    if (isStandaloneClient()) return clientDb.getAccounts();
+    try {
+      return await request<{ data: AccountRecord[] }>('/api/accounts').then((r) => r.data);
+    } catch {
+      return clientDb.getAccounts();
+    }
+  },
+
+  createAccount: async (body: {
     name: string;
     type: AccountType;
     accountGroup?: AccountGroup;
@@ -710,9 +753,16 @@ export const api = {
     creditLimitMinor?: number;
     statementDay?: number;
     dueDay?: number;
-  }) => request<{ data: AccountRecord }>('/api/accounts', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data),
+  }): Promise<AccountRecord> => {
+    if (isStandaloneClient()) return clientDb.createAccount(body);
+    try {
+      return await request<{ data: AccountRecord }>('/api/accounts', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
+    } catch {
+      return clientDb.createAccount(body);
+    }
+  },
 
-  updateAccount: (
+  updateAccount: async (
     id: string,
     body: Partial<{
       name: string;
@@ -727,7 +777,14 @@ export const api = {
       statementDay: number;
       dueDay: number;
     }>,
-  ) => request<{ data: AccountRecord }>(`/api/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }).then((r) => r.data),
+  ): Promise<AccountRecord> => {
+    if (isStandaloneClient()) return clientDb.updateAccount(id, body);
+    try {
+      return await request<{ data: AccountRecord }>(`/api/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }).then((r) => r.data);
+    } catch {
+      return clientDb.updateAccount(id, body);
+    }
+  },
 
   getUnmatchedTransfers: () =>
     request<{ data: UnmatchedTransferCandidate[] }>('/api/transfers/unmatched').then((r) => r.data),
@@ -761,28 +818,44 @@ export const api = {
       body: JSON.stringify({ targetBalanceMinor }),
     }).then((r) => r.data),
 
-  deleteAccount: (id: string) => request<{ ok: boolean }>(`/api/accounts/${id}`, { method: 'DELETE' }),
+  deleteAccount: async (id: string): Promise<{ ok: boolean }> => {
+    if (isStandaloneClient()) {
+      clientDb.deleteAccount(id);
+      return { ok: true };
+    }
+    try {
+      return await request<{ ok: boolean }>(`/api/accounts/${id}`, { method: 'DELETE' });
+    } catch {
+      clientDb.deleteAccount(id);
+      return { ok: true };
+    }
+  },
 
-  getTransactions: (params: {
+  getTransactions: async (params: {
     scope?: Scope;
     kind?: TxKind;
     accountId?: string;
     search?: string;
     fromDate?: string;
     toDate?: string;
-  } = {}) => {
-    const qs = new URLSearchParams();
-    if (params.scope) qs.set('scope', params.scope);
-    if (params.kind) qs.set('kind', params.kind);
-    if (params.accountId) qs.set('accountId', params.accountId);
-    if (params.search) qs.set('search', params.search);
-    if (params.fromDate) qs.set('fromDate', params.fromDate);
-    if (params.toDate) qs.set('toDate', params.toDate);
-    const suffix = qs.toString() ? `?${qs.toString()}` : '';
-    return request<{ data: TransactionRecord[] }>(`/api/transactions${suffix}`).then((r) => r.data);
+  } = {}): Promise<TransactionRecord[]> => {
+    if (isStandaloneClient()) return clientDb.getTransactions(params);
+    try {
+      const qs = new URLSearchParams();
+      if (params.scope) qs.set('scope', params.scope);
+      if (params.kind) qs.set('kind', params.kind);
+      if (params.accountId) qs.set('accountId', params.accountId);
+      if (params.search) qs.set('search', params.search);
+      if (params.fromDate) qs.set('fromDate', params.fromDate);
+      if (params.toDate) qs.set('toDate', params.toDate);
+      const suffix = qs.toString() ? `?${qs.toString()}` : '';
+      return await request<{ data: TransactionRecord[] }>(`/api/transactions${suffix}`).then((r) => r.data);
+    } catch {
+      return clientDb.getTransactions(params);
+    }
   },
 
-  createTransaction: (body: {
+  createTransaction: async (body: {
     kind: TxKind;
     scope: Scope;
     accountId: string;
@@ -794,14 +867,21 @@ export const api = {
     note?: string;
     split?: { participants: string[]; includeSelf: boolean; dueDate?: string | null };
     attachment?: { filename: string; mimeType: string; dataBase64: string };
-  }) => request<{ data: TransactionRecord }>('/api/transactions', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data),
+  }): Promise<TransactionRecord> => {
+    if (isStandaloneClient()) return clientDb.createTransaction(body);
+    try {
+      return await request<{ data: TransactionRecord }>('/api/transactions', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
+    } catch {
+      return clientDb.createTransaction(body);
+    }
+  },
 
   getTransactionAttachment: (id: string) =>
     request<{ data: { id: string; transactionId: string; filename: string; mimeType: string; dataBase64: string } }>(
       `/api/transactions/${id}/attachment`,
     ).then((r) => r.data),
 
-  updateTransaction: (
+  updateTransaction: async (
     id: string,
     body: {
       kind: TxKind;
@@ -814,23 +894,58 @@ export const api = {
       party?: string;
       note?: string;
     },
-  ) => request<{ data: TransactionRecord }>(`/api/transactions/${id}`, { method: 'PATCH', body: JSON.stringify(body) }).then((r) => r.data),
+  ): Promise<TransactionRecord> => {
+    if (isStandaloneClient()) return clientDb.updateTransaction(id, body);
+    try {
+      return await request<{ data: TransactionRecord }>(`/api/transactions/${id}`, { method: 'PATCH', body: JSON.stringify(body) }).then((r) => r.data);
+    } catch {
+      return clientDb.updateTransaction(id, body);
+    }
+  },
 
-  deleteTransaction: (id: string) => request<{ ok: boolean }>(`/api/transactions/${id}`, { method: 'DELETE' }),
+  deleteTransaction: async (id: string): Promise<{ ok: boolean }> => {
+    if (isStandaloneClient()) {
+      clientDb.deleteTransaction(id);
+      return { ok: true };
+    }
+    try {
+      return await request<{ ok: boolean }>(`/api/transactions/${id}`, { method: 'DELETE' });
+    } catch {
+      clientDb.deleteTransaction(id);
+      return { ok: true };
+    }
+  },
 
-  bulkTransactions: (body: {
+  bulkTransactions: async (body: {
     action: 'delete' | 'update';
     ids: string[];
     patch?: { scope?: Scope; category?: string };
-  }) =>
-    request<{ ok: boolean; count: number }>('/api/transactions/bulk', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
+  }): Promise<{ ok: boolean; count: number }> => {
+    if (isStandaloneClient()) {
+      const res = clientDb.bulkTransactions(body);
+      return { ok: true, count: res.count };
+    }
+    try {
+      return await request<{ ok: boolean; count: number }>('/api/transactions/bulk', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    } catch {
+      const res = clientDb.bulkTransactions(body);
+      return { ok: true, count: res.count };
+    }
+  },
 
-  getRecurringBills: () => request<{ data: RecurringBillRecord[] }>('/api/recurring-bills').then((r) => r.data),
+  getRecurringBills: async (): Promise<RecurringBillRecord[]> => {
+    if (isStandaloneClient()) return clientDb.getRecurringBills();
+    try {
+      return await request<{ data: RecurringBillRecord[] }>('/api/recurring-bills').then((r) => r.data);
+    } catch {
+      return clientDb.getRecurringBills();
+    }
+  },
 
-  createRecurringBill: (body: {
+  createRecurringBill: async (body: {
     title: string;
     scope: Scope;
     kind: 'expense' | 'income';
@@ -839,9 +954,16 @@ export const api = {
     amountMinor: number;
     dueDay: number;
     autoPost?: boolean;
-  }) => request<{ data: RecurringBillRecord }>('/api/recurring-bills', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data),
+  }): Promise<RecurringBillRecord> => {
+    if (isStandaloneClient()) return clientDb.createRecurringBill(body);
+    try {
+      return await request<{ data: RecurringBillRecord }>('/api/recurring-bills', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
+    } catch {
+      return clientDb.createRecurringBill(body);
+    }
+  },
 
-  updateRecurringBill: (
+  updateRecurringBill: async (
     id: string,
     body: Partial<{
       title: string;
@@ -854,7 +976,14 @@ export const api = {
       active: boolean;
       autoPost: boolean;
     }>,
-  ) => request<{ data: RecurringBillRecord }>(`/api/recurring-bills/${id}`, { method: 'PATCH', body: JSON.stringify(body) }).then((r) => r.data),
+  ): Promise<RecurringBillRecord> => {
+    if (isStandaloneClient()) return clientDb.updateRecurringBill(id, body);
+    try {
+      return await request<{ data: RecurringBillRecord }>(`/api/recurring-bills/${id}`, { method: 'PATCH', body: JSON.stringify(body) }).then((r) => r.data);
+    } catch {
+      return clientDb.updateRecurringBill(id, body);
+    }
+  },
 
   runAutoPostRecurring: () =>
     request<{ data: Array<{ bill: RecurringBillRecord; transaction: TransactionRecord }> }>(
@@ -870,13 +999,30 @@ export const api = {
 
   deleteRecurringBill: (id: string) => request<{ ok: boolean }>(`/api/recurring-bills/${id}`, { method: 'DELETE' }),
 
-  getBudgets: () => request<{ data: ScopeBudgetRecord[] }>('/api/budgets').then((r) => r.data),
+  getBudgets: async (): Promise<ScopeBudgetRecord[]> => {
+    if (isStandaloneClient()) return clientDb.getBudgets();
+    try {
+      return await request<{ data: ScopeBudgetRecord[] }>('/api/budgets').then((r) => r.data);
+    } catch {
+      return clientDb.getBudgets();
+    }
+  },
 
-  upsertBudget: (scope: Scope, monthlyLimitMinor: number) =>
-    request<{ data: ScopeBudgetRecord[] }>('/api/budgets', {
-      method: 'PUT',
-      body: JSON.stringify({ scope, monthlyLimitMinor }),
-    }).then((r) => r.data),
+  upsertBudget: async (scope: Scope, monthlyLimitMinor: number): Promise<ScopeBudgetRecord[]> => {
+    if (isStandaloneClient()) {
+      clientDb.setBudget(scope, '', monthlyLimitMinor);
+      return clientDb.getBudgets();
+    }
+    try {
+      return await request<{ data: ScopeBudgetRecord[] }>('/api/budgets', {
+        method: 'PUT',
+        body: JSON.stringify({ scope, monthlyLimitMinor }),
+      }).then((r) => r.data);
+    } catch {
+      clientDb.setBudget(scope, '', monthlyLimitMinor);
+      return clientDb.getBudgets();
+    }
+  },
 
   getCategoryBudgets: () => request<{ data: CategoryBudgetRecord[] }>('/api/budgets/categories').then((r) => r.data),
 
@@ -889,9 +1035,16 @@ export const api = {
   deleteCategoryBudget: (id: string) =>
     request<{ ok: boolean }>(`/api/budgets/categories/${id}`, { method: 'DELETE' }),
 
-  getLoans: () => request<{ data: LoanRecord[] }>('/api/loans').then((r) => r.data),
+  getLoans: async (): Promise<LoanRecord[]> => {
+    if (isStandaloneClient()) return clientDb.getLoans();
+    try {
+      return await request<{ data: LoanRecord[] }>('/api/loans').then((r) => r.data);
+    } catch {
+      return clientDb.getLoans();
+    }
+  },
 
-  createLoan: (body: {
+  createLoan: async (body: {
     name: string;
     counterparty: string;
     scope: Scope;
@@ -904,7 +1057,14 @@ export const api = {
     startDate: string;
     nextDueDate: string;
     linkedAccountId?: string | null;
-  }) => request<{ data: LoanRecord }>('/api/loans', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data),
+  }): Promise<LoanRecord> => {
+    if (isStandaloneClient()) return clientDb.createLoan(body);
+    try {
+      return await request<{ data: LoanRecord }>('/api/loans', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
+    } catch {
+      return clientDb.createLoan(body);
+    }
+  },
 
   updateLoan: (
     id: string,
@@ -925,17 +1085,30 @@ export const api = {
     }>,
   ) => request<{ data: LoanRecord }>(`/api/loans/${id}`, { method: 'PATCH', body: JSON.stringify(body) }).then((r) => r.data),
 
-  payLoan: (id: string, body: { amountMinor: number; accountId: string; paidAt: string; note?: string }) =>
-    request<{ data: { loan: LoanRecord; transaction: TransactionRecord } }>(`/api/loans/${id}/payments`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }).then((r) => r.data),
+  payLoan: async (id: string, body: { amountMinor: number; accountId: string; paidAt: string; note?: string }): Promise<{ loan: LoanRecord; transaction: TransactionRecord }> => {
+    if (isStandaloneClient()) return clientDb.recordLoanPayment(id, body);
+    try {
+      return await request<{ data: { loan: LoanRecord; transaction: TransactionRecord } }>(`/api/loans/${id}/payments`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }).then((r) => r.data);
+    } catch {
+      return clientDb.recordLoanPayment(id, body);
+    }
+  },
 
   deleteLoan: (id: string) => request<{ ok: boolean }>(`/api/loans/${id}`, { method: 'DELETE' }),
 
-  getDues: () => request<{ data: PersonDueRecord[]; summaries: PersonNetSummary[] }>('/api/dues'),
+  getDues: async (): Promise<{ data: PersonDueRecord[]; summaries: PersonNetSummary[] }> => {
+    if (isStandaloneClient()) return clientDb.getDues();
+    try {
+      return await request<{ data: PersonDueRecord[]; summaries: PersonNetSummary[] }>('/api/dues');
+    } catch {
+      return clientDb.getDues();
+    }
+  },
 
-  createDue: (body: {
+  createDue: async (body: {
     personName: string;
     phone?: string;
     direction: DueDirection;
@@ -943,7 +1116,14 @@ export const api = {
     amountMinor: number;
     dueDate?: string | null;
     note?: string;
-  }) => request<{ data: PersonDueRecord }>('/api/dues', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data),
+  }): Promise<PersonDueRecord> => {
+    if (isStandaloneClient()) return clientDb.createDue(body);
+    try {
+      return await request<{ data: PersonDueRecord }>('/api/dues', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
+    } catch {
+      return clientDb.createDue(body);
+    }
+  },
 
   updateDue: (
     id: string,
@@ -958,16 +1138,28 @@ export const api = {
     }>,
   ) => request<{ data: PersonDueRecord }>(`/api/dues/${id}`, { method: 'PATCH', body: JSON.stringify(body) }).then((r) => r.data),
 
-  settleDue: (id: string, body: { amountMinor: number; accountId?: string | null; settledAt: string; note?: string }) =>
-    request<{ data: { due: PersonDueRecord; transaction: TransactionRecord | null } }>(`/api/dues/${id}/settle`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }).then((r) => r.data),
+  settleDue: async (id: string, body: { amountMinor: number; accountId?: string | null; settledAt: string; note?: string }): Promise<{ due: PersonDueRecord; transaction: TransactionRecord | null }> => {
+    if (isStandaloneClient()) return clientDb.settleDue(id, body);
+    try {
+      return await request<{ data: { due: PersonDueRecord; transaction: TransactionRecord | null } }>(`/api/dues/${id}/settle`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }).then((r) => r.data);
+    } catch {
+      return clientDb.settleDue(id, body);
+    }
+  },
 
   deleteDue: (id: string) => request<{ ok: boolean }>(`/api/dues/${id}`, { method: 'DELETE' }),
 
-  getNotes: (search?: string) =>
-    request<{ data: NoteRecord[] }>(`/api/notes${search ? `?search=${encodeURIComponent(search)}` : ''}`).then((r) => r.data),
+  getNotes: async (search?: string): Promise<NoteRecord[]> => {
+    if (isStandaloneClient()) return clientDb.getNotes();
+    try {
+      return await request<{ data: NoteRecord[] }>(`/api/notes${search ? `?search=${encodeURIComponent(search)}` : ''}`).then((r) => r.data);
+    } catch {
+      return clientDb.getNotes();
+    }
+  },
 
   reorderNotes: (noteIds: string[]) =>
     request<{ ok: boolean; count: number }>('/api/notes/reorder', {
@@ -975,7 +1167,7 @@ export const api = {
       body: JSON.stringify({ noteIds }),
     }),
 
-  createNote: (body: {
+  createNote: async (body: {
     title: string;
     body: string;
     scope: NoteScope;
@@ -989,9 +1181,16 @@ export const api = {
     linkedLoanId?: string | null;
     linkedAccountId?: string | null;
     checklist: Array<{ id?: string; text: string; done: boolean }>;
-  }) => request<{ data: NoteRecord }>('/api/notes', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data),
+  }): Promise<NoteRecord> => {
+    if (isStandaloneClient()) return clientDb.upsertNote(body);
+    try {
+      return await request<{ data: NoteRecord }>('/api/notes', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data);
+    } catch {
+      return clientDb.upsertNote(body);
+    }
+  },
 
-  updateNote: (
+  updateNote: async (
     id: string,
     body: {
       title: string;
@@ -1008,7 +1207,14 @@ export const api = {
       linkedAccountId?: string | null;
       checklist: Array<{ id?: string; text: string; done: boolean }>;
     },
-  ) => request<{ data: NoteRecord }>(`/api/notes/${id}`, { method: 'PUT', body: JSON.stringify(body) }).then((r) => r.data),
+  ): Promise<NoteRecord> => {
+    if (isStandaloneClient()) return clientDb.upsertNote({ id, ...body });
+    try {
+      return await request<{ data: NoteRecord }>(`/api/notes/${id}`, { method: 'PUT', body: JSON.stringify(body) }).then((r) => r.data);
+    } catch {
+      return clientDb.upsertNote({ id, ...body });
+    }
+  },
 
   addNoteAttachment: (
     noteId: string,
@@ -1028,7 +1234,18 @@ export const api = {
       body: JSON.stringify({ done }),
     }).then((r) => r.data),
 
-  deleteNote: (id: string) => request<{ ok: boolean }>(`/api/notes/${id}`, { method: 'DELETE' }),
+  deleteNote: async (id: string): Promise<{ ok: boolean }> => {
+    if (isStandaloneClient()) {
+      clientDb.deleteNote(id);
+      return { ok: true };
+    }
+    try {
+      return await request<{ ok: boolean }>(`/api/notes/${id}`, { method: 'DELETE' });
+    } catch {
+      clientDb.deleteNote(id);
+      return { ok: true };
+    }
+  },
 
   bulkNotes: (body: {
     ids: string[];
@@ -1124,15 +1341,29 @@ export const api = {
   saveAlertSettings: (body: AlertSettings) =>
     request<{ data: AlertSettings }>('/api/alerts/settings', { method: 'PUT', body: JSON.stringify(body) }).then((r) => r.data),
 
-  getWhatsAppStatus: () => request<{ data: WhatsAppBridgeState }>('/api/whatsapp/status').then((r) => r.data),
+  getWhatsAppStatus: async (): Promise<WhatsAppBridgeState> => {
+    if (isStandaloneClient()) return clientDb.getWhatsAppStatus();
+    try {
+      return await request<{ data: WhatsAppBridgeState }>('/api/whatsapp/status').then((r) => r.data);
+    } catch {
+      return clientDb.getWhatsAppStatus();
+    }
+  },
   connectWhatsApp: () => request<{ data: WhatsAppBridgeState }>('/api/whatsapp/connect', { method: 'POST' }).then((r) => r.data),
   disconnectWhatsApp: () => request<{ data: WhatsAppBridgeState }>('/api/whatsapp/disconnect', { method: 'POST' }).then((r) => r.data),
   logoutWhatsApp: () => request<{ data: WhatsAppBridgeState }>('/api/whatsapp/logout', { method: 'POST' }).then((r) => r.data),
   testWhatsApp: (phone?: string) =>
     request<{ ok: boolean }>('/api/whatsapp/test', { method: 'POST', body: JSON.stringify({ phone }) }),
 
-  getPreferences: () => request<{ data: AppPreferences }>('/api/preferences').then((r) => r.data),
-  updatePreferences: (body: {
+  getPreferences: async (): Promise<AppPreferences> => {
+    if (isStandaloneClient()) return clientDb.getPreferences();
+    try {
+      return await request<{ data: AppPreferences }>('/api/preferences').then((r) => r.data);
+    } catch {
+      return clientDb.getPreferences();
+    }
+  },
+  updatePreferences: async (body: {
     systemLanguage?: AppLanguage;
     agentAutoExecute?: boolean;
     llmProvider?: 'local' | 'gemini' | 'openai';
@@ -1142,7 +1373,14 @@ export const api = {
     autoLockMinutes?: number;
     autoBackupEnabled?: boolean;
     autoBackupDir?: string;
-  }) => request<{ data: AppPreferences }>('/api/preferences', { method: 'PUT', body: JSON.stringify(body) }).then((r) => r.data),
+  }): Promise<AppPreferences> => {
+    if (isStandaloneClient()) return clientDb.updatePreferences(body);
+    try {
+      return await request<{ data: AppPreferences }>('/api/preferences', { method: 'PUT', body: JSON.stringify(body) }).then((r) => r.data);
+    } catch {
+      return clientDb.updatePreferences(body);
+    }
+  },
 
   getAppLockStatus: () =>
     request<{ data: { hasAppPin: boolean; unlocked: boolean; autoLockMinutes: number } }>('/api/app-lock/status').then(
@@ -1208,8 +1446,14 @@ export const api = {
   }) => request<{ data: CategoryRuleRecord }>('/api/rules', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data),
   deleteCategoryRule: (id: string) => request<{ ok: boolean }>(`/api/rules/${id}`, { method: 'DELETE' }),
 
-  getAgentBriefing: (scope?: Scope) =>
-    request<{ data: AdvisorBriefing }>(`/api/agent/briefing${scope ? `?scope=${scope}` : ''}`).then((r) => r.data),
+  getAgentBriefing: async (scope?: Scope): Promise<AdvisorBriefing> => {
+    if (isStandaloneClient()) return clientDb.getAgentBriefing(scope);
+    try {
+      return await request<{ data: AdvisorBriefing }>(`/api/agent/briefing${scope ? `?scope=${scope}` : ''}`).then((r) => r.data);
+    } catch {
+      return clientDb.getAgentBriefing(scope);
+    }
+  },
   getSubscriptions: () => request<{ data: RecurringLeakCandidate[] }>('/api/agent/subscriptions').then((r) => r.data),
   getDebtPayoffPlan: (params?: { extraMinor?: number; strategy?: 'avalanche' | 'snowball'; cardAprBps?: number }) => {
     const qs = new URLSearchParams();
@@ -1308,38 +1552,46 @@ export const api = {
       body: JSON.stringify(snapshot),
     }).then((r) => r.data),
 
-  getJobSheets: () =>
-    request<{ data: import('../workspaces/sheets/jobSheetsAnalytics.ts').JobSheetRecord[] }>('/api/job-sheets').then(
-      (r) => r.data,
-    ),
-  createJobSheet: (body: {
-    name: string;
-    scope?: Scope;
-    color?: import('../workspaces/sheets/jobSheetsAnalytics.ts').SheetTabColor;
-    columns: import('../workspaces/sheets/jobSheetsAnalytics.ts').SheetColumn[];
-    rows: import('../workspaces/sheets/jobSheetsAnalytics.ts').SheetRow[];
-    settings?: import('../workspaces/sheets/jobSheetsAnalytics.ts').SheetSettings;
-    orderIndex?: number;
-  }) =>
-    request<{ data: import('../workspaces/sheets/jobSheetsAnalytics.ts').JobSheetRecord }>('/api/job-sheets', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }).then((r) => r.data),
-  updateJobSheet: (
-    id: string,
-    body: Partial<{
-      name: string;
-      scope: Scope;
-      color: import('../workspaces/sheets/jobSheetsAnalytics.ts').SheetTabColor;
-      columns: import('../workspaces/sheets/jobSheetsAnalytics.ts').SheetColumn[];
-      rows: import('../workspaces/sheets/jobSheetsAnalytics.ts').SheetRow[];
-      settings: import('../workspaces/sheets/jobSheetsAnalytics.ts').SheetSettings;
-      orderIndex: number;
-    }>,
-  ) =>
-    request<{ data: import('../workspaces/sheets/jobSheetsAnalytics.ts').JobSheetRecord }>(`/api/job-sheets/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    }).then((r) => r.data),
-  deleteJobSheet: (id: string) => request<{ ok: boolean }>(`/api/job-sheets/${id}`, { method: 'DELETE' }),
+  getJobSheets: async (): Promise<any[]> => {
+    if (isStandaloneClient()) return clientDb.getJobSheets();
+    try {
+      return await request<{ data: any[] }>('/api/job-sheets').then((r) => r.data);
+    } catch {
+      return clientDb.getJobSheets();
+    }
+  },
+  createJobSheet: async (body: any): Promise<any> => {
+    if (isStandaloneClient()) return clientDb.saveJobSheet({ id: `sheet-${Date.now()}`, ...body });
+    try {
+      return await request<{ data: any }>('/api/job-sheets', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }).then((r) => r.data);
+    } catch {
+      return clientDb.saveJobSheet({ id: `sheet-${Date.now()}`, ...body });
+    }
+  },
+  updateJobSheet: async (id: string, body: any): Promise<any> => {
+    if (isStandaloneClient()) return clientDb.saveJobSheet({ id, ...body });
+    try {
+      return await request<{ data: any }>(`/api/job-sheets/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }).then((r) => r.data);
+    } catch {
+      return clientDb.saveJobSheet({ id, ...body });
+    }
+  },
+  deleteJobSheet: async (id: string): Promise<{ ok: boolean }> => {
+    if (isStandaloneClient()) {
+      clientDb.deleteJobSheet(id);
+      return { ok: true };
+    }
+    try {
+      return await request<{ ok: boolean }>(`/api/job-sheets/${id}`, { method: 'DELETE' });
+    } catch {
+      clientDb.deleteJobSheet(id);
+      return { ok: true };
+    }
+  },
 };

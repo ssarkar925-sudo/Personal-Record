@@ -55,3 +55,5 @@ android/app/src/main/assets/public/
 
 
 
+.vercel
+.env*

@@ -6,6 +6,7 @@ import {
   Database,
   RefreshCw,
   UploadCloud,
+  DownloadCloud,
   LogOut,
   LogIn,
   KeyRound,
@@ -26,6 +27,7 @@ import {
   type User,
 } from '../../lib/supabase.ts';
 import { pushLocalDataToSupabase } from '../../lib/supabase-sync.ts';
+import { clientDb } from '../../lib/client-db.ts';
 
 interface CloudSyncModalProps {
   open: boolean;
@@ -153,6 +155,23 @@ export function CloudSyncModal({ open, onClose, onDataRefreshed, notify }: Cloud
       const summary = `Uploaded: ${res.accountsCount} accounts, ${res.transactionsCount} transactions, ${res.loansCount} loans, ${res.duesCount} dues, ${res.notesCount} notes.`;
       setSyncSummary(summary);
       notify?.('Local financial data synced to Supabase!', 'ok');
+      onDataRefreshed?.();
+    } catch (err) {
+      setSyncSummary(`Error: ${(err as Error).message}`);
+      notify?.((err as Error).message, 'err');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handlePullData = async () => {
+    setSyncing(true);
+    setSyncSummary(null);
+    try {
+      const res = await clientDb.pullDataFromSupabase();
+      const summary = `Downloaded ${res.count} items from Supabase cloud into this device.`;
+      setSyncSummary(summary);
+      notify?.('Pulled cloud financial records into local device!', 'ok');
       onDataRefreshed?.();
     } catch (err) {
       setSyncSummary(`Error: ${(err as Error).message}`);
@@ -428,7 +447,17 @@ export function CloudSyncModal({ open, onClose, onDataRefreshed, notify }: Cloud
               </div>
             )}
 
-            <div className="flex justify-end">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => void handlePullData()}
+                disabled={syncing}
+                className="gap-1.5 border-slate-300 text-slate-700 hover:bg-slate-100 cursor-pointer"
+              >
+                <DownloadCloud className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
+                {syncing ? 'Syncing...' : 'Pull Cloud Data to Device'}
+              </Button>
               <Button
                 variant="primary"
                 size="sm"

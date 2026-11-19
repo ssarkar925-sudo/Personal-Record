@@ -553,8 +553,19 @@ export function App() {
         {!(appLocked && preferences.hasAppPin) && (
           <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 sm:px-6 lg:px-8 pt-5 sm:pt-6 pb-28">
             {loadError && (
-              <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-800">
-                Could not load local data: {loadError}
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                <span>{loadError}</span>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-7 text-xs bg-white text-slate-800 border-amber-300 hover:bg-amber-100/50"
+                  onClick={() => {
+                    setLoadError(null);
+                    void loadAll();
+                  }}
+                >
+                  Retry Loading
+                </Button>
               </div>
             )}
 
