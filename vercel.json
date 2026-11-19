@@ -5,17 +5,38 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/((?!assets/|sw.js|icon|manifest).*)",
+      "source": "/((?!assets/|sw.js|icon|manifest|version.json|.*\\.apk|PersonalLedger).*)",
       "destination": "/index.html"
     }
   ],
   "headers": [
     {
-      "source": "/(sw.js|index.html)",
+      "source": "/(sw.js|index.html|version.json)",
       "headers": [
         {
           "key": "Cache-Control",
           "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
+    },
+    {
+      "source": "/(.*\\.apk)",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/vnd.android.package-archive"
+        },
+        {
+          "key": "Content-Disposition",
+          "value": "attachment; filename=\"PersonalLedger-latest.apk\""
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=300, must-revalidate"
         }
       ]
     },

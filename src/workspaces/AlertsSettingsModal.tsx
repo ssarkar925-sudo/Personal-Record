@@ -24,8 +24,10 @@ import {
 import { AnimatedTabs, Badge, Button, Dialog, FieldLabel, Input } from '../components/ui/Primitives.tsx';
 import type { AlertModule } from '../../shared/ledger-core.ts';
 import { UI_STRINGS, type AppLanguage } from '../../shared/i18n.ts';
+import { AppLogo } from '../components/ui/AppLogo.tsx';
+import { checkForAppUpdate, triggerApkDownload, CURRENT_APP_VERSION, CURRENT_BUILD_NUMBER, type UpdateCheckResult } from '../lib/auto-updater.ts';
 
-type ModalTab = 'whatsapp' | 'inbox' | 'backup';
+type ModalTab = 'whatsapp' | 'inbox' | 'backup' | 'updates';
 
 const MODULE_LABELS: Record<AlertModule, { title: string; desc: string }> = {
   credit_cards: { title: 'Credit Cards', desc: 'Statement bill due countdown & utilization threshold' },
@@ -78,6 +80,27 @@ export function AlertsSettingsModal({
   const [pinCurrent, setPinCurrent] = useState('');
   const [pinNew, setPinNew] = useState('');
   const [pinAutoLockMin, setPinAutoLockMin] = useState('0');
+  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  const handleCheckForUpdates = async () => {
+    setCheckingUpdate(true);
+    setError('');
+    setStatusMsg('');
+    try {
+      const res = await checkForAppUpdate();
+      setUpdateResult(res);
+      if (res.hasUpdate) {
+        setStatusMsg(`New update v${res.latestVersion} is available!`);
+      } else {
+        setStatusMsg(`Your app is running the latest version (v${CURRENT_APP_VERSION}).`);
+      }
+    } catch {
+      setError('Unable to check for updates at this moment.');
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
 
   const loadData = async () => {
     const [s, a, wa, pr] = await Promise.all([
@@ -334,6 +357,7 @@ export function AlertsSettingsModal({
               badge: alerts.filter((a) => a.channel === 'in_app' && a.status === 'pending').length,
             },
             { id: 'backup', label: dict.alerts.tabBackup, accentHex: '#4f46e5', icon: <Shield className="h-3.5 w-3.5" /> },
+            { id: 'updates', label: 'Updates & APK', accentHex: '#d97706', icon: <Download className="h-3.5 w-3.5" /> },
           ]}
         />
 
@@ -895,6 +919,111 @@ export function AlertsSettingsModal({
                 >
                   {copiedPs ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === 'updates' && (
+          <div className="space-y-4">
+            {/* Version Crest Header */}
+            <div className="rounded-xl border border-[#C59B27]/40 bg-gradient-to-br from-[#1B1E26] via-[#111318] to-[#0A0B0E] p-5 text-white shadow-lg">
+              <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                <div className="shrink-0 overflow-hidden rounded-2xl border border-[#C59B27]/50 shadow-[0_4px_16px_rgba(197,155,39,0.3)]">
+                  <AppLogo size={64} className="h-16 w-16 object-contain" />
+                </div>
+                <div className="flex-1 text-center sm:text-left space-y-1">
+                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                    <h3 className="font-display text-lg font-bold text-[#FFFBEB] tracking-tight">{dict.appName}</h3>
+                    <Badge className="border-[#C59B27]/50 bg-[#C59B27]/20 text-[#FDE68A] text-xs">
+                      v{CURRENT_APP_VERSION} (Build {CURRENT_BUILD_NUMBER})
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-slate-300">
+                    Private Wealth &amp; Sovereign Financial OS &bull; Offline-First PWA &bull; Native Android
+                  </p>
+                  <p className="text-[11px] font-mono-data text-[#E5C158]">
+                    Production Release Channel &bull; Live Cloud Sync Enabled
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Check for Updates Card */}
+            <div className="rounded-xl border border-slate-200 p-4 space-y-3 bg-white">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-900">Application Auto-Updater</h4>
+                  <p className="text-xs text-slate-600">
+                    Verify against the official distribution channel on Vercel for new features and patches.
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="shrink-0"
+                  disabled={checkingUpdate}
+                  onClick={() => void handleCheckForUpdates()}
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${checkingUpdate ? 'animate-spin' : ''}`} />
+                  {checkingUpdate ? 'Checking...' : 'Check for Updates'}
+                </Button>
+              </div>
+
+              {updateResult && (
+                <div className={`rounded-xl border p-3.5 text-xs space-y-2 ${
+                  updateResult.hasUpdate
+                    ? 'border-[#C59B27] bg-[#FEF9EE] text-[#78350F]'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                }`}>
+                  <div className="flex items-center justify-between font-semibold">
+                    <span>
+                      {updateResult.hasUpdate
+                        ? `🎉 New Version v${updateResult.latestVersion} Available!`
+                        : `✓ You are on the latest version (v${CURRENT_APP_VERSION})`}
+                    </span>
+                    {updateResult.releaseDate && (
+                      <span className="text-[11px] font-normal text-slate-500">Released: {updateResult.releaseDate}</span>
+                    )}
+                  </div>
+                  <p className="text-slate-700">{updateResult.changelog}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Android APK Direct Download & Auto-Update Card */}
+            <div className="rounded-xl border border-slate-200 p-4 space-y-3 bg-white">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-semibold text-slate-900">Android APK (Latest Build)</h4>
+                    <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">
+                      Direct 1-Tap Install
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600">
+                    Download and install the latest compiled Android application package directly on your mobile device.
+                  </p>
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="shrink-0 bg-[#C59B27] hover:bg-[#D97706] text-[#111318] font-bold"
+                  onClick={() => triggerApkDownload('https://personal-ledger-amber.vercel.app/PersonalLedger-latest.apk')}
+                >
+                  <Download className="h-3.5 w-3.5 mr-1.5" />
+                  Download APK
+                </Button>
+              </div>
+
+              <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600 space-y-1.5 border border-slate-100">
+                <p className="font-semibold text-slate-800">📱 How Android In-App Updates Work:</p>
+                <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600">
+                  <li>Click <strong>Download APK</strong> or tap the in-app update banner whenever an update is notified.</li>
+                  <li>When the download completes, tap the notification or open the APK from your Downloads.</li>
+                  <li>Android will prompt: <em>&ldquo;Do you want to update this app?&rdquo;</em> &mdash; tap <strong>Update</strong>.</li>
+                  <li>All your local database transactions, master password, and cloud sync settings remain completely intact!</li>
+                </ol>
               </div>
             </div>
           </div>

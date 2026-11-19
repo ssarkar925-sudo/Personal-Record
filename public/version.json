@@ -1,0 +1,7 @@
+{
+  "version": "1.0.1",
+  "build": 101,
+  "releaseDate": "2026-11-19",
+  "apkUrl": "https://personal-ledger-amber.vercel.app/PersonalLedger-latest.apk",
+  "changelog": "Sovereign Executive Gold Insignia logo, automatic Android update engine, and real-time multi-device cloud sync."
+}

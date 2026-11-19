@@ -52,8 +52,11 @@ android/capacitor-android/build/
 android/app/src/main/assets/public/
 *.apk
 *.aab
+!public/*.apk
 
 
 
 .vercel
 .env*
+
+graphify-out/

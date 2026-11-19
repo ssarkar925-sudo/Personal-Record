@@ -1,10 +1,89 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
   <defs>
-    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#2563eb"/>
-      <stop offset="100%" stop-color="#4f46e5"/>
+    <!-- Background Gradient: Deep Obsidian -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1B1E26"/>
+      <stop offset="50%" stop-color="#111318"/>
+      <stop offset="100%" stop-color="#08090C"/>
     </linearGradient>
+
+    <!-- Metallic Gold Outer Stroke -->
+    <linearGradient id="goldBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE68A" stop-opacity="0.8"/>
+      <stop offset="40%" stop-color="#D97706" stop-opacity="0.5"/>
+      <stop offset="70%" stop-color="#F59E0B" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#78350F" stop-opacity="0.3"/>
+    </linearGradient>
+
+    <!-- Radial Amber/Gold Ambient Glow -->
+    <radialGradient id="centerGlow" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#C59B27" stop-opacity="0.22"/>
+      <stop offset="60%" stop-color="#C59B27" stop-opacity="0.04"/>
+      <stop offset="100%" stop-color="#C59B27" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Rich Imperial Gold Foil Gradient -->
+    <linearGradient id="goldFoil" x1="0%" y1="0%" x2="100%" y2="90%">
+      <stop offset="0%" stop-color="#FFFBEB"/>
+      <stop offset="18%" stop-color="#FDE68A"/>
+      <stop offset="45%" stop-color="#E5C158"/>
+      <stop offset="75%" stop-color="#C59B27"/>
+      <stop offset="100%" stop-color="#926C15"/>
+    </linearGradient>
+
+    <!-- Emerald Security Accent Gradient -->
+    <linearGradient id="emeraldAccent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+
+    <!-- Drop Shadow Filter for Insignia -->
+    <filter id="crestShadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.65"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#C59B27" flood-opacity="0.3"/>
+    </filter>
   </defs>
-  <rect width="128" height="128" rx="28" fill="url(#g)"/>
-  <text x="64" y="88" font-family="system-ui, sans-serif" font-size="76" font-weight="700" text-anchor="middle" fill="#ffffff">₹</text>
+
+  <!-- Base Rounded Squircle -->
+  <rect width="512" height="512" rx="116" fill="url(#bgGrad)"/>
+  <rect width="512" height="512" rx="116" fill="url(#centerGlow)"/>
+
+  <!-- Outer Beveled Border -->
+  <rect x="10" y="10" width="492" height="492" rx="106" fill="none" stroke="url(#goldBorder)" stroke-width="4"/>
+  <rect x="22" y="22" width="468" height="468" rx="94" fill="none" stroke="#FFFFFF" stroke-opacity="0.04" stroke-width="1.5"/>
+
+  <!-- Sovereign Geometric Rupee & Vault Crest -->
+  <g filter="url(#crestShadow)">
+    <!-- Top Horizontal Ledger Bar -->
+    <rect x="136" y="128" width="240" height="28" rx="14" fill="url(#goldFoil)"/>
+
+    <!-- Second Horizontal Ledger Bar -->
+    <rect x="136" y="184" width="206" height="28" rx="14" fill="url(#goldFoil)"/>
+
+    <!-- Vertical Stem -->
+    <rect x="168" y="128" width="28" height="236" rx="14" fill="url(#goldFoil)"/>
+
+    <!-- Upper Semi-Circular Loop of Rupee -->
+    <path d="M 186 184 C 286 184, 336 216, 336 264 C 336 312, 286 338, 186 338" 
+          fill="none" 
+          stroke="url(#goldFoil)" 
+          stroke-width="28" 
+          stroke-linecap="round"
+          stroke-linejoin="round"/>
+
+    <!-- Dynamic Diagonal Vault Leg -->
+    <path d="M 230 324 L 342 414" 
+          fill="none" 
+          stroke="url(#goldFoil)" 
+          stroke-width="30" 
+          stroke-linecap="round"/>
+
+    <!-- Emerald Security Vault Rivet Accent -->
+    <circle cx="182" cy="264" r="8" fill="url(#emeraldAccent)"/>
+    <circle cx="182" cy="264" r="12" fill="none" stroke="#34D399" stroke-width="1.5" stroke-opacity="0.6"/>
+
+    <!-- Diamond Wealth Sparkle in Top Right -->
+    <path d="M 372 104 Q 372 120 388 120 Q 372 120 372 136 Q 372 120 356 120 Q 372 120 372 104 Z" fill="#FFFBEB"/>
+    <circle cx="372" cy="120" r="3" fill="#FDE68A"/>
+  </g>
 </svg>

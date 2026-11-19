@@ -48,6 +48,8 @@ import { subscribeToSupabaseRealtime } from './lib/supabase-sync.ts';
 import { AgentDrawer } from './components/AgentDrawer.tsx';
 import { DashboardView, type WorkspaceId } from './workspaces/DashboardView.tsx';
 import { AlertsSettingsModal } from './workspaces/AlertsSettingsModal.tsx';
+import { AppLogo } from './components/ui/AppLogo.tsx';
+import { checkForAppUpdate, triggerApkDownload, type UpdateCheckResult } from './lib/auto-updater.ts';
 import { SCOPE_META } from './lib/format.ts';
 import type { Scope } from '../shared/ledger-core.ts';
 import { UI_STRINGS } from '../shared/i18n.ts';
@@ -113,6 +115,13 @@ export function App() {
   const [appLocked, setAppLocked] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
+
+  useEffect(() => {
+    void checkForAppUpdate().then((res) => {
+      if (res.hasUpdate) setUpdateInfo(res);
+    });
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.privacy = privacyMasked ? 'masked' : 'visible';
@@ -437,10 +446,10 @@ export function App() {
                 <button
                   type="button"
                   onClick={() => setActiveTab('dashboard')}
-                  className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#111318] border border-[#C59B27]/45 text-[#E5C158] text-sm font-bold font-mono-data tracking-tight shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_2px_8px_rgba(17,19,24,0.2)] cursor-pointer"
-                  title="Return to Executive Dashboard"
+                  className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl overflow-hidden border border-[#C59B27]/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_2px_8px_rgba(17,19,24,0.25)] cursor-pointer transition-transform duration-150 active:scale-95"
+                  title="Personal Ledger Sovereign Crest - Return to Executive Dashboard"
                 >
-                  ₹
+                  <AppLogo size={36} className="h-full w-full object-contain" />
                 </button>
                 <div className="min-w-0">
                   <div className="font-display text-sm sm:text-base font-bold tracking-tight text-[#111318] leading-none whitespace-nowrap truncate">
@@ -614,6 +623,40 @@ export function App() {
             </div>
           </div>
         </header>
+
+        {/* In-App Auto-Update Notification Banner */}
+        {updateInfo?.hasUpdate && (
+          <div className="sticky top-15 sm:top-16 z-25 border-b border-[#C59B27]/40 bg-gradient-to-r from-[#1B1E26] via-[#2A2312] to-[#1B1E26] px-4 py-2.5 text-xs text-[#FDE68A] shadow-md">
+            <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3 px-0 sm:px-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="relative flex h-2.5 w-2.5 shrink-0">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#E5C158] opacity-75" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#E5C158]" />
+                </span>
+                <span className="font-semibold text-white shrink-0">Android Update v{updateInfo.latestVersion}:</span>
+                <span className="truncate text-slate-300">{updateInfo.changelog}</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => triggerApkDownload(updateInfo.apkUrl)}
+                  className="rounded-lg bg-[#C59B27] px-3 py-1 font-mono-data text-[11px] font-bold text-[#111318] shadow hover:bg-[#D97706] active:scale-95 transition-all cursor-pointer"
+                >
+                  Download &amp; Install APK
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUpdateInfo(null)}
+                  className="text-slate-400 hover:text-white px-1.5 py-0.5 rounded cursor-pointer"
+                  title="Dismiss update notice"
+                  aria-label="Dismiss update banner"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Main Workspace Canvas (padded at bottom for Floating Glass Command Dock) */}
         {!(appLocked && preferences.hasAppPin) && (
@@ -790,10 +833,10 @@ export function App() {
             className="fixed inset-0 z-[80] flex items-center justify-center bg-[#111318]/75 p-4"
           >
             <Card className="w-full max-w-sm p-6 space-y-4">
-              <div className="flex items-center gap-2.5">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#111318] text-[#E5C158]">
-                  <Lock className="h-5 w-5" />
-                </span>
+              <div className="flex items-center gap-3">
+                <div className="shrink-0 overflow-hidden rounded-xl border border-[#C59B27]/40 shadow-md">
+                  <AppLogo size={42} className="h-10.5 w-10.5 object-contain" />
+                </div>
                 <div>
                   <h2 className="font-display text-base font-bold text-[#111318]">{dict.appName} Locked</h2>
                   <p className="text-xs text-[#52504C]">Enter your 4–8 digit App PIN to continue.</p>
