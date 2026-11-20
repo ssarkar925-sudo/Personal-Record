@@ -490,6 +490,70 @@ export interface AlertSettings {
   enabledModules: Record<AlertModule, boolean>;
 }
 
+export const DEFAULT_ALERT_SETTINGS: AlertSettings = {
+  recipientPhone: '',
+  quietStartHour: 22,
+  quietEndHour: 8,
+  morningDigestEnabled: false,
+  morningDigestHour: 9,
+  twoWayCommandsEnabled: true,
+  leadDaysCreditCard: 3,
+  leadDaysLoan: 3,
+  leadDaysDue: 2,
+  cardUtilizationThresholdPct: 75,
+  vaultRotationDays: 180,
+  enabledModules: {
+    credit_cards: true,
+    banks: true,
+    loans: true,
+    people_dues: true,
+    budgets: true,
+    notes: true,
+    vault: true,
+    advisor: true,
+  },
+};
+
+export const WHATSAPP_SERVER_STORAGE_KEY = 'pl_whatsapp_server_url';
+
+export function getWhatsAppServerUrl(): string {
+  if (typeof window !== 'undefined') {
+    const stored = window.localStorage.getItem(WHATSAPP_SERVER_STORAGE_KEY);
+    if (stored && stored.trim()) return stored.trim().replace(/\/$/, '');
+  }
+  const envUrl = (import.meta as any).env?.VITE_WHATSAPP_SERVER_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim()) {
+    return envUrl.trim().replace(/\/$/, '');
+  }
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') return '';
+  }
+  return '';
+}
+
+export function setWhatsAppServerUrl(url: string): void {
+  if (typeof window !== 'undefined') {
+    const clean = url.trim().replace(/\/$/, '');
+    if (!clean) {
+      window.localStorage.removeItem(WHATSAPP_SERVER_STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(WHATSAPP_SERVER_STORAGE_KEY, clean);
+    }
+  }
+}
+
+export interface RenderKeepAliveStatus {
+  enabled: boolean;
+  targetUrl: string;
+  intervalMinutes: number;
+  lastPingAt: string | null;
+  lastPingStatus: number | null;
+  lastError: string | null;
+  totalPings: number;
+  isRunning: boolean;
+}
+
 export interface WhatsAppBridgeState {
   status: 'disconnected' | 'connecting' | 'qr_ready' | 'connected';
   qrDataUrl: string | null;
@@ -1473,9 +1537,13 @@ export const api = {
   },
 
   getAlerts: async (): Promise<AlertDeliveryRecord[]> => {
-    if (isStandaloneClient()) return [];
+    const baseUrl = getWhatsAppServerUrl();
+    if (!baseUrl && isStandaloneClient()) return [];
     try {
-      return await request<{ data: AlertDeliveryRecord[] }>('/api/alerts').then((r) => r.data);
+      const fullUrl = baseUrl ? `${baseUrl}/api/alerts` : '/api/alerts';
+      return await request<{ data: AlertDeliveryRecord[] }>(fullUrl, {
+        credentials: baseUrl ? 'include' : 'same-origin',
+      }).then((r) => r.data);
     } catch {
       return [];
     }
@@ -1504,24 +1572,173 @@ export const api = {
     }
   },
 
-  getAlertSettings: () => request<{ data: AlertSettings }>('/api/alerts/settings').then((r) => r.data),
+  getAlertSettings: async (): Promise<AlertSettings> => {
+    const baseUrl = getWhatsAppServerUrl();
+    if (!baseUrl && isStandaloneClient()) {
+      try {
+        const raw = localStorage.getItem('pl_alert_settings');
+        if (raw) return JSON.parse(raw);
+      } catch {}
+      return { ...DEFAULT_ALERT_SETTINGS };
+    }
+    try {
+      const fullUrl = baseUrl ? `${baseUrl}/api/alerts/settings` : '/api/alerts/settings';
+      return await request<{ data: AlertSettings }>(fullUrl, {
+        credentials: baseUrl ? 'include' : 'same-origin',
+      }).then((r) => r.data);
+    } catch {
+      try {
+        const raw = localStorage.getItem('pl_alert_settings');
+        if (raw) return JSON.parse(raw);
+      } catch {}
+      return { ...DEFAULT_ALERT_SETTINGS };
+    }
+  },
 
-  saveAlertSettings: (body: AlertSettings) =>
-    request<{ data: AlertSettings }>('/api/alerts/settings', { method: 'PUT', body: JSON.stringify(body) }).then((r) => r.data),
+  saveAlertSettings: async (body: AlertSettings): Promise<AlertSettings> => {
+    try {
+      localStorage.setItem('pl_alert_settings', JSON.stringify(body));
+    } catch {}
+    const baseUrl = getWhatsAppServerUrl();
+    if (!baseUrl && isStandaloneClient()) {
+      return body;
+    }
+    try {
+      const fullUrl = baseUrl ? `${baseUrl}/api/alerts/settings` : '/api/alerts/settings';
+      return await request<{ data: AlertSettings }>(fullUrl, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+        credentials: baseUrl ? 'include' : 'same-origin',
+      }).then((r) => r.data);
+    } catch {
+      return body;
+    }
+  },
 
   getWhatsAppStatus: async (): Promise<WhatsAppBridgeState> => {
-    if (isStandaloneClient()) return clientDb.getWhatsAppStatus();
+    const baseUrl = getWhatsAppServerUrl();
+    if (!baseUrl && isStandaloneClient()) return clientDb.getWhatsAppStatus();
     try {
-      return await request<{ data: WhatsAppBridgeState }>('/api/whatsapp/status').then((r) => r.data);
+      const fullUrl = baseUrl ? `${baseUrl}/api/whatsapp/status` : '/api/whatsapp/status';
+      return await request<{ data: WhatsAppBridgeState }>(fullUrl, {
+        credentials: baseUrl ? 'include' : 'same-origin',
+      }).then((r) => r.data);
     } catch {
       return clientDb.getWhatsAppStatus();
     }
   },
-  connectWhatsApp: () => request<{ data: WhatsAppBridgeState }>('/api/whatsapp/connect', { method: 'POST' }).then((r) => r.data),
-  disconnectWhatsApp: () => request<{ data: WhatsAppBridgeState }>('/api/whatsapp/disconnect', { method: 'POST' }).then((r) => r.data),
-  logoutWhatsApp: () => request<{ data: WhatsAppBridgeState }>('/api/whatsapp/logout', { method: 'POST' }).then((r) => r.data),
-  testWhatsApp: (phone?: string) =>
-    request<{ ok: boolean }>('/api/whatsapp/test', { method: 'POST', body: JSON.stringify({ phone }) }),
+
+  connectWhatsApp: () => {
+    const baseUrl = getWhatsAppServerUrl();
+    const fullUrl = baseUrl ? `${baseUrl}/api/whatsapp/connect` : '/api/whatsapp/connect';
+    return request<{ data: WhatsAppBridgeState }>(fullUrl, {
+      method: 'POST',
+      credentials: baseUrl ? 'include' : 'same-origin',
+    }).then((r) => r.data);
+  },
+
+  disconnectWhatsApp: () => {
+    const baseUrl = getWhatsAppServerUrl();
+    const fullUrl = baseUrl ? `${baseUrl}/api/whatsapp/disconnect` : '/api/whatsapp/disconnect';
+    return request<{ data: WhatsAppBridgeState }>(fullUrl, {
+      method: 'POST',
+      credentials: baseUrl ? 'include' : 'same-origin',
+    }).then((r) => r.data);
+  },
+
+  logoutWhatsApp: () => {
+    const baseUrl = getWhatsAppServerUrl();
+    const fullUrl = baseUrl ? `${baseUrl}/api/whatsapp/logout` : '/api/whatsapp/logout';
+    return request<{ data: WhatsAppBridgeState }>(fullUrl, {
+      method: 'POST',
+      credentials: baseUrl ? 'include' : 'same-origin',
+    }).then((r) => r.data);
+  },
+
+  testWhatsApp: (phone?: string) => {
+    const baseUrl = getWhatsAppServerUrl();
+    const fullUrl = baseUrl ? `${baseUrl}/api/whatsapp/test` : '/api/whatsapp/test';
+    return request<{ ok: boolean }>(fullUrl, {
+      method: 'POST',
+      body: JSON.stringify({ phone }),
+      credentials: baseUrl ? 'include' : 'same-origin',
+    });
+  },
+
+  getWhatsAppKeepAlive: async (): Promise<RenderKeepAliveStatus> => {
+    const baseUrl = getWhatsAppServerUrl();
+    if (!baseUrl && isStandaloneClient()) {
+      return {
+        enabled: true,
+        targetUrl: '',
+        intervalMinutes: 5,
+        lastPingAt: null,
+        lastPingStatus: null,
+        lastError: null,
+        totalPings: 0,
+        isRunning: false,
+      };
+    }
+    try {
+      const fullUrl = baseUrl ? `${baseUrl}/api/whatsapp/keepalive` : '/api/whatsapp/keepalive';
+      return await request<{ data: RenderKeepAliveStatus }>(fullUrl, {
+        credentials: baseUrl ? 'include' : 'same-origin',
+      }).then((r) => r.data);
+    } catch {
+      return {
+        enabled: true,
+        targetUrl: baseUrl || '',
+        intervalMinutes: 5,
+        lastPingAt: null,
+        lastPingStatus: null,
+        lastError: null,
+        totalPings: 0,
+        isRunning: false,
+      };
+    }
+  },
+
+  saveWhatsAppKeepAlive: async (body: { enabled?: boolean; targetUrl?: string; intervalMinutes?: number; pingNow?: boolean }) => {
+    const baseUrl = getWhatsAppServerUrl();
+    const fullUrl = baseUrl ? `${baseUrl}/api/whatsapp/keepalive` : '/api/whatsapp/keepalive';
+    return request<{ data: RenderKeepAliveStatus; pingResult?: { ok: boolean; status?: number; error?: string } }>(
+      fullUrl,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+        credentials: baseUrl ? 'include' : 'same-origin',
+      },
+    );
+  },
+
+  pingWhatsAppServer: async (customUrl?: string): Promise<{ ok: boolean; status?: number; latencyMs: number; error?: string }> => {
+    const start = performance.now();
+    const base = customUrl?.trim().replace(/\/$/, '') || getWhatsAppServerUrl();
+    const target = base ? `${base}/api/health` : '/api/health';
+    try {
+      const res = await fetch(target, { method: 'GET', cache: 'no-store' });
+      const latencyMs = Math.round(performance.now() - start);
+      return { ok: res.ok, status: res.status, latencyMs };
+    } catch (err: any) {
+      const latencyMs = Math.round(performance.now() - start);
+      return { ok: false, latencyMs, error: err?.message || 'Network error' };
+    }
+  },
+
+  startBrowserKeepAlive: (): (() => void) => {
+    if (typeof window === 'undefined') return () => {};
+    const ping = async () => {
+      const url = getWhatsAppServerUrl();
+      if (url) {
+        try {
+          await fetch(`${url}/api/health`, { method: 'GET', cache: 'no-store' });
+        } catch {}
+      }
+    };
+    const timer = window.setInterval(ping, 5 * 60 * 1000);
+    setTimeout(ping, 10_000);
+    return () => window.clearInterval(timer);
+  },
 
   getPreferences: async (): Promise<AppPreferences> => {
     if (isStandaloneClient()) return dbFirstGetPreferences();

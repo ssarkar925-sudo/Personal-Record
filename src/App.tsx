@@ -1,7 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import {
   BarChart3,
-  Bell,
   Bot,
   Building2,
   Command,
@@ -15,6 +14,7 @@ import {
   Lock,
   LogIn,
   NotebookPen,
+  MessageSquare,
   Plus,
   Search,
   Settings,
@@ -85,6 +85,7 @@ export function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [alertsOpen, setAlertsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'account' | 'whatsapp' | 'updates' | 'vault_security' | 'cloud' | 'system'>('account');
   const [agentOpen, setAgentOpen] = useState(false);
   const [queuedAgentCommand, setQueuedAgentCommand] = useState<{ id: number; commandText: string } | null>(null);
   const [loadError, setLoadError] = useState('');
@@ -328,6 +329,12 @@ export function App() {
       authSub?.unsubscribe();
     };
   }, [loadAll, resetAllState]);
+
+  // 5-minute background keepalive self-ping for Render cloud WhatsApp server
+  useEffect(() => {
+    const stopPinger = api.startBrowserKeepAlive();
+    return () => stopPinger();
+  }, []);
 
   const triggerServerLock = useCallback(() => {
     void api.lockApp().catch(() => {});
@@ -643,20 +650,45 @@ export function App() {
                   <Search className="h-3.5 w-3.5" />
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => setAlertsOpen(true)}
-                  title="Alerts & Notifications"
-                  aria-label="Alerts & Notifications"
-                  className="inline-flex h-9 min-w-9 sm:h-8 sm:min-w-8 items-center justify-center gap-1 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#52504C] hover:bg-[#F3EFEA] hover:text-[#111318] cursor-pointer"
-                >
-                  <Bell className="h-3.5 w-3.5" />
-                  {(dashboard?.unreadInAppCount ?? 0) > 0 && (
-                    <span className="rounded-full bg-[#111318] px-1.5 text-[10px] font-mono-data font-semibold text-[#E5C158] tabular-nums">
-                      {dashboard?.unreadInAppCount}
+                {/* WhatsApp Status / Quick Connect Button */}
+                {bridgeState.status === 'connected' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSettingsInitialTab('whatsapp');
+                      setActiveTab('settings');
+                    }}
+                    title={`WhatsApp: Connected (${bridgeState.connectedPhone || 'Linked'}) • Click to open settings`}
+                    aria-label="WhatsApp Connected"
+                    className="inline-flex h-9 sm:h-8 items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-2 sm:px-2.5 text-xs font-semibold text-emerald-900 shadow-2xs hover:bg-emerald-100 transition-all cursor-pointer"
+                  >
+                    <span className="relative flex h-2 w-2 shrink-0">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                     </span>
-                  )}
-                </button>
+                    <MessageSquare className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="hidden sm:inline font-mono-data text-[11px]">Connected</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setSettingsInitialTab('whatsapp');
+                      setActiveTab('settings');
+                      try {
+                        const next = await api.connectWhatsApp();
+                        setBridgeState(next);
+                      } catch {}
+                    }}
+                    title="WhatsApp: Not Connected • Click for Quick Connect"
+                    aria-label="WhatsApp Quick Connect"
+                    className="inline-flex h-9 sm:h-8 items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50/90 px-2 sm:px-2.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 transition-all cursor-pointer"
+                  >
+                    <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
+                    <MessageSquare className="h-3.5 w-3.5 text-amber-700" />
+                    <span className="hidden sm:inline font-mono-data text-[11px]">Quick Connect</span>
+                  </button>
+                )}
 
                 {/* Dedicated Sovereign Account / Realtime Sync Button */}
                 {currentUser ? (
@@ -902,6 +934,9 @@ export function App() {
                     onLanguageChange={(lang) => setPreferences((prev) => ({ ...prev, systemLanguage: lang }))}
                     onDataRefreshed={loadAll}
                     notify={notify}
+                    bridgeState={bridgeState}
+                    onBridgeStateChange={setBridgeState}
+                    initialTab={settingsInitialTab}
                   />
                 )}
               </Suspense>

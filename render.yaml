@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: personal-ledger-whatsapp
+    env: node
+    plan: free
+    region: singapore
+    buildCommand: npm install
+    startCommand: npm run start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: PORT
+        value: 10000
+      - key: HOST
+        value: 0.0.0.0
+      - key: RENDER
+        value: "true"
+      - key: AUTO_WAKEUP
+        value: "true"
+      - key: ALLOWED_ORIGINS
+        value: "https://scbook.vercel.app,http://localhost:3000,http://localhost:5173,capacitor://localhost"
+      - key: WAKEUP_INTERVAL_MINUTES
+        value: "5"

@@ -148,6 +148,7 @@ import {
   handleIncomingWhatsAppImage,
   runAlertCycle,
 } from './whatsapp/scheduler.ts';
+import { RenderKeepAliveService } from './whatsapp/keepalive.ts';
 import {
   clearAgentHistory,
   clearAppPin,
@@ -371,6 +372,17 @@ function isAllowedHostHeader(hostHeader: string | undefined): boolean {
   if (!hostHeader) return true;
   const hostOnly = hostHeader.replace(/:\d+$/, '').toLowerCase();
   if (hostOnly === 'localhost' || hostOnly === '127.0.0.1' || hostOnly === '[::1]') return true;
+  // Allow Render hosting (*.onrender.com)
+  if (hostOnly.endsWith('.onrender.com')) return true;
+  // Allow hosts from RENDER_EXTERNAL_URL or ALLOWED_HOSTS env
+  if (process.env.RENDER_EXTERNAL_URL) {
+    try {
+      const u = new URL(process.env.RENDER_EXTERNAL_URL);
+      if (u.hostname.toLowerCase() === hostOnly) return true;
+    } catch {}
+  }
+  const envHosts = (process.env.ALLOWED_HOSTS || '').toLowerCase().split(',').map((h) => h.trim());
+  if (envHosts.includes(hostOnly)) return true;
   // Allow private LAN IPv4 addresses when explicitly listening on LAN
   if (/^(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})$/.test(hostOnly)) {
     return true;
@@ -385,9 +397,16 @@ function isSameOriginAllowed(req: http.IncomingMessage): boolean {
   if (!host) return false;
   try {
     const parsedOrigin = new URL(origin);
+    const origHost = parsedOrigin.hostname.toLowerCase();
+    // Allow production Vercel frontend or custom Vercel deployments
+    if (origHost === 'scbook.vercel.app' || origHost.endsWith('.vercel.app')) return true;
+    // Allow Capacitor mobile origins
+    if (parsedOrigin.protocol === 'capacitor:' || parsedOrigin.protocol === 'file:') return true;
+    // Allow configured origins from env
+    const envOrigins = (process.env.ALLOWED_ORIGINS || '').toLowerCase().split(',').map((o) => o.trim());
+    if (envOrigins.includes(origin.toLowerCase())) return true;
     // Allow matching host or loopback dev proxy (localhost <-> 127.0.0.1)
     if (parsedOrigin.host === host) return true;
-    const origHost = parsedOrigin.hostname.toLowerCase();
     const reqHost = host.replace(/:\d+$/, '').toLowerCase();
     const isLoopback = (h: string) => h === 'localhost' || h === '127.0.0.1' || h === '[::1]';
     if (isLoopback(origHost) && isLoopback(reqHost)) return true;
@@ -401,8 +420,9 @@ export function createAppServer(opts: {
   db: DatabaseSync;
   transport: WhatsAppTransport;
   staticDir?: string;
+  keepAlive?: RenderKeepAliveService;
 }): http.Server {
-  const { db, transport, staticDir } = opts;
+  const { db, transport, staticDir, keepAlive } = opts;
 
   transport.onIncomingText?.(async (fromPhone, text) => {
     await handleIncomingWhatsAppCommand(db, transport, fromPhone, text);
@@ -453,6 +473,33 @@ export function createAppServer(opts: {
     const reqUrl = new URL(req.url ?? '/', 'http://127.0.0.1');
     const pathname = reqUrl.pathname;
     const clientIp = req.socket.remoteAddress || '127.0.0.1';
+
+    // Handle CORS headers for allowed origins (e.g. Vercel frontend, local dev, Capacitor)
+    const reqOrigin = req.headers.origin;
+    if (reqOrigin) {
+      try {
+        const parsed = new URL(reqOrigin);
+        const hostName = parsed.hostname.toLowerCase();
+        const isAllowedOrigin =
+          hostName === 'scbook.vercel.app' ||
+          hostName.endsWith('.vercel.app') ||
+          parsed.protocol === 'capacitor:' ||
+          parsed.protocol === 'file:' ||
+          hostName === 'localhost' ||
+          hostName === '127.0.0.1';
+        if (isAllowedOrigin) {
+          res.setHeader('Access-Control-Allow-Origin', reqOrigin);
+          res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+          res.setHeader('Access-Control-Allow-Credentials', 'true');
+        }
+      } catch {}
+    }
+
+    if (method === 'OPTIONS') {
+      res.writeHead(204);
+      return res.end();
+    }
 
     try {
       // 1. DNS Rebinding & Host Header guard
@@ -1404,6 +1451,43 @@ export function createAppServer(opts: {
         return sendJson(res, 200, { ok: true });
       }
 
+      if (method === 'GET' && pathname === '/api/whatsapp/keepalive') {
+        const pingerState = keepAlive?.getState() ?? {
+          enabled: false,
+          targetUrl: '',
+          intervalMinutes: 5,
+          lastPingAt: null,
+          lastPingStatus: null,
+          lastError: 'KeepAlive service not initialized',
+          totalPings: 0,
+          isRunning: false,
+        };
+        return sendJson(res, 200, { data: pingerState });
+      }
+      if (method === 'POST' && pathname === '/api/whatsapp/keepalive') {
+        const body = await readJsonBody(req);
+        const parsed = z
+          .object({
+            enabled: z.boolean().optional(),
+            targetUrl: z.string().trim().max(300).optional(),
+            intervalMinutes: z.number().int().min(1).max(60).optional(),
+            pingNow: z.boolean().optional(),
+          })
+          .safeParse(body);
+        if (!parsed.success) return sendError(res, 422, 'VALIDATION_ERROR', 'Invalid keepalive params');
+        if (keepAlive) {
+          if (parsed.data.targetUrl !== undefined || parsed.data.intervalMinutes !== undefined || parsed.data.enabled !== undefined) {
+            keepAlive.updateConfig(parsed.data);
+          }
+          if (parsed.data.pingNow) {
+            const pingRes = await keepAlive.executePing();
+            return sendJson(res, 200, { data: keepAlive.getState(), pingResult: pingRes });
+          }
+          return sendJson(res, 200, { data: keepAlive.getState() });
+        }
+        return sendJson(res, 200, { data: { enabled: false, isRunning: false } });
+      }
+
       // App Preferences (System Language & AI Agent Settings)
       if (method === 'GET' && pathname === '/api/preferences') {
         return sendJson(res, 200, { data: getAppPreferences(db) });
@@ -1833,7 +1917,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(thisFile))
   const hostArgIdx = argv.indexOf('--host');
   const port = Number((portArgIdx !== -1 && argv[portArgIdx + 1]) || process.env.PORT || 3000);
   const host = (hostArgIdx !== -1 && argv[hostArgIdx + 1]) || process.env.HOST || '127.0.0.1';
-  const server = createAppServer({ db, transport: bridge, staticDir: distDir });
+  const keepAlive = new RenderKeepAliveService(undefined, Number(process.env.WAKEUP_INTERVAL_MINUTES || 5));
+  const server = createAppServer({ db, transport: bridge, staticDir: distDir, keepAlive });
 
   // Evaluate alerts immediately on boot/wakeup, then every 60s
   void runAlertCycle(db, bridge);
@@ -1869,6 +1954,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(thisFile))
 
     inboxWatcher.stop();
     clearInterval(schedulerTimer);
+    keepAlive.stop();
 
     // Stop accepting new HTTP requests and drain in-flight connections BEFORE closing DB
     await new Promise<void>((resolve) => {
