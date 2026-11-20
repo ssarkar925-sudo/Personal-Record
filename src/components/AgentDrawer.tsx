@@ -668,6 +668,29 @@ export function AgentDrawer({
             )}
           </div>
 
+          {/* Quick-Entry & Teach Chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-[11px]">
+            {[
+              { label: sysLang === 'bn' ? 'চা ৫০' : sysLang === 'hi' ? 'चाय 50' : 'Tea 50', cmd: sysLang === 'bn' ? 'চা ৫০' : sysLang === 'hi' ? 'चाय 50' : 'Tea 50' },
+              { label: sysLang === 'bn' ? 'কফি ১০০, পেট্রোল ৫০০' : sysLang === 'hi' ? 'कॉफ़ी 100, पेट्रोल 500' : 'Coffee 100, petrol 500', cmd: sysLang === 'bn' ? 'কফি ১০০, পেট্রোল ৫০০' : sysLang === 'hi' ? 'कॉफ़ी 100, पेट्रोल 500' : 'Coffee 100, petrol 500' },
+              { label: sysLang === 'bn' ? 'আজকের খরচ কত?' : sysLang === 'hi' ? 'आज का खर्च कितना है?' : "Today's expense", cmd: sysLang === 'bn' ? 'আজকের খরচ কত?' : sysLang === 'hi' ? 'आज का खर्च कितना है?' : "Today's expense" },
+              { label: sysLang === 'bn' ? 'ব্যাংক ব্যালেন্স' : sysLang === 'hi' ? 'बैंक बैलेंस' : 'Bank balance', cmd: sysLang === 'bn' ? 'আমার ব্যাংক ব্যালেন্স কত?' : sysLang === 'hi' ? 'बैंक बैलेंस कितना है?' : 'What is my bank balance?' },
+              { label: sysLang === 'bn' ? 'রাহুলের কাছে ৫০০ পাবো' : sysLang === 'hi' ? 'राहुल से 500 लेने हैं' : 'Rahul owes me 500', cmd: sysLang === 'bn' ? 'রাহুলের কাছে ৫০০ পাবো' : sysLang === 'hi' ? 'राहुल से 500 लेने हैं' : 'Rahul owes me 500' },
+              { label: sysLang === 'bn' ? '💡 Teach: চা মানে Food' : sysLang === 'hi' ? '💡 Teach: चाय मतलब Food' : '💡 Teach: Chai is Food', cmd: sysLang === 'bn' ? 'Teach: চা মানে Food & Dining' : sysLang === 'hi' ? 'Teach: चाय मतलब Food & Dining' : 'Teach: Chai is Food & Dining' },
+              { label: sysLang === 'bn' ? '❓ সাহায্য' : sysLang === 'hi' ? '❓ मदद' : '❓ Help', cmd: 'help' },
+            ].map((chip) => (
+              <button
+                key={chip.label}
+                type="button"
+                disabled={running}
+                onClick={() => void runCommand(chip.cmd)}
+                className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10.5px] font-medium text-slate-700 hover:border-blue-400 hover:bg-blue-50/60 hover:text-blue-700 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+
           <form onSubmit={handleSubmit} className="flex items-center gap-1.5">
             <button
               type="button"

@@ -82,6 +82,27 @@ export function appendClientAgentHistory(record: {
   return entry;
 }
 
+const AGENT_TAUGHT_RULES_KEY = 'pl_agent_taught_rules_v1';
+
+export function getTaughtRules(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(AGENT_TAUGHT_RULES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveTaughtRules(rules: string[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(AGENT_TAUGHT_RULES_KEY, JSON.stringify(rules));
+  } catch {
+    // ignore quota issues
+  }
+}
+
 function localizedScope(lang: AppLanguage, scope: Scope | 'general'): string {
   const map: Record<AppLanguage, Record<Scope | 'general', string>> = {
     en: { personal: 'Personal', business: 'Business', family: 'Family', general: 'General' },
@@ -349,17 +370,17 @@ export async function executeClientAgentCommand(input: {
         }
 
         case 'create_transaction': {
-          const allAccs = clientDb.getAccounts();
+          let allAccs = clientDb.getAccounts();
+          let autoCreatedCash = false;
           if (allAccs.length === 0) {
-            const msg =
-              systemLang === 'bn'
-                ? 'কোনো ব্যাংক বা কার্ড অ্যাকাউন্ট পাওয়া যায়নি। আগে একটি অ্যাকাউন্ট যোগ করুন।'
-                : systemLang === 'hi'
-                  ? 'कोई बैंक या कार्ड खाता नहीं मिला। कृपया पहले एक खाता जोड़ें।'
-                  : 'No bank or credit card account exists yet. Create one first (e.g., "Add bank HDFC Personal").';
-            replies.push(msg);
-            actions.push({ tool: call.tool, summary: msg, ok: false });
-            break;
+            const createdCash = await dbFirstCreateAccount({
+              name: 'Cash',
+              type: 'bank',
+              scope: call.scope,
+              openingBalanceMinor: 0,
+            });
+            allAccs = [createdCash];
+            autoCreatedCash = true;
           }
           const srcAcc = allAccs.find((a) => a.id === call.accountId) ?? allAccs[0];
           const toAcc =
@@ -379,6 +400,7 @@ export async function executeClientAgentCommand(input: {
             break;
           }
 
+          const partyName = call.party || call.category;
           await dbFirstCreateTransaction({
             kind: call.kind,
             scope: call.scope,
@@ -387,24 +409,25 @@ export async function executeClientAgentCommand(input: {
             category: call.category,
             amountMinor: call.amountMinor,
             occurredAt: call.occurredAt,
-            party: call.party,
+            party: partyName,
             note: call.note,
           });
           uiEffects.mutatedData = true;
           const amtStr = formatINR(call.amountMinor);
           const scStr = localizedScope(systemLang, call.scope);
+          const partyTag = call.party && call.party !== call.category ? `${call.party} · ` : '';
           const msg =
             systemLang === 'bn'
-              ? `${scStr} অ্যাকাউন্টে (${srcAcc.name}) ${amtStr} ${
+              ? `${autoCreatedCash ? 'ডিফল্ট "Cash" অ্যাকাউন্ট তৈরি করে ' : ''}${scStr} অ্যাকাউন্টে (${srcAcc.name}) ${partyTag}${amtStr} ${
                   call.kind === 'income' ? 'আয়' : call.kind === 'transfer' ? 'ট্রান্সফার' : 'খরচ'
                 } [${call.category}] যোগ করা হয়েছে।`
               : systemLang === 'hi'
-                ? `${scStr} खाते (${srcAcc.name}) में ${amtStr} ${
+                ? `${autoCreatedCash ? 'डिफ़ॉल्ट "Cash" खाता बनाकर ' : ''}${scStr} खाते (${srcAcc.name}) में ${partyTag}${amtStr} ${
                     call.kind === 'income' ? 'आय' : call.kind === 'transfer' ? 'ट्रांसफर' : 'खर्च'
                   } [${call.category}] दर्ज किया गया।`
-                : `Recorded ${call.kind} of ${amtStr} in ${scStr} (${srcAcc.name}) under ${call.category}.`;
+                : `${autoCreatedCash ? 'Created default "Cash" account and recorded ' : 'Recorded '}${call.kind} of ${amtStr} for ${partyName} in ${scStr} (${srcAcc.name}) under ${call.category}.`;
           replies.push(msg);
-          actions.push({ tool: call.tool, summary: msg, ok: true });
+          actions.push({ tool: call.tool, summary: `${partyName} · ${amtStr}`, ok: true });
           break;
         }
 
@@ -838,10 +861,111 @@ export async function executeClientAgentCommand(input: {
           break;
         }
 
+        case 'teach_agent': {
+          const rules = getTaughtRules();
+          if (call.action === 'add' && call.ruleText) {
+            const trimmedRule = call.ruleText.trim();
+            if (!rules.includes(trimmedRule)) {
+              rules.push(trimmedRule);
+              saveTaughtRules(rules);
+            }
+            const msg =
+              systemLang === 'bn'
+                ? `নতুন নিয়ম মনে রাখলাম: "${trimmedRule}"। আপনার পরবর্তী হিসাব ও নির্দেশনায় এটি প্রয়োগ করব।`
+                : systemLang === 'hi'
+                  ? `नया नियम याद रख लिया: "${trimmedRule}"। आपके अगले लेनदेन और निर्देशों में इसे लागू किया जाएगा।`
+                  : `Learned and remembered: "${trimmedRule}". I will apply this rule across your future entries and queries.`;
+            replies.push(msg);
+            actions.push({ tool: 'teach_agent', summary: `Learned: ${trimmedRule}`, ok: true });
+          } else if (call.action === 'clear') {
+            saveTaughtRules([]);
+            const msg =
+              systemLang === 'bn'
+                ? 'শেখানো সব কাস্টম নিয়ম মুছে ফেলা হয়েছে।'
+                : systemLang === 'hi'
+                  ? 'सिखाए गए सभी नियम मिटा दिए गए हैं।'
+                  : 'Cleared all custom learned rules from agent memory.';
+            replies.push(msg);
+            actions.push({ tool: 'teach_agent', summary: 'Cleared rules', ok: true });
+          } else {
+            if (rules.length === 0) {
+              const msg =
+                systemLang === 'bn'
+                  ? 'এখনো কোনো কাস্টম নিয়ম শেখানো হয়নি। আমাকে শেখাতে লিখুন: "Teach: চা মানে Food & Dining" অথবা "মনে রাখো: রোহান আমার ভাই"।'
+                  : systemLang === 'hi'
+                    ? 'अभी तक कोई नियम नहीं सिखाया गया है। मुझे सिखाने के लिए लिखें: "Teach: चाय मतलब Food & Dining" या "याद रखो: रोहन मेरा भाई है"।'
+                    : 'No custom rules taught yet. To teach me, type: "Teach: Chai means Food & Dining" or "Remember: Rohan is my brother".';
+              replies.push(msg);
+              actions.push({ tool: 'teach_agent', summary: '0 rules', ok: true });
+            } else {
+              const ruleList = rules.map((r, i) => `${i + 1}. ${r}`).join('\n');
+              const msg =
+                systemLang === 'bn'
+                  ? `আমার মনে রাখা নিয়মগুলো:\n${ruleList}`
+                  : systemLang === 'hi'
+                    ? `मुझे सिखाए गए नियम:\n${ruleList}`
+                    : `Active Learned Rules:\n${ruleList}`;
+              replies.push(msg);
+              actions.push({ tool: 'teach_agent', summary: `${rules.length} rule(s)`, ok: true });
+            }
+          }
+          break;
+        }
+
         case 'query_status': {
           const dash = clientDb.getDashboard(call.scope);
           let msg = '';
-          if (call.topic === 'credit_cards') {
+          if (call.topic === 'today') {
+            const todayStr = new Date().toISOString().substring(0, 10);
+            const allTxs = clientDb.getTransactions({ scope: call.scope });
+            const todayTxs = allTxs.filter((t) => t.occurredAt === todayStr);
+            const todayExpense = todayTxs
+              .filter((t) => t.kind === 'expense')
+              .reduce((s, t) => s + t.amountMinor, 0);
+            const todayIncome = todayTxs
+              .filter((t) => t.kind === 'income')
+              .reduce((s, t) => s + t.amountMinor, 0);
+
+            if (todayTxs.length === 0) {
+              msg =
+                systemLang === 'bn'
+                  ? 'আজকে এখনো কোনো লেনদেন নথিভুক্ত হয়নি।'
+                  : systemLang === 'hi'
+                    ? 'आज अभी तक कोई लेनदेन दर्ज नहीं हुआ है।'
+                    : 'No transactions recorded today yet.';
+            } else {
+              const details = todayTxs
+                .slice(0, 5)
+                .map((t) => `${t.party || t.category}: ${formatINR(t.amountMinor)}`)
+                .join(', ');
+              msg =
+                systemLang === 'bn'
+                  ? `আজকের হিসাব: মোট খরচ ${formatINR(todayExpense)}, আয় ${formatINR(todayIncome)} (${todayTxs.length}টি এন্ট্রি: ${details})।`
+                  : systemLang === 'hi'
+                    ? `आज का हिसाब: कुल खर्च ${formatINR(todayExpense)}, आय ${formatINR(todayIncome)} (${todayTxs.length} लेनदेन: ${details})।`
+                    : `Today's Summary: Spent ${formatINR(todayExpense)}, Income ${formatINR(todayIncome)} (${todayTxs.length} entries: ${details}).`;
+            }
+          } else if (call.topic === 'banks') {
+            const bankAccs = clientDb.getAccounts().filter((a) => a.type === 'bank');
+            if (bankAccs.length === 0) {
+              msg =
+                systemLang === 'bn'
+                  ? 'কোনো ব্যাংক অ্যাকাউন্ট এখনো যোগ করা হয়নি।'
+                  : systemLang === 'hi'
+                    ? 'अभी तक कोई बैंक खाता नहीं जोड़ा गया है।'
+                    : 'No bank accounts tracked yet. Say "Add bank HDFC" to add one.';
+            } else {
+              const breakdown = bankAccs
+                .map((b) => `${b.name}: ${formatINR(b.currentBalanceMinor)}`)
+                .join('; ');
+              msg =
+                systemLang === 'bn'
+                  ? `ব্যাংকে মোট নগদ ${formatINR(dash.totalBankMinor)}। বিস্তারিত: ${breakdown}`
+                  : systemLang === 'hi'
+                    ? `बैंकों में कुल नकद ${formatINR(dash.totalBankMinor)} है। विवरण: ${breakdown}`
+                    : `Total Liquid Bank Cash: ${formatINR(dash.totalBankMinor)}. Details: ${breakdown}`;
+            }
+          } else if (call.topic === 'credit_cards') {
             if (dash.cards.length === 0) {
               msg =
                 systemLang === 'bn'
@@ -861,12 +985,23 @@ export async function executeClientAgentCommand(input: {
                     : `Total Card Debt: ${formatINR(dash.totalCardDebtMinor)}. Details: ${list}`;
             }
           } else if (call.topic === 'dues') {
+            const allDues = clientDb.getDues().data.filter((d) => d.status !== 'settled');
+            const needList = allDues.filter((d) => d.direction === 'need');
+            const giveList = allDues.filter((d) => d.direction === 'give');
+            const needStr =
+              needList.length > 0
+                ? needList.map((d) => `${d.personName}: ${formatINR(d.remainingMinor)}`).join(', ')
+                : 'None';
+            const giveStr =
+              giveList.length > 0
+                ? giveList.map((d) => `${d.personName}: ${formatINR(d.remainingMinor)}`).join(', ')
+                : 'None';
             msg =
               systemLang === 'bn'
-                ? `মানুষের কাছে পাবেন: ${formatINR(dash.totalNeedMinor)} · মানুষকে দেবেন: ${formatINR(dash.totalGiveMinor)}।`
+                ? `পাওনা টাকা (পাবেন): ${formatINR(dash.totalNeedMinor)} [${needStr}] · দেনা (দেবেন): ${formatINR(dash.totalGiveMinor)} [${giveStr}]।`
                 : systemLang === 'hi'
-                  ? `लोगों से लेना है: ${formatINR(dash.totalNeedMinor)} · लोगों को देना है: ${formatINR(dash.totalGiveMinor)}।`
-                  : `Need from People: ${formatINR(dash.totalNeedMinor)} · Give to People: ${formatINR(dash.totalGiveMinor)}.`;
+                  ? `लेना बाकी: ${formatINR(dash.totalNeedMinor)} [${needStr}] · देना बाकी: ${formatINR(dash.totalGiveMinor)} [${giveStr}]।`
+                  : `Need from People: ${formatINR(dash.totalNeedMinor)} (${needStr}) · Give to People: ${formatINR(dash.totalGiveMinor)} (${giveStr}).`;
           } else if (call.topic === 'loans') {
             msg =
               systemLang === 'bn'
@@ -902,12 +1037,27 @@ export async function executeClientAgentCommand(input: {
         case 'help': {
           const msg =
             systemLang === 'bn'
-              ? 'আমি আপনার ব্যক্তিগত এআই সহকারী: খরচ বা আয় যোগ ("চা ৫০ টাকা খরচ"), কার্ড বিল, লোন ও ধারদেনা যোগ, নোট তৈরি, এবং আর্থিক অবস্থা ("অবস্থা কেমন") জানতে পারেন।'
+              ? `আমি আপনার আপগ্রেডেড ব্যক্তিগত এআই সহকারী ও হিসাবরক্ষক! আমাকে যা বলতে বা শেখাতে পারেন:
+1. 💸 দ্রুত খরচ/আয়: "চা ৫০", "কফি ১০০, পেট্রোল ৫০০", "বেতন ৫০০০০"
+2. 👥 ধারদেনা: "রাহুলের কাছে ৫০০ পাবো", "রাহুলকে ৩০০ দিলাম"
+3. 💳 কার্ড ও বিল: "কার্ডের বিল কত?", "পে ক্রেডিট কার্ড বিল"
+4. 📊 হিসাব ও ব্যালেন্স: "আজকের খরচ কত?", "ব্যাংক ব্যালেন্স কত?", "অবস্থা কেমন"
+5. 💡 আমাকে শেখানো (Teach): "Teach: চা মানে Food & Dining" অথবা "Remember: রোহান আমার ভাই"`
               : systemLang === 'hi'
-                ? 'मैं आपका पर्सनल एआई असिस्टेंट हूँ: खर्च या आय जोड़ना ("चाय 50 रुपये खर्च"), कार्ड बिल, लोन व उधार, नोट्स बनाना और वित्तीय स्थिति ("समीक्षा") पूछ सकते हैं।'
-                : 'I am your Personal AI Assistant: add expenses/income (e.g. "Tea 50 expense"), track card bills, loans and dues, create notes and checklists, or ask "assess my finances".';
+                ? `मैं आपका अपग्रेडेड पर्सनल एआई असिस्टेंट और मुनीम हूँ! आप मुझसे यह सब करवा सकते हैं:
+1. 💸 तेज़ खर्च/आय: "चाय 50", "कॉफ़ी 100, पेट्रोल 500", "सैलरी 50000"
+2. 👥 उधार/बकाया: "राहुल से 500 लेने हैं", "अमित को 300 दिए"
+3. 💳 कार्ड व बिल: "कार्ड का बिल कितना है?", "पे क्रेडिट कार्ड बिल"
+4. 📊 हिसाब व बैलेंस: "आज का खर्च कितना है?", "बैंक बैलेंस कितना है?", "समीक्षा"
+5. 💡 मुझे सिखाएं (Teach): "Teach: चाय मतलब Food & Dining" या "Remember: रोहन मेरा भाई है"`
+                : `I am your upgraded Personal AI Assistant & Financial Steward! Here is what you can ask or teach me:
+1. 💸 Quick Entries: "Tea 50", "Coffee 100, petrol 500", "Salary 50000"
+2. 👥 Dues & Udhar: "Rahul owes me 500", "Paid Rahul 300"
+3. 💳 Cards & Bills: "Card bill status", "Pay ICICI card bill"
+4. 📊 Queries & Status: "Today's expense", "Bank balance", "Assess my finances"
+5. 💡 Teach Me (Custom Rules): "Teach: Chai is Food", "Remember: Rohan is my brother", "Show learned rules"`;
           replies.push(msg);
-          actions.push({ tool: call.tool, summary: msg, ok: true });
+          actions.push({ tool: call.tool, summary: 'Assistant Help & Guide', ok: true });
           break;
         }
 

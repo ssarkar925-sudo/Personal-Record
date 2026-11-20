@@ -964,10 +964,37 @@ export async function processAgentCommand(
           break;
         }
 
+        case 'teach_agent': {
+          const msg =
+            call.action === 'clear'
+              ? systemLang === 'bn' ? 'সব শেখানো নিয়ম মোছা হয়েছে।' : systemLang === 'hi' ? 'सारे नियम मिटा दिए गए।' : 'Cleared learned rules.'
+              : call.action === 'add'
+                ? systemLang === 'bn' ? `নিয়ম মনে রাখলাম: "${call.ruleText}"` : systemLang === 'hi' ? `नियम याद रख लिया: "${call.ruleText}"` : `Learned: "${call.ruleText}"`
+                : systemLang === 'bn' ? 'কাস্টম নিয়ম সক্রিয় আছে।' : systemLang === 'hi' ? 'कस्टम नियम सक्रिय हैं।' : 'Custom rules active.';
+          replies.push(msg);
+          actions.push({ tool: call.tool, summary: msg, ok: true });
+          break;
+        }
+
         case 'query_status': {
           const dash = getDashboardSummary(db, call.scope, todayISO(now));
           let msg = '';
-          if (call.topic === 'credit_cards') {
+          if (call.topic === 'today') {
+            msg =
+              systemLang === 'bn'
+                ? `আজকের হিসাব: মোট আয় ${formatINR(dash.monthIncomeMinor)} ও খরচ ${formatINR(dash.monthExpenseMinor)}।`
+                : systemLang === 'hi'
+                  ? `आज का हिसाब: आय ${formatINR(dash.monthIncomeMinor)} व खर्च ${formatINR(dash.monthExpenseMinor)}।`
+                  : `Today's Status: Income ${formatINR(dash.monthIncomeMinor)}, Expense ${formatINR(dash.monthExpenseMinor)}.`;
+          } else if (call.topic === 'banks') {
+            const list = dash.banks.map((b) => `${b.name}: ${formatINR(b.currentBalanceMinor)}`).join('; ');
+            msg =
+              systemLang === 'bn'
+                ? `ব্যাংকে নগদ ${formatINR(dash.totalBankMinor)}। (${list})`
+                : systemLang === 'hi'
+                  ? `बैंकों में कुल नकद ${formatINR(dash.totalBankMinor)}। (${list})`
+                  : `Bank Cash: ${formatINR(dash.totalBankMinor)}. Details: ${list}`;
+          } else if (call.topic === 'credit_cards') {
             if (dash.cards.length === 0) {
               msg =
                 systemLang === 'bn'

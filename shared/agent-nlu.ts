@@ -20,7 +20,8 @@ export interface AgentPlannerContext {
 export type AgentToolCall =
   | { tool: 'set_system_language'; language: AppLanguage }
   | { tool: 'navigate'; tab: 'dashboard' | 'money' | 'loans_dues' | 'reports' | 'notes' | 'vault'; scope?: Scope | 'all' }
-  | { tool: 'query_status'; topic: 'overview' | 'banks' | 'credit_cards' | 'loans' | 'dues' | 'notes' | 'reports' | 'alerts'; scope?: Scope }
+  | { tool: 'query_status'; topic: 'overview' | 'banks' | 'credit_cards' | 'loans' | 'dues' | 'notes' | 'reports' | 'alerts' | 'today'; scope?: Scope }
+  | { tool: 'teach_agent'; action: 'add' | 'list' | 'clear'; ruleText?: string }
   | {
       tool: 'create_transaction';
       kind: 'expense' | 'income' | 'transfer';
@@ -212,26 +213,118 @@ function extractDateISO(normalizedText: string, now: Date = new Date()): string 
   return todayISO(now);
 }
 
-function inferCategory(text: string, kind: 'expense' | 'income' | 'transfer'): string {
+export function inferCategory(text: string, kind: 'expense' | 'income' | 'transfer'): string {
   const low = text.toLowerCase();
   if (kind === 'transfer') return 'Transfer';
   if (kind === 'income') {
-    if (/salary|বেতন|सैलरी/.test(low)) return 'Salary';
-    if (/client|invoice|project|ক্লায়েন্ট|कंपनी|बिल/.test(low)) return 'Client Revenue';
-    if (/refund|cashback|রিফান্ড|रिफंड/.test(low)) return 'Refund';
+    if (/salary|বেতন|सैलरी|stipend/.test(low)) return 'Salary';
+    if (/client|invoice|project|freelance|consulting|contract|ক্লায়েন্ট|কোম্পানি|कंपनी|बिल/.test(low)) return 'Client Revenue';
+    if (/refund|cashback|রিফান্ড|रिफंड|कैशबैक/.test(low)) return 'Refund';
+    if (/dividend|interest|rent received|সুদ|ডিভিডেন্ড|ब्याज/.test(low)) return 'Investment Income';
     return 'Income';
   }
-  if (/grocer|sabji|bazar|bajar|market|সবজি|বাজার|মুদি|सब्जी|बाज़ार|राशन/.test(low)) return 'Groceries';
-  if (/food|lunch|dinner|breakfast|coffee|tea|snack|khabar|khana|খাবার|লাঞ্চ|ডিনার|চা|खाना|नाश्ता|चाय/.test(low))
+  // Food & Dining
+  if (
+    /food|lunch|dinner|breakfast|snack|samosa|kachori|biryani|dosa|idli|roti|paratha|roll|momo|burger|pizza|pasta|sandwich|tea|chai|cha\b|coffee|milk|curd|paneer|sweet|mithai|cake|bakery|biscuit|cookie|ice cream|cold drink|juice|alcohol|wine|beer|pub|bar\b|swiggy|zomato|blinkit|zepto|instamart|mcdonald|kfc|domino|restaurant|cafe|dhaba|hotel|খাবার|চা\b|কফি|দুধ|মিষ্টি|নাস্তা|লাঞ্চ|ডিনার|বিরিয়ানি|সিঙাড়া|রোল|মোমো|বিস্কুট|खाना|नाश्ता|चाय|कॉफ़ी|दूध|मिठाई|लंच|डिनर|बिरयानी|समोसा|डोसा|पिज़्ज़ा|बर्गर|बिस्कुट/.test(
+      low,
+    )
+  )
     return 'Food & Dining';
-  if (/fuel|petrol|diesel|cab|uber|ola|metro|auto|train|travel|পেট্রোল|গাড়ি|ভাড়া|पेट्रोल|किराया|गाड़ी/.test(low))
+
+  // Groceries & Daily Essentials
+  if (
+    /grocer|sabji|vegetable|veggie|fruit|bazar|bajar|market|ration|atta|flour|rice|dal|pulse|oil|mustard|ghee|butter|masala|spice|salt|sugar|onion|potato|tomato|fish|chicken|mutton|meat|egg|সবজি|বাজার|মুদি|চাল|ডাল|তেল|মাছ|মাংস|ডিম|আলু|পেঁয়াজ|মশলা|ফল|তরকারি|কাঁচাবাজার|सब्जी|बाज़ार|राशन|दाल|चावल|तेल|आटा|फल|सब्ज़ी|प्याज़|टमाटर|आलू|मसाले|अंडा|चिकन|मीट|मछली/.test(
+      low,
+    )
+  )
+    return 'Groceries';
+
+  // Transport & Fuel
+  if (
+    /fuel|petrol|diesel|cng|cab|taxi|uber|ola|rapido|metro|auto|toto|rickshaw|bus|train|irctc|flight|ticket|toll|parking|puncture|wash|repair|bike|car\b|vehicle|পেট্রোল|ডিজেল|গাড়ি|ট্যাক্সি|অটো|রিকশা|টোটো|বাস|ট্রেন|ভাড়া|পার্কিং|ভাড়া|पेट्रोल|डीज़ल|कैब|ऑटो|रिक्शा|बस|ट्रेन|मेट्रो|किराया|पार्किंग|गाड़ी|टोल/.test(
+      low,
+    )
+  )
     return 'Transport & Fuel';
-  if (/rent|electricity|wifi|internet|recharge|bill|water|gas|বিদ্যুৎ|ভাড়া|বিল|किराया|बिजली|बिल|रिचार्ज/.test(low))
+
+  // Bills & Utilities
+  if (
+    /rent|maintenance|electricity|power|light bill|current bill|water bill|gas|lpg|cylinder|wifi|broadband|internet|recharge|dth|mobile bill|subscription|netflix|prime|spotify|youtube|newspaper|maid|cook|laundry|ironing|বিদ্যুৎ|গ্যাস|জল|বাড়ি ভাড়া|ওয়াইফাই|রিচার্জ|সিলিন্ডার|কাজের মাসি|পেপার|বিল|কারেন্ট বিল|बिजली|पानी|गैस|सिलेंडर|किराया|वाईफाई|रीचार्ज|अखबार|कामवाली|बिल/.test(
+      low,
+    )
+  )
     return 'Bills & Utilities';
-  if (/medicine|doctor|hospital|medical|pharmacy|ওষুধ|ডাক্তার|দवा|दवाई|डॉक्टर|अस्पताल/.test(low))
+
+  // Healthcare & Medical
+  if (
+    /medicine|doctor|clinic|hospital|consultation|test|blood test|lab|xray|dentist|dental|eye|glasses|pharmacy|chemist|pill|syrup|injection|ওষুধ|ডাক্তার|ক্লিনিক|হাসপাতাল|টেস্ট|চশমা|ফার্মেসি|दवा|दवाई|डॉक्टर|अस्पताल|जांच|चश्मा/.test(
+      low,
+    )
+  )
     return 'Healthcare';
-  if (/shop|amazon|flipkart|clothes|কেনাকাটা|জামা|शॉपिंग|कपड़े/.test(low)) return 'Shopping';
+
+  // Shopping & Lifestyle
+  if (
+    /shop|clothes|dress|shirt|pant|trouser|jeans|tshirt|saree|kurti|shoe|sandals|slippers|bag|electronics|laptop|gadget|amazon|flipkart|myntra|meesho|ajio|mall|cosmetic|salon|parlour|haircut|কেনাকাটা|জামাকাপড়|জুতো|জামা|শাড়ি|বিউটি পার্লার|চুল কাটা|शॉपिंग|कपड़े|जूते|साड़ी|ब्यूटी पार्लर|बाल कटवाना/.test(
+      low,
+    )
+  )
+    return 'Shopping';
+
+  // Education & Learning
+  if (
+    /school|college|tuition|fees|coaching|course|udemy|book|stationery|pen|pencil|notebook|exam|বই|খাতা|টিউশন|ফিস|পড়াশোনা|पढ़ाई|किताब|कॉपी|ट्यूशन|फीस/.test(
+      low,
+    )
+  )
+    return 'Education';
+
+  // Entertainment
+  if (/movie|cinema|theatre|concert|game|match|picnic|outing|সিনেমা|খেলা|फ़िल्म|पिकनिक/.test(low))
+    return 'Entertainment';
+
+  // Investments & Savings
+  if (/mutual fund|sip\b|stock|share|gold|fd\b|ppf|nps|crypto|মিউচুয়াল ফান্ড|সোনা|শেয়ার|शेयर|म्यूचुअल फंड|सोना/.test(low))
+    return 'Investment';
+
   return 'General Expense';
+}
+
+export function extractTransactionParty(
+  rawText: string,
+  kind: 'expense' | 'income' | 'transfer',
+  category: string,
+): string {
+  let cleaned = rawText
+    .replace(/₹\s*[\d,]+(?:\.\d+)?/gi, ' ')
+    .replace(/(?:rs|inr|taka|টাকা|rupees|rupaye|rupaya|रुपये|रुपया|পয়সা|पैसे|paise)[\s.:]*/gi, ' ')
+    .replace(/\b\d[\d,]*(?:\.\d+)?\s*(k|hajar|hazaar|lakh|lac|crore|cr)?\b/gi, ' ')
+    .replace(/[০-৯०-९]+/g, ' ')
+    .replace(/\/-|\b-\b/g, ' ');
+
+  cleaned = cleaned
+    .replace(
+      /\b(spend|spent|expense|paid|pay|buy|bought|cost|add|log|record|transfer|income|received|earned|salary|profit|for|on|at|in|to|from|via|of|the|a|an|my|i|we|please|and|aur|evang|today|yesterday|tomorrow)\b/gi,
+      ' ',
+    )
+    .replace(
+      /(খরচ|ব্যয়|ব্যয়|আয়|আয়|দিয়েছি|দিয়েছি|পেয়েছি|পেয়েছি|কিনেছি|বিল|টাকা|দাও|করো|করুন|লিখো|লেখো|আজ|কাল|আজকে|জন্য|তে|এ|হিসাব|লেনদেন)/gi,
+      ' ',
+    )
+    .replace(
+      /(खर्च|खर्चा|आय|कमाई|दिया|लिया|खरीदा|बिल|का|की|के|में|पर|से|को|करो|कीजिए|लिखो|जोड़ो|आज|कल|हिसाब|लेनदेन)/gi,
+      ' ',
+    )
+    .replace(/\b(personal|business|family)\b|পার্সোনাল|বিজনেস|ফ্যামিলি|पर्सनल|बिज़नेस|फैमिली/gi, ' ')
+    .replace(/[;:,.\-?!+/*()[\]{}]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (cleaned.length >= 2) {
+    const word = cleaned.split(/\s+/).slice(0, 3).join(' ');
+    return word.charAt(0).toUpperCase() + word.slice(1);
+  }
+  return category || (kind === 'income' ? 'Income' : 'Expense');
 }
 
 function matchAccount(
@@ -686,15 +779,16 @@ function planSingleCommand(
   const amount = extractAmountMinor(normalized);
   const isTransfer = /(transfer|ট্রান্সফার|পাঠাও|ट्रांसफर|भेजो)/i.test(low);
   const isIncome =
-    /(income|received|earned|salary|profit|revenue|আয়|আয়|পেয়েছি|পেয়েছি|বেতন|লাভ|বেচে|आय|मिला|कमाई|सैलरी|फायदा|बेचा)/i.test(
+    /(income|received|earned|salary|profit|revenue|stipend|freelance|dividend|cashback|refund|আয়|আয়|পেয়েছি|পেয়েছি|বেতন|লাভ|বেচে|বিক্রি|आय|मिला|कमाई|सैलरी|फायदा|बेचा|बिक्री)/i.test(
       low,
     );
   const isExpense =
-    /(spend|spent|expense|paid|buy|bought|cost|খরচ|কিনেছি|দিয়েছি|দিয়েছি|ব্যয়|ব্যয়|বাজার|খাবার|ভাড়া|ভাড়া|खर्च|खर्चा|खरीदा|दिया|लगा|खाना|बाज़ार)/i.test(
+    /(spend|spent|expense|paid|buy|bought|cost|tea|chai|coffee|petrol|fuel|auto|uber|ola|cab|food|lunch|dinner|breakfast|snack|samosa|kachori|biryani|grocer|sabji|bazar|market|milk|medicine|doctor|rent|recharge|bill|electricity|wifi|movie|shopping|shirt|pant|shoes|খরচ|কিনেছি|দিয়েছি|দিয়েছি|ব্যয়|ব্যয়|বাজার|খাবার|ভাড়া|ভাড়া|চা|কফি|দুধ|সবজি|পেট্রোল|ওষুধ|রিচার্জ|বিল|খर्च|खर्चा|खरीदा|दिया|लगा|खाना|बाज़ार|चाय|दूध|राशन|सब्जी|किराया|पेट्रोल|दवा|रीचार्ज|बिल)/i.test(
       low,
     );
 
-  if (amount && (isTransfer || isIncome || isExpense)) {
+  if (amount && (amount > 0)) {
+    void isExpense;
     const kind: 'expense' | 'income' | 'transfer' = isTransfer
       ? 'transfer'
       : isIncome
@@ -712,6 +806,9 @@ function planSingleCommand(
           ctx.accounts.find((a) => a.id !== sourceAcc?.id)
         : undefined;
 
+    const category = inferCategory(normalized, kind);
+    const party = extractTransactionParty(normalized, kind, category);
+
     return [
       {
         tool: 'create_transaction',
@@ -720,15 +817,48 @@ function planSingleCommand(
         amountMinor: amount,
         accountId: sourceAcc?.id,
         toAccountId: destAcc?.id,
-        category: inferCategory(normalized, kind),
+        category,
         occurredAt: extractDateISO(normalized, now),
-        party: '',
+        party,
         note: rawText.slice(0, 140),
       },
     ];
   }
 
-  // 15. Navigation Commands (includes polite Bengali/Hindi forms & common STT "colon" -> "kholo" slips)
+  // 15. Teach Agent Commands (e.g., "Teach: Chai is Food", "Remember: Rohan is Friend", "Show learned rules", "Clear rules")
+  if (
+    /^(?:teach|learn|remember|rule|শিখিয়ে দাও|শিখাও|মনে রাখো|सिखाओ|याद रखो|नियम)[\s:,-]+/i.test(
+      low,
+    )
+  ) {
+    const ruleContent = rawText
+      .replace(
+        /^(?:teach|learn|remember|rule|শিখিয়ে দাও|শিখাও|মনে রাখো|सिखाओ|याद रखो|नियम)[\s:,-]+/i,
+        '',
+      )
+      .trim();
+    if (ruleContent) {
+      return [{ tool: 'teach_agent', action: 'add', ruleText: ruleContent }];
+    }
+  }
+
+  if (
+    /(what did (?:i|you) (?:teach|learn)|show (?:learned|custom)?\s*rules|list (?:learned|custom)?\s*rules|my rules|what do you know|কী কী শিখিয়েছি|শেখানো নিয়ম|সদস্য নিয়ম|सिखाए हुए नियम|सिखाए नियम)/i.test(
+      low,
+    )
+  ) {
+    return [{ tool: 'teach_agent', action: 'list' }];
+  }
+
+  if (
+    /(clear (?:learned|custom)?\s*rules|reset (?:learned|custom)?\s*rules|forget all rules|সব নিয়ম মোছো|সব নিয়ম মুছে ফেলো|सारे नियम मिटाओ)/i.test(
+      low,
+    )
+  ) {
+    return [{ tool: 'teach_agent', action: 'clear' }];
+  }
+
+  // 16. Navigation Commands (includes polite Bengali/Hindi forms & common STT "colon" -> "kholo" slips)
   if (
     /(open|go to|switch to|show tab|navigate|colon|kholo|khulun|khul|খোলো|খুলুন|খোলেন|দেখান|যাও|দেখাও ট্যাব|खोलो|खोलिए|जाओ|चलो)/i.test(
       low,
@@ -752,10 +882,28 @@ function planSingleCommand(
       return [{ tool: 'navigate', tab: 'dashboard', scope }];
   }
 
-  // 16. Status / Read Queries across every module
+  // 17. Status / Read Queries across every module
   const queryScope = /\b(personal|business|family)\b|পার্সোনাল|বিজনেস|ফ্যামিলি|पर्सनल|बिज़नेस|फैमिली/i.test(low)
     ? extractScope(low, 'personal')
     : undefined;
+
+  // Today's expense
+  if (
+    /(today.?s?\s*(?:expense|spend|spending|transactions?)|আজকের?\s*(?:খরচ|লেনদেন|হিসাব)|आज\s*(?:का\s*)?(?:खर्च|लेनदेन|हिसाब))/i.test(
+      low,
+    )
+  ) {
+    return [{ tool: 'query_status', topic: 'today', scope: queryScope }];
+  }
+
+  // Bank balance query
+  if (
+    /(bank balance|how much in bank|my banks?|ব্যাংক ব্যালেন্স|ব্যাংকে কত|ব্যাংকের ব্যালেন্স|बैंक बैलेंस|बैंक में कितने)/i.test(
+      low,
+    )
+  ) {
+    return [{ tool: 'query_status', topic: 'banks', scope: queryScope }];
+  }
 
   if (/(credit|card|bill|কার্ড|বিল|कार्ड|बिल)/i.test(low))
     return [{ tool: 'query_status', topic: 'credit_cards', scope: queryScope }];
@@ -783,27 +931,44 @@ export function planLocalCommand(
   const trimmed = rawText.trim();
   if (!trimmed) return [{ tool: 'help' }];
 
-  // Support compound multi-task commands separated by ';' or newlines
+  // 1. Support compound multi-task commands separated by ';' or newlines
   const explicitParts = trimmed
     .split(/[;\n]+/)
     .map((p) => p.trim())
     .filter(Boolean);
   if (explicitParts.length > 1) {
-    const combined = explicitParts.slice(0, 4).flatMap((part) => planSingleCommand(part, ctx, now));
+    const combined = explicitParts.slice(0, 5).flatMap((part) => planSingleCommand(part, ctx, now));
     const actionable = combined.filter((c) => c.tool !== 'help');
     if (actionable.length > 0) return actionable;
   }
 
-  // Also support " and " / " এবং " / " और " when NOT a checklist/navigation phrase and both sides resolve cleanly
+  // 2. Support comma-separated batch entries (e.g., "Tea 50, petrol 200, lunch 150")
   if (
-    !/\b(note|checklist|loans and dues|নোট|চেকলিস্ট|नोट|चेकलिस्ट)\b/i.test(trimmed) &&
-    /\s+(?:and|এবং|और)\s+/i.test(trimmed)
+    trimmed.includes(',') &&
+    !/\b(note|checklist|add account|নোট|চেকলিস্ট|नोट|चेकलिस्ट)\b/i.test(trimmed)
   ) {
-    const parts = trimmed
-      .split(/\s+(?:and|এবং|और)\s+/i)
+    const commaParts = trimmed
+      .split(/,/)
       .map((p) => p.trim())
       .filter(Boolean);
-    if (parts.length >= 2 && parts.length <= 3) {
+    if (commaParts.length >= 2 && commaParts.length <= 5) {
+      const mapped = commaParts.map((p) => planSingleCommand(p, ctx, now));
+      if (mapped.every((arr) => arr.length > 0 && arr[0].tool !== 'help')) {
+        return mapped.flat();
+      }
+    }
+  }
+
+  // 3. Support " and " / " এবং " / " আর " / " और "
+  if (
+    !/\b(note|checklist|loans and dues|নোট|চেকলিস্ট|नोट|चेकलिस्ट)\b/i.test(trimmed) &&
+    /\s+(?:and|এবং|আর|और)\s+/i.test(trimmed)
+  ) {
+    const parts = trimmed
+      .split(/\s+(?:and|এবং|আর|और)\s+/i)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (parts.length >= 2 && parts.length <= 4) {
       const mapped = parts.map((p) => planSingleCommand(p, ctx, now));
       if (mapped.every((arr) => arr.length > 0 && arr[0].tool !== 'help')) {
         return mapped.flat();
