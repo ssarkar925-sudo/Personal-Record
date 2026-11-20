@@ -335,26 +335,25 @@ export function SettingsView({
   return (
     <div className="space-y-6 animate-panel-in max-w-4xl mx-auto pb-12">
       {/* Top Header Card */}
-      <div className="rounded-2xl bg-[#0E1015] border border-[#C59B27]/40 p-5 sm:p-6 text-white shadow-xl shadow-black/10 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-[#E5C158]/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
+      <div className="rounded-2xl border border-[#EAE5DC] bg-white p-5 sm:p-6 shadow-xs text-[#111318]">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
-            <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl overflow-hidden border border-[#C59B27]/60 shadow-[0_0_20px_rgba(197,155,39,0.3)]">
-              <AppLogo size={48} className="h-full w-full object-contain" />
+            <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl overflow-hidden border border-[#D6CFC2] bg-[#FAF8F5] shadow-xs">
+              <AppLogo size={44} className="h-full w-full object-contain" />
             </div>
             <div>
-              <h1 className="text-lg sm:text-xl font-bold text-[#E5C158] font-display">
-                Sovereign Settings &amp; System Configuration
+              <h1 className="text-lg sm:text-xl font-bold text-[#111318] font-display">
+                Settings &amp; System Configuration
               </h1>
-              <p className="text-xs text-slate-400 font-mono-data mt-0.5">
+              <p className="text-xs text-[#686E78] font-mono-data mt-0.5">
                 Centralized management for Account, Android App, Vault Security &amp; Cloud Sync
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-auto">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 text-xs font-mono-data">
-              <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-mono-data">
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
               Sovereign Guard Active
             </span>
           </div>

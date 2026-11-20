@@ -40,39 +40,49 @@ const FOIL_THEMES: Record<
     badgeBg: string;
     badgeText: string;
     progressColor: string;
+    textColor: string;
+    subtextColor: string;
   }
 > = {
   obsidian: {
-    background: 'linear-gradient(135deg, #111318 0%, #1F242D 52%, #0B0D11 100%)',
-    border: 'rgba(229, 193, 88, 0.38)',
-    accentText: '#E5C158',
-    badgeBg: 'rgba(229, 193, 88, 0.14)',
-    badgeText: '#F5D97E',
-    progressColor: '#E5C158',
+    background: 'linear-gradient(135deg, #FAF8F5 0%, #FFFFFF 100%)',
+    border: '#E6E1D6',
+    accentText: '#8C6D1F',
+    badgeBg: '#F3EFEA',
+    badgeText: '#8C6D1F',
+    progressColor: '#C59B27',
+    textColor: '#111318',
+    subtextColor: '#686E78',
   },
   gold: {
-    background: 'linear-gradient(135deg, #2A2111 0%, #4A3818 50%, #1B150A 100%)',
-    border: 'rgba(229, 193, 88, 0.5)',
-    accentText: '#F5D97E',
-    badgeBg: 'rgba(229, 193, 88, 0.2)',
-    badgeText: '#FFF3C4',
-    progressColor: '#E5C158',
+    background: 'linear-gradient(135deg, #FFFDF8 0%, #F9F5EC 100%)',
+    border: '#E8DDBE',
+    accentText: '#8C6D1F',
+    badgeBg: '#F5ECD4',
+    badgeText: '#7B5E14',
+    progressColor: '#C59B27',
+    textColor: '#111318',
+    subtextColor: '#686E78',
   },
   emerald: {
-    background: 'linear-gradient(135deg, #062E22 0%, #0A4B37 52%, #041D15 100%)',
-    border: 'rgba(52, 211, 153, 0.42)',
-    accentText: '#6EE7B7',
-    badgeBg: 'rgba(16, 185, 129, 0.2)',
-    badgeText: '#A7F3D0',
-    progressColor: '#10B981',
+    background: 'linear-gradient(135deg, #F6FBF8 0%, #ECF6F0 100%)',
+    border: '#C3E7D3',
+    accentText: '#047857',
+    badgeBg: '#E0F2E9',
+    badgeText: '#065F46',
+    progressColor: '#059669',
+    textColor: '#111318',
+    subtextColor: '#4B5563',
   },
   platinum: {
-    background: 'linear-gradient(135deg, #27272A 0%, #3F3F46 50%, #18181B 100%)',
-    border: 'rgba(212, 212, 216, 0.4)',
-    accentText: '#E4E4E7',
-    badgeBg: 'rgba(255, 255, 255, 0.14)',
-    badgeText: '#F4F4F5',
-    progressColor: '#A1A1AA',
+    background: 'linear-gradient(135deg, #FCFCFD 0%, #F3F4F6 100%)',
+    border: '#DDE1E5',
+    accentText: '#475569',
+    badgeBg: '#E2E8F0',
+    badgeText: '#334155',
+    progressColor: '#64748B',
+    textColor: '#111318',
+    subtextColor: '#64748B',
   },
 };
 
@@ -245,10 +255,10 @@ export function ReportsHeroWorkstation({
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           onClick={() => setIsFlipped((f) => !f)}
-          className="relative w-full min-h-[236px] rounded-2xl p-5 text-white select-none cursor-pointer transition-transform duration-200 ease-out overflow-hidden shadow-[0_20px_42px_rgba(17,19,24,0.22)]"
+          className="relative w-full min-h-[236px] rounded-2xl p-5 text-[#111318] select-none cursor-pointer transition-transform duration-200 ease-out overflow-hidden shadow-xs border"
           style={{
             background: activeTheme.background,
-            border: `1px solid ${activeTheme.border}`,
+            borderColor: activeTheme.border,
             transform: `perspective(1000px) rotateX(${tilt.rx.toFixed(2)}deg) rotateY(${tilt.ry.toFixed(2)}deg)`,
           }}
         >
@@ -256,7 +266,7 @@ export function ReportsHeroWorkstation({
             className="pointer-events-none absolute inset-0 transition-opacity duration-300"
             style={{
               opacity: tilt.active ? 0.28 : 0.12,
-              background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(255,255,255,0.45), transparent 60%)`,
+              background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(197,155,39,0.15), transparent 60%)`,
             }}
           />
 
@@ -266,15 +276,13 @@ export function ReportsHeroWorkstation({
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2.5">
                   <div
-                    className="w-10 h-7 rounded-md border flex items-center justify-center shadow-inner shrink-0"
+                    className="w-10 h-7 rounded-md border flex items-center justify-center shadow-inner shrink-0 bg-white"
                     style={{
-                      background:
-                        'linear-gradient(135deg, #F5D97E 0%, #C59B27 55%, #8F6B14 100%)',
-                      borderColor: 'rgba(255,255,255,0.45)',
+                      borderColor: '#D6CFC2',
                     }}
                   >
-                    <div className="w-6 h-4 border border-black/25 rounded-xs grid grid-cols-2 gap-0.5 p-0.5">
-                      <span className="border-r border-black/20" />
+                    <div className="w-6 h-4 border border-[#C59B27]/40 rounded-xs grid grid-cols-2 gap-0.5 p-0.5 bg-[#FAF8F5]">
+                      <span className="border-r border-[#C59B27]/40" />
                       <span />
                     </div>
                   </div>
@@ -285,7 +293,7 @@ export function ReportsHeroWorkstation({
                     >
                       SOVEREIGN P&L & TAX DOSSIER
                     </span>
-                    <h4 className="font-display text-base font-bold text-white tracking-tight">
+                    <h4 className="font-display text-base font-bold text-[#111318] tracking-tight">
                       Consolidated Audit Pack
                     </h4>
                   </div>
@@ -310,15 +318,15 @@ export function ReportsHeroWorkstation({
               {/* Middle Row: Net Surplus & Tax Liability */}
               <div className="flex items-baseline justify-between gap-3 pt-1">
                 <div>
-                  <span className="text-[10px] uppercase tracking-wider text-white/65 block font-semibold">
+                  <span className="text-[10px] uppercase tracking-wider text-[#686E78] block font-semibold">
                     Consolidated Net Surplus
                   </span>
-                  <div className="text-2xl sm:text-3xl font-bold font-mono-data tabular-nums tracking-tight text-white mt-0.5">
+                  <div className="text-2xl sm:text-3xl font-bold font-mono-data tabular-nums tracking-tight text-[#111318] mt-0.5">
                     {formatINR(pnlSummary.totalNetMinor, { signed: true })}
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className="text-[10px] uppercase tracking-wider text-white/65 block font-semibold">
+                  <span className="text-[10px] uppercase tracking-wider text-[#686E78] block font-semibold">
                     Est. Income Tax
                   </span>
                   <div
@@ -332,7 +340,7 @@ export function ReportsHeroWorkstation({
 
               {/* Bottom Row: Savings Rate Bar & Runway */}
               <div className="space-y-1.5 pt-1">
-                <div className="w-full h-1.5 rounded-full bg-white/15 overflow-hidden">
+                <div className="w-full h-1.5 rounded-full bg-[#EAE5DC] overflow-hidden">
                   <div
                     className="h-full rounded-full transition-all duration-500"
                     style={{
@@ -341,7 +349,7 @@ export function ReportsHeroWorkstation({
                     }}
                   />
                 </div>
-                <div className="flex items-center justify-between text-[11px] text-white/80 font-mono">
+                <div className="flex items-center justify-between text-[11px] text-[#686E78] font-mono">
                   <span>Savings Velocity: {intelligence?.savingsRatePct ?? 0}%</span>
                   <span className="font-semibold" style={{ color: activeTheme.accentText }}>
                     Runway: {intelligence?.runwayMonths ?? 0} Months
@@ -352,7 +360,7 @@ export function ReportsHeroWorkstation({
           ) : (
             /* Back of 3D Card: Scope P&L Breakdown */
             <div className="relative z-10 flex flex-col justify-between h-full min-h-[196px] space-y-3">
-              <div className="flex items-center justify-between border-b border-white/15 pb-2">
+              <div className="flex items-center justify-between border-b border-[#EAE5DC] pb-2">
                 <div>
                   <span
                     className="text-[10px] font-mono uppercase tracking-widest block font-bold"
@@ -360,7 +368,7 @@ export function ReportsHeroWorkstation({
                   >
                     CA AUDIT SCOPE BREAKDOWN
                   </span>
-                  <h4 className="text-sm font-bold text-white">
+                  <h4 className="text-sm font-bold text-[#111318]">
                     Business · Personal · Family P&L
                   </h4>
                 </div>
@@ -373,7 +381,7 @@ export function ReportsHeroWorkstation({
                     setCopiedSpec(true);
                     setTimeout(() => setCopiedSpec(false), 2000);
                   }}
-                  className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[10px] font-semibold text-white flex items-center gap-1 cursor-pointer"
+                  className="px-2 py-1 rounded-lg bg-[#FAF8F5] hover:bg-[#F3EFEA] border border-[#E6E1D6] text-[10px] font-semibold text-[#111318] flex items-center gap-1 cursor-pointer"
                 >
                   <Copy className="w-3 h-3" />
                   <span>{copiedSpec ? 'Copied!' : 'Copy Spec'}</span>
@@ -381,33 +389,33 @@ export function ReportsHeroWorkstation({
               </div>
 
               <div className="grid grid-cols-2 gap-2.5 text-xs">
-                <div className="p-2 rounded-xl bg-white/8 border border-white/10">
-                  <span className="text-[10px] text-white/60 block">Business Net Profit</span>
-                  <span className="font-mono font-bold text-white text-xs block mt-0.5">
+                <div className="p-2 rounded-xl bg-white border border-[#E6E1D6] shadow-2xs">
+                  <span className="text-[10px] text-[#686E78] block">Business Net Profit</span>
+                  <span className="font-mono font-bold text-[#111318] text-xs block mt-0.5">
                     {formatINR(data?.scopePnl.business.netMinor ?? 0, { signed: true })}
                   </span>
                 </div>
-                <div className="p-2 rounded-xl bg-white/8 border border-white/10">
-                  <span className="text-[10px] text-white/60 block">Personal Net Savings</span>
-                  <span className="font-mono font-bold text-white text-xs block mt-0.5">
+                <div className="p-2 rounded-xl bg-white border border-[#E6E1D6] shadow-2xs">
+                  <span className="text-[10px] text-[#686E78] block">Personal Net Savings</span>
+                  <span className="font-mono font-bold text-[#111318] text-xs block mt-0.5">
                     {formatINR(data?.scopePnl.personal.netMinor ?? 0, { signed: true })}
                   </span>
                 </div>
-                <div className="p-2 rounded-xl bg-white/8 border border-white/10">
-                  <span className="text-[10px] text-white/60 block">Family Net Outflow</span>
-                  <span className="font-mono font-bold text-white text-xs block mt-0.5">
+                <div className="p-2 rounded-xl bg-white border border-[#E6E1D6] shadow-2xs">
+                  <span className="text-[10px] text-[#686E78] block">Family Net Outflow</span>
+                  <span className="font-mono font-bold text-[#111318] text-xs block mt-0.5">
                     {formatINR(data?.scopePnl.family.netMinor ?? 0, { signed: true })}
                   </span>
                 </div>
-                <div className="p-2 rounded-xl bg-white/8 border border-white/10">
-                  <span className="text-[10px] text-white/60 block">Operating Expense Ratio</span>
-                  <span className="font-mono font-bold text-white text-xs block mt-0.5">
+                <div className="p-2 rounded-xl bg-white border border-[#E6E1D6] shadow-2xs">
+                  <span className="text-[10px] text-[#686E78] block">Operating Expense Ratio</span>
+                  <span className="font-mono font-bold text-[#111318] text-xs block mt-0.5">
                     {pnlSummary.overallExpenseRatioPct}% of Inflow
                   </span>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-[10px] text-white/70 pt-1">
+              <div className="flex items-center justify-between text-[10px] text-[#686E78] pt-1 border-t border-[#EAE5DC]">
                 <span>ITR Schedule Verified</span>
                 <span>Click anywhere on card to flip front</span>
               </div>

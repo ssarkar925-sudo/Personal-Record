@@ -43,36 +43,36 @@ const FOIL_THEMES: Record<
   }
 > = {
   obsidian: {
-    background: 'linear-gradient(135deg, #111318 0%, #1E232D 52%, #0B0D11 100%)',
-    border: 'rgba(229, 193, 88, 0.42)',
-    accentText: '#E5C158',
-    badgeBg: 'rgba(229, 193, 88, 0.16)',
-    badgeText: '#F5D97E',
-    barColor: '#E5C158',
+    background: 'linear-gradient(135deg, #FAF8F5 0%, #FFFFFF 100%)',
+    border: '#E6E1D6',
+    accentText: '#8C6D1F',
+    badgeBg: '#F3EFEA',
+    badgeText: '#8C6D1F',
+    barColor: '#C59B27',
   },
   gold: {
-    background: 'linear-gradient(135deg, #2A2111 0%, #4A3818 50%, #1B150A 100%)',
-    border: 'rgba(229, 193, 88, 0.55)',
-    accentText: '#F5D97E',
-    badgeBg: 'rgba(229, 193, 88, 0.22)',
-    badgeText: '#FFF3C4',
-    barColor: '#E5C158',
+    background: 'linear-gradient(135deg, #FFFDF8 0%, #F9F5EC 100%)',
+    border: '#E8DDBE',
+    accentText: '#8C6D1F',
+    badgeBg: '#F5ECD4',
+    badgeText: '#7B5E14',
+    barColor: '#C59B27',
   },
   emerald: {
-    background: 'linear-gradient(135deg, #062E22 0%, #0A4B37 52%, #041D15 100%)',
-    border: 'rgba(52, 211, 153, 0.44)',
-    accentText: '#6EE7B7',
-    badgeBg: 'rgba(16, 185, 129, 0.2)',
-    badgeText: '#A7F3D0',
-    barColor: '#10B981',
+    background: 'linear-gradient(135deg, #F6FBF8 0%, #ECF6F0 100%)',
+    border: '#C3E7D3',
+    accentText: '#047857',
+    badgeBg: '#E0F2E9',
+    badgeText: '#065F46',
+    barColor: '#059669',
   },
   platinum: {
-    background: 'linear-gradient(135deg, #27272A 0%, #3F3F46 50%, #18181B 100%)',
-    border: 'rgba(228, 228, 231, 0.42)',
-    accentText: '#E4E4E7',
-    badgeBg: 'rgba(255, 255, 255, 0.14)',
-    badgeText: '#F4F4F5',
-    barColor: '#E4E4E7',
+    background: 'linear-gradient(135deg, #FCFCFD 0%, #F3F4F6 100%)',
+    border: '#DDE1E5',
+    accentText: '#475569',
+    badgeBg: '#E2E8F0',
+    badgeText: '#334155',
+    barColor: '#64748B',
   },
 };
 
@@ -283,19 +283,18 @@ export const SheetsHeroWorkstation: React.FC<SheetsHeroWorkstationProps> = ({
               onMouseMove={handleMouseMove}
               onMouseLeave={handleMouseLeave}
               onClick={() => setFlipped((f) => !f)}
-              className="relative rounded-2xl p-5 text-white select-none cursor-pointer overflow-hidden transition-transform duration-200 ease-out"
+              className="relative rounded-2xl p-5 text-[#111318] select-none cursor-pointer overflow-hidden transition-transform duration-200 ease-out shadow-xs border"
               style={{
                 background: theme.background,
-                border: `1px solid ${theme.border}`,
+                borderColor: theme.border,
                 transform: `perspective(1000px) rotateX(${tilt.rotateX}deg) rotateY(${tilt.rotateY}deg)`,
-                boxShadow: '0 20px 38px -18px rgba(17, 19, 24, 0.55)',
                 minHeight: '186px',
               }}
             >
               <div
                 className="pointer-events-none absolute inset-0 transition-opacity duration-200"
                 style={{
-                  background: `radial-gradient(circle at ${tilt.glareX}% ${tilt.glareY}%, rgba(255, 255, 255, 0.20) 0%, rgba(255, 255, 255, 0) 60%)`,
+                  background: `radial-gradient(circle at ${tilt.glareX}% ${tilt.glareY}%, rgba(197, 155, 39, 0.12) 0%, transparent 60%)`,
                 }}
               />
 
@@ -303,8 +302,8 @@ export const SheetsHeroWorkstation: React.FC<SheetsHeroWorkstationProps> = ({
                 <div className="relative z-10 flex flex-col justify-between h-full min-h-[146px] gap-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2.5">
-                      <div className="h-8 w-10 rounded-md border border-amber-300/40 bg-gradient-to-br from-amber-200/30 via-yellow-500/20 to-amber-700/30 flex items-center justify-center shrink-0">
-                        <Layers className="h-4 w-4 text-amber-200" />
+                      <div className="h-8 w-10 rounded-md border border-[#D6CFC2] bg-white shadow-2xs flex items-center justify-center shrink-0">
+                        <Layers className="h-4 w-4 text-[#8C6D1F]" />
                       </div>
                       <div>
                         <div
@@ -314,7 +313,7 @@ export const SheetsHeroWorkstation: React.FC<SheetsHeroWorkstationProps> = ({
                           {summary.scope.toUpperCase()} · {isFinancialSheet ? 'FINANCIAL LEDGER' : 'WORKBOOK SHEET'}
                         </div>
                         <h4
-                          className="text-sm sm:text-base font-bold text-white tracking-tight truncate max-w-[220px]"
+                          className="text-sm sm:text-base font-bold text-[#111318] tracking-tight truncate max-w-[220px]"
                           style={{ fontFamily: 'var(--font-display)' }}
                         >
                           {summary.sheetName}
@@ -338,16 +337,16 @@ export const SheetsHeroWorkstation: React.FC<SheetsHeroWorkstationProps> = ({
                   {isFinancialSheet && primaryCurrencyCol ? (
                     <div className="grid grid-cols-2 gap-3 pt-1">
                       <div>
-                        <div className="text-[10px] uppercase tracking-wider text-white/60 truncate">
+                        <div className="text-[10px] uppercase tracking-wider text-[#686E78] truncate">
                           {primaryCurrencyCol.label}
                         </div>
-                        <div className="text-xl sm:text-2xl font-mono font-bold tracking-tight text-white">
+                        <div className="text-xl sm:text-2xl font-mono font-bold tracking-tight text-[#111318]">
                           {formatINR(primaryCurrencyCol.totalMinor)}
                         </div>
                       </div>
                       {secondaryCurrencyCol ? (
                         <div className="text-right">
-                          <div className="text-[10px] uppercase tracking-wider text-white/60 truncate">
+                          <div className="text-[10px] uppercase tracking-wider text-[#686E78] truncate">
                             {secondaryCurrencyCol.label}
                           </div>
                           <div
@@ -359,7 +358,7 @@ export const SheetsHeroWorkstation: React.FC<SheetsHeroWorkstationProps> = ({
                         </div>
                       ) : (
                         <div className="text-right">
-                          <div className="text-[10px] uppercase tracking-wider text-white/60">
+                          <div className="text-[10px] uppercase tracking-wider text-[#686E78]">
                             Records Logged
                           </div>
                           <div
@@ -374,15 +373,15 @@ export const SheetsHeroWorkstation: React.FC<SheetsHeroWorkstationProps> = ({
                   ) : (
                     <div className="grid grid-cols-2 gap-3 pt-1">
                       <div>
-                        <div className="text-[10px] uppercase tracking-wider text-white/60">
+                        <div className="text-[10px] uppercase tracking-wider text-[#686E78]">
                           Total Sheet Records
                         </div>
-                        <div className="text-xl sm:text-2xl font-mono font-bold tracking-tight text-white">
+                        <div className="text-xl sm:text-2xl font-mono font-bold tracking-tight text-[#111318]">
                           {summary.rowCount} {summary.rowCount === 1 ? 'Entry' : 'Entries'}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-[10px] uppercase tracking-wider text-white/60">
+                        <div className="text-[10px] uppercase tracking-wider text-[#686E78]">
                           {summary.hasStatusColumn ? 'Top Status' : 'Data Completeness'}
                         </div>
                         <div
@@ -398,7 +397,7 @@ export const SheetsHeroWorkstation: React.FC<SheetsHeroWorkstationProps> = ({
                   )}
 
                   <div className="space-y-1.5">
-                    <div className="h-1.5 w-full rounded-full bg-white/12 overflow-hidden">
+                    <div className="h-1.5 w-full rounded-full bg-[#EAE5DC] overflow-hidden">
                       <div
                         className="h-full rounded-full transition-all duration-500"
                         style={{
@@ -407,7 +406,7 @@ export const SheetsHeroWorkstation: React.FC<SheetsHeroWorkstationProps> = ({
                         }}
                       />
                     </div>
-                    <div className="flex items-center justify-between text-[11px] text-white/75 font-mono">
+                    <div className="flex items-center justify-between text-[11px] text-[#686E78] font-mono">
                       <span>
                         {summary.hasStatusColumn
                           ? `${summary.completedCount} Done · ${summary.inProgressCount + summary.pendingCount} Open`
@@ -419,32 +418,32 @@ export const SheetsHeroWorkstation: React.FC<SheetsHeroWorkstationProps> = ({
                 </div>
               ) : (
                 <div className="relative z-10 flex flex-col justify-between h-full min-h-[146px] gap-2.5 text-xs">
-                  <div className="flex items-center justify-between border-b border-white/12 pb-2">
+                  <div className="flex items-center justify-between border-b border-[#EAE5DC] pb-2">
                     <span
                       className="text-[10px] font-mono uppercase tracking-[0.14em]"
                       style={{ color: theme.accentText }}
                     >
                       SHEET COLUMNS & STRUCTURE ({summary.columnCount} COLUMNS)
                     </span>
-                    <span className="text-[10px] font-mono text-white/60">Tap to flip</span>
+                    <span className="text-[10px] font-mono text-[#686E78]">Tap to flip</span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-lg bg-black/25 border border-white/10 p-2">
-                      <div className="text-[10px] text-white/60">Data Profile</div>
-                      <div className="font-mono font-bold text-xs text-amber-300 mt-0.5 capitalize">
+                    <div className="rounded-lg bg-white border border-[#E6E1D6] p-2 shadow-2xs">
+                      <div className="text-[10px] text-[#686E78]">Data Profile</div>
+                      <div className="font-mono font-bold text-xs text-[#8C6D1F] mt-0.5 capitalize">
                         {summary.profile.replace('_', ' ')}
                       </div>
                     </div>
-                    <div className="rounded-lg bg-black/25 border border-white/10 p-2">
-                      <div className="text-[10px] text-white/60">Workbook Tabs</div>
-                      <div className="font-mono font-bold text-xs text-emerald-300 mt-0.5">
+                    <div className="rounded-lg bg-white border border-[#E6E1D6] p-2 shadow-2xs">
+                      <div className="text-[10px] text-[#686E78]">Workbook Tabs</div>
+                      <div className="font-mono font-bold text-xs text-emerald-700 mt-0.5">
                         {telemetry.totalSheets} Total Tabs
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-[11px] text-white/75 pt-1 border-t border-white/12 font-mono">
+                  <div className="flex items-center justify-between text-[11px] text-[#686E78] pt-1 border-t border-[#EAE5DC] font-mono">
                     <span>Excel (.xlsx/.csv) Ready</span>
                     <span style={{ color: theme.accentText }}>Auto-Save Active</span>
                   </div>

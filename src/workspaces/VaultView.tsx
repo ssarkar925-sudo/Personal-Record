@@ -959,62 +959,49 @@ export function VaultView({
               </span>
             </div>
 
-            <div
-              className="relative rounded-2xl p-5 text-white overflow-hidden select-none shadow-[0_20px_40px_-15px_rgba(17,19,24,0.45)]"
-              style={{
-                background: 'linear-gradient(135deg, #111318 0%, #1E232D 52%, #0B0D11 100%)',
-                border: '1px solid rgba(229, 193, 88, 0.42)',
-              }}
-            >
-              <div
-                className="pointer-events-none absolute inset-0"
-                style={{
-                  background:
-                    'radial-gradient(circle at 25% 20%, rgba(229,193,88,0.18) 0%, rgba(255,255,255,0) 60%)',
-                }}
-              />
+            <div className="relative rounded-2xl p-5 text-[#111318] overflow-hidden select-none border border-[#E6E1D6] bg-[#FDFBF7] shadow-xs">
               <div className="relative z-10 flex flex-col justify-between min-h-[205px] gap-4">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <div className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-[0.14em] bg-[#E5C158]/20 text-[#F5D97E]">
+                    <div className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-[0.14em] bg-[#F3EFEA] text-[#8C6D1F] border border-[#E6E1D6]">
                       <Lock className="h-3 w-3" />
                       AES-256-GCM · PBKDF2
                     </div>
                     <h3
-                      className="mt-2 text-lg font-bold tracking-tight text-white"
+                      className="mt-2 text-lg font-bold tracking-tight text-[#111318]"
                       style={{ fontFamily: 'var(--font-display)' }}
                     >
-                      {meta ? 'Encrypted Hardware Keycard' : 'Provision New Vault Keycard'}
+                      {meta ? 'Encrypted Security Enclave' : 'Provision New Vault Keycard'}
                     </h3>
                   </div>
-                  <div className="h-9 w-11 rounded-lg border border-amber-300/40 bg-gradient-to-br from-amber-200/30 via-yellow-500/20 to-amber-700/30 flex items-center justify-center shrink-0">
-                    <div className="h-5 w-7 rounded-xs border border-amber-200/50 grid grid-cols-2 gap-0.5 p-0.5">
-                      <span className="bg-amber-300/50 rounded-[1px]" />
-                      <span className="bg-amber-300/30 rounded-[1px]" />
-                      <span className="bg-amber-300/30 rounded-[1px]" />
-                      <span className="bg-amber-300/50 rounded-[1px]" />
+                  <div className="h-9 w-11 rounded-lg border border-[#D6CFC2] bg-white shadow-2xs flex items-center justify-center shrink-0">
+                    <div className="h-5 w-7 rounded-xs border border-[#D6CFC2] grid grid-cols-2 gap-0.5 p-0.5 bg-[#FAF8F5]">
+                      <span className="bg-[#C59B27]/60 rounded-[1px]" />
+                      <span className="bg-[#C59B27]/40 rounded-[1px]" />
+                      <span className="bg-[#C59B27]/40 rounded-[1px]" />
+                      <span className="bg-[#C59B27]/60 rounded-[1px]" />
                     </div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2">
-                  <div className="rounded-xl bg-black/30 border border-white/10 px-3 py-2">
-                    <div className="text-[10px] uppercase tracking-wider text-white/60">KDF Rounds</div>
-                    <div className="mt-0.5 text-sm font-mono font-bold text-[#E5C158]">600,000</div>
+                  <div className="rounded-xl bg-white border border-[#E6E1D6] px-3 py-2 shadow-2xs">
+                    <div className="text-[10px] uppercase tracking-wider text-[#686E78]">KDF Rounds</div>
+                    <div className="mt-0.5 text-sm font-mono font-bold text-[#8C6D1F]">600,000</div>
                   </div>
-                  <div className="rounded-xl bg-black/30 border border-white/10 px-3 py-2">
-                    <div className="text-[10px] uppercase tracking-wider text-white/60">Cipher</div>
-                    <div className="mt-0.5 text-sm font-mono font-bold text-emerald-400">256-Bit</div>
+                  <div className="rounded-xl bg-white border border-[#E6E1D6] px-3 py-2 shadow-2xs">
+                    <div className="text-[10px] uppercase tracking-wider text-[#686E78]">Cipher</div>
+                    <div className="mt-0.5 text-sm font-mono font-bold text-emerald-700">256-Bit</div>
                   </div>
-                  <div className="rounded-xl bg-black/30 border border-white/10 px-3 py-2">
-                    <div className="text-[10px] uppercase tracking-wider text-white/60">Auto-Lock</div>
-                    <div className="mt-0.5 text-sm font-mono font-bold text-white">5 Min</div>
+                  <div className="rounded-xl bg-white border border-[#E6E1D6] px-3 py-2 shadow-2xs">
+                    <div className="text-[10px] uppercase tracking-wider text-[#686E78]">Auto-Lock</div>
+                    <div className="mt-0.5 text-sm font-mono font-bold text-[#111318]">5 Min</div>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-1 border-t border-white/10 text-[11px] text-white/75 font-mono">
+                <div className="flex items-center justify-between pt-1 border-t border-[#EAE5DC] text-[11px] text-[#686E78] font-mono">
                   <span>ZERO PLAINTEXT STORAGE</span>
-                  <span className="text-[#E5C158]">PLVK ESCROW READY</span>
+                  <span className="text-[#8C6D1F] font-semibold">PLVK ESCROW READY</span>
                 </div>
               </div>
             </div>

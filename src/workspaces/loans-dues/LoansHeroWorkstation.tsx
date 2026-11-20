@@ -351,10 +351,10 @@ export function LoansHeroWorkstation({
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
             onClick={() => setIsFlipped((f) => !f)}
-            className="relative w-full min-h-[236px] rounded-2xl p-5 text-white select-none cursor-pointer transition-transform duration-200 ease-out overflow-hidden shadow-[0_20px_42px_rgba(17,19,24,0.22)]"
+            className="relative w-full min-h-[236px] rounded-2xl p-5 text-[#111318] select-none cursor-pointer transition-transform duration-200 ease-out overflow-hidden shadow-xs border"
             style={{
               background: theme.background,
-              border: `1px solid ${theme.border}`,
+              borderColor: theme.border,
               transform: `perspective(1000px) rotateX(${tilt.rx.toFixed(2)}deg) rotateY(${tilt.ry.toFixed(2)}deg)`,
             }}
           >
@@ -363,7 +363,7 @@ export function LoansHeroWorkstation({
               className="pointer-events-none absolute inset-0 transition-opacity duration-300"
               style={{
                 opacity: tilt.active ? 0.28 : 0.12,
-                background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(255,255,255,0.45), transparent 60%)`,
+                background: `radial-gradient(circle at ${tilt.gx}% ${tilt.gy}%, rgba(197,155,39,0.12), transparent 60%)`,
               }}
             />
 
@@ -374,14 +374,13 @@ export function LoansHeroWorkstation({
                   <div className="flex items-center gap-2.5">
                     {/* Realistic Gold Metallic EMV Covenant Chip */}
                     <div
-                      className="w-10 h-7 rounded-md border flex items-center justify-center shadow-inner shrink-0"
+                      className="w-10 h-7 rounded-md border flex items-center justify-center shadow-inner shrink-0 bg-white"
                       style={{
-                        background: 'linear-gradient(135deg, #F5D97E 0%, #C59B27 55%, #8F6B14 100%)',
-                        borderColor: 'rgba(255,255,255,0.45)',
+                        borderColor: '#D6CFC2',
                       }}
                     >
-                      <div className="w-6 h-4 border border-black/25 rounded-xs grid grid-cols-2 gap-0.5 p-0.5">
-                        <span className="border-r border-black/20" />
+                      <div className="w-6 h-4 border border-[#C59B27]/40 rounded-xs grid grid-cols-2 gap-0.5 p-0.5 bg-[#FAF8F5]">
+                        <span className="border-r border-[#C59B27]/40" />
                         <span />
                       </div>
                     </div>
@@ -392,7 +391,7 @@ export function LoansHeroWorkstation({
                       >
                         {stageDetails.kindLabel}
                       </span>
-                      <h4 className="font-display text-base font-bold text-white tracking-tight truncate max-w-[210px]">
+                      <h4 className="font-display text-base font-bold text-[#111318] tracking-tight truncate max-w-[210px]">
                         {stageDetails.title}
                       </h4>
                     </div>
@@ -413,15 +412,15 @@ export function LoansHeroWorkstation({
                 {/* Middle Row: Primary & Secondary Balances */}
                 <div className="flex items-baseline justify-between gap-3 pt-1">
                   <div>
-                    <span className="text-[10px] uppercase tracking-wider text-white/65 block font-semibold">
+                    <span className="text-[10px] uppercase tracking-wider text-[#686E78] block font-semibold">
                       {stageDetails.primaryLabel}
                     </span>
-                    <div className="text-2xl sm:text-3xl font-bold font-mono-data tabular-nums tracking-tight text-white mt-0.5">
+                    <div className="text-2xl sm:text-3xl font-bold font-mono-data tabular-nums tracking-tight text-[#111318] mt-0.5">
                       {stageDetails.primaryAmount}
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="text-[10px] uppercase tracking-wider text-white/65 block font-semibold">
+                    <span className="text-[10px] uppercase tracking-wider text-[#686E78] block font-semibold">
                       {stageDetails.secondaryLabel}
                     </span>
                     <div
@@ -435,7 +434,7 @@ export function LoansHeroWorkstation({
 
                 {/* Bottom Row: Principal Clearance Bar & Due Metadata */}
                 <div className="space-y-1.5 pt-1">
-                  <div className="w-full h-1.5 rounded-full bg-white/15 overflow-hidden">
+                  <div className="w-full h-1.5 rounded-full bg-[#EAE5DC] overflow-hidden">
                     <div
                       className="h-full rounded-full transition-all duration-500"
                       style={{
@@ -444,7 +443,7 @@ export function LoansHeroWorkstation({
                       }}
                     />
                   </div>
-                  <div className="flex items-center justify-between text-[11px] text-white/80 font-mono">
+                  <div className="flex items-center justify-between text-[11px] text-[#686E78] font-mono">
                     <span className="truncate max-w-[180px]">{stageDetails.metaLeft}</span>
                     <span className="font-semibold" style={{ color: theme.accentText }}>
                       {stageDetails.metaRight}
@@ -455,7 +454,7 @@ export function LoansHeroWorkstation({
             ) : (
               /* Back of 3D Covenant Card: Deep Amortization / Settlement Telemetry */
               <div className="relative z-10 flex flex-col justify-between h-full min-h-[196px] space-y-3">
-                <div className="flex items-center justify-between border-b border-white/15 pb-2">
+                <div className="flex items-center justify-between border-b border-[#EAE5DC] pb-2">
                   <div>
                     <span
                       className="text-[10px] font-mono uppercase tracking-widest block font-bold"
@@ -463,7 +462,7 @@ export function LoansHeroWorkstation({
                     >
                       COVENANT TELEMETRY & LEDGER SPEC
                     </span>
-                    <h4 className="text-sm font-bold text-white truncate">{stageDetails.title}</h4>
+                    <h4 className="text-sm font-bold text-[#111318] truncate">{stageDetails.title}</h4>
                   </div>
                   <button
                     type="button"
@@ -473,7 +472,7 @@ export function LoansHeroWorkstation({
                       void navigator.clipboard?.writeText(summaryText);
                       onNotify?.('Copied covenant summary to clipboard');
                     }}
-                    className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[10px] font-semibold text-white flex items-center gap-1 cursor-pointer"
+                    className="px-2 py-1 rounded-lg bg-[#FAF8F5] hover:bg-[#F3EFEA] border border-[#E6E1D6] text-[10px] font-semibold text-[#111318] flex items-center gap-1 cursor-pointer"
                   >
                     <Copy className="w-3 h-3" />
                     <span>Copy Spec</span>
@@ -482,16 +481,16 @@ export function LoansHeroWorkstation({
 
                 <div className="grid grid-cols-2 gap-2.5 text-xs">
                   {stageDetails.backRows.map((r) => (
-                    <div key={r.label} className="p-2 rounded-xl bg-white/8 border border-white/10">
-                      <span className="text-[10px] text-white/60 block">{r.label}</span>
-                      <span className="font-mono font-bold text-white text-xs truncate block mt-0.5">
+                    <div key={r.label} className="p-2 rounded-xl bg-white border border-[#E6E1D6] shadow-2xs">
+                      <span className="text-[10px] text-[#686E78] block">{r.label}</span>
+                      <span className="font-mono font-bold text-[#111318] text-xs truncate block mt-0.5">
                         {r.value}
                       </span>
                     </div>
                   ))}
                 </div>
 
-                <div className="flex items-center justify-between text-[10px] text-white/70 pt-1">
+                <div className="flex items-center justify-between text-[10px] text-[#686E78] pt-1 border-t border-[#EAE5DC]">
                   <span>{stageDetails.progressLabel}</span>
                   <span>Click anywhere on card to flip front</span>
                 </div>

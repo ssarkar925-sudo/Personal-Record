@@ -32,39 +32,49 @@ const FOIL_THEMES: Record<
     badgeBg: string;
     badgeText: string;
     barColor: string;
+    textColor: string;
+    subtextColor: string;
   }
 > = {
   obsidian: {
-    background: 'linear-gradient(135deg, #111318 0%, #1E232D 52%, #0B0D11 100%)',
-    border: 'rgba(229, 193, 88, 0.42)',
-    accentText: '#E5C158',
-    badgeBg: 'rgba(229, 193, 88, 0.16)',
-    badgeText: '#F5D97E',
-    barColor: '#E5C158',
+    background: 'linear-gradient(135deg, #FAF8F5 0%, #FFFFFF 100%)',
+    border: '#E6E1D6',
+    accentText: '#8C6D1F',
+    badgeBg: '#F3EFEA',
+    badgeText: '#8C6D1F',
+    barColor: '#C59B27',
+    textColor: '#111318',
+    subtextColor: '#686E78',
   },
   gold: {
-    background: 'linear-gradient(135deg, #2A2111 0%, #4A3818 50%, #1B150A 100%)',
-    border: 'rgba(229, 193, 88, 0.55)',
-    accentText: '#F5D97E',
-    badgeBg: 'rgba(229, 193, 88, 0.22)',
-    badgeText: '#FFF3C4',
-    barColor: '#E5C158',
+    background: 'linear-gradient(135deg, #FFFDF8 0%, #F9F5EC 100%)',
+    border: '#E8DDBE',
+    accentText: '#8C6D1F',
+    badgeBg: '#F5ECD4',
+    badgeText: '#7B5E14',
+    barColor: '#C59B27',
+    textColor: '#111318',
+    subtextColor: '#686E78',
   },
   emerald: {
-    background: 'linear-gradient(135deg, #062E22 0%, #0A4B37 52%, #041D15 100%)',
-    border: 'rgba(52, 211, 153, 0.44)',
-    accentText: '#6EE7B7',
-    badgeBg: 'rgba(16, 185, 129, 0.2)',
-    badgeText: '#A7F3D0',
-    barColor: '#10B981',
+    background: 'linear-gradient(135deg, #F6FBF8 0%, #ECF6F0 100%)',
+    border: '#C3E7D3',
+    accentText: '#047857',
+    badgeBg: '#E0F2E9',
+    badgeText: '#065F46',
+    barColor: '#059669',
+    textColor: '#111318',
+    subtextColor: '#4B5563',
   },
   platinum: {
-    background: 'linear-gradient(135deg, #27272A 0%, #3F3F46 50%, #18181B 100%)',
-    border: 'rgba(228, 228, 231, 0.42)',
-    accentText: '#E4E4E7',
-    badgeBg: 'rgba(255, 255, 255, 0.14)',
-    badgeText: '#F4F4F5',
-    barColor: '#E4E4E7',
+    background: 'linear-gradient(135deg, #FCFCFD 0%, #F3F4F6 100%)',
+    border: '#DDE1E5',
+    accentText: '#475569',
+    badgeBg: '#E2E8F0',
+    badgeText: '#334155',
+    barColor: '#64748B',
+    textColor: '#111318',
+    subtextColor: '#64748B',
   },
 };
 
@@ -154,11 +164,11 @@ export const VaultHeroWorkstation: React.FC<VaultHeroWorkstationProps> = ({
               transform: `rotateX(${tilt.rotateX}deg) rotateY(${tilt.rotateY}deg)`,
               transition: 'transform 160ms ease-out',
             }}
-            className="relative rounded-2xl border p-4 sm:p-5 text-white shadow-[0_22px_44px_-18px_rgba(17,19,24,0.55)] overflow-hidden min-h-[188px] flex flex-col justify-between"
+            className="relative rounded-2xl border p-4 sm:p-5 text-[#111318] shadow-xs overflow-hidden min-h-[188px] flex flex-col justify-between"
           >
             <div
               style={{
-                background: `radial-gradient(circle at ${tilt.glareX}% ${tilt.glareY}%, rgba(255,255,255,0.16), transparent 60%)`,
+                background: `radial-gradient(circle at ${tilt.glareX}% ${tilt.glareY}%, rgba(197,155,39,0.08), transparent 60%)`,
               }}
               className="pointer-events-none absolute inset-0"
             />
@@ -167,8 +177,8 @@ export const VaultHeroWorkstation: React.FC<VaultHeroWorkstationProps> = ({
               <>
                 <div className="relative z-10 flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2.5">
-                    <div className="h-7 w-9 rounded-md bg-gradient-to-br from-[#F5D97E] via-[#C59B27] to-[#8C6810] border border-white/25 shadow-inner flex items-center justify-center">
-                      <KeyRound className="h-3.5 w-3.5 text-[#111318]" />
+                    <div className="h-7 w-9 rounded-md bg-white border border-[#D6CFC2] shadow-2xs flex items-center justify-center">
+                      <KeyRound className="h-3.5 w-3.5 text-[#8C6D1F]" />
                     </div>
                     <div>
                       <div
@@ -177,14 +187,14 @@ export const VaultHeroWorkstation: React.FC<VaultHeroWorkstationProps> = ({
                       >
                         SOVEREIGN CRYPTOGRAPHIC VAULT
                       </div>
-                      <h4 className="text-sm font-bold text-white tracking-tight">
+                      <h4 className="text-sm font-bold text-[#111318] tracking-tight">
                         Client-Memory Decrypted Session
                       </h4>
                     </div>
                   </div>
                   <span
                     style={{ background: theme.badgeBg, color: theme.badgeText }}
-                    className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-white/15"
+                    className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-[#E6E1D6]"
                   >
                     {telemetry.healthStatus.toUpperCase()}
                   </span>
@@ -192,15 +202,15 @@ export const VaultHeroWorkstation: React.FC<VaultHeroWorkstationProps> = ({
 
                 <div className="relative z-10 flex items-end justify-between gap-3 my-2">
                   <div>
-                    <div className="text-[10px] uppercase tracking-[0.12em] text-white/65">
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-[#686E78]">
                       Cryptographic Health Score
                     </div>
-                    <div className="text-2xl sm:text-3xl font-extrabold tabular-nums tracking-tight text-white">
+                    <div className="text-2xl sm:text-3xl font-extrabold tabular-nums tracking-tight text-[#111318]">
                       {telemetry.healthScore}/100
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-[0.12em] text-white/65">
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-[#686E78]">
                       Encrypted Records
                     </div>
                     <div
@@ -213,7 +223,7 @@ export const VaultHeroWorkstation: React.FC<VaultHeroWorkstationProps> = ({
                 </div>
 
                 <div className="relative z-10 space-y-1.5">
-                  <div className="h-1.5 w-full rounded-full bg-white/12 overflow-hidden">
+                  <div className="h-1.5 w-full rounded-full bg-[#EAE5DC] overflow-hidden">
                     <div
                       style={{
                         width: `${Math.max(8, telemetry.healthScore)}%`,
@@ -222,7 +232,7 @@ export const VaultHeroWorkstation: React.FC<VaultHeroWorkstationProps> = ({
                       className="h-full rounded-full transition-all duration-300"
                     />
                   </div>
-                  <div className="flex items-center justify-between text-[11px] text-white/75">
+                  <div className="flex items-center justify-between text-[11px] text-[#686E78]">
                     <span>Zero Plaintext Stored</span>
                     <span style={{ color: theme.accentText }} className="font-semibold">
                       Auto-Locks in 5m · 30s Clipboard Wipe
@@ -232,34 +242,34 @@ export const VaultHeroWorkstation: React.FC<VaultHeroWorkstationProps> = ({
               </>
             ) : (
               <div className="relative z-10 flex flex-col justify-between h-full space-y-3">
-                <div className="flex items-center justify-between border-b border-white/15 pb-2">
+                <div className="flex items-center justify-between border-b border-[#EAE5DC] pb-2">
                   <span
                     style={{ color: theme.accentText }}
                     className="text-[10px] font-bold uppercase tracking-[0.15em]"
                   >
                     ZERO-KNOWLEDGE SECURITY AUDIT
                   </span>
-                  <span className="text-[10px] text-white/70">Click to flip front</span>
+                  <span className="text-[10px] text-[#686E78]">Click to flip front</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="rounded-xl bg-white/8 border border-white/12 px-2.5 py-2 flex items-center justify-between">
-                    <span className="text-white/80">Weak Secrets</span>
-                    <span className="font-bold text-white tabular-nums">{telemetry.weakCount}</span>
+                  <div className="rounded-xl bg-white border border-[#E6E1D6] px-2.5 py-2 flex items-center justify-between shadow-2xs">
+                    <span className="text-[#686E78]">Weak Secrets</span>
+                    <span className="font-bold text-[#111318] tabular-nums">{telemetry.weakCount}</span>
                   </div>
-                  <div className="rounded-xl bg-white/8 border border-white/12 px-2.5 py-2 flex items-center justify-between">
-                    <span className="text-white/80">Reused Hashes</span>
-                    <span className="font-bold text-white tabular-nums">{telemetry.reusedCount}</span>
+                  <div className="rounded-xl bg-white border border-[#E6E1D6] px-2.5 py-2 flex items-center justify-between shadow-2xs">
+                    <span className="text-[#686E78]">Reused Hashes</span>
+                    <span className="font-bold text-[#111318] tabular-nums">{telemetry.reusedCount}</span>
                   </div>
-                  <div className="rounded-xl bg-white/8 border border-white/12 px-2.5 py-2 flex items-center justify-between">
-                    <span className="text-white/80">Stale (&gt;90d)</span>
-                    <span className="font-bold text-white tabular-nums">{telemetry.staleCount}</span>
+                  <div className="rounded-xl bg-white border border-[#E6E1D6] px-2.5 py-2 flex items-center justify-between shadow-2xs">
+                    <span className="text-[#686E78]">Stale (&gt;90d)</span>
+                    <span className="font-bold text-[#111318] tabular-nums">{telemetry.staleCount}</span>
                   </div>
-                  <div className="rounded-xl bg-white/8 border border-white/12 px-2.5 py-2 flex items-center justify-between">
-                    <span className="text-white/80">Linked Accounts</span>
-                    <span className="font-bold text-white tabular-nums">{telemetry.linkedAccountsCount}</span>
+                  <div className="rounded-xl bg-white border border-[#E6E1D6] px-2.5 py-2 flex items-center justify-between shadow-2xs">
+                    <span className="text-[#686E78]">Linked Accounts</span>
+                    <span className="font-bold text-[#111318] tabular-nums">{telemetry.linkedAccountsCount}</span>
                   </div>
                 </div>
-                <div className="flex items-center justify-between text-[10px] text-white/75 pt-1 border-t border-white/10">
+                <div className="flex items-center justify-between text-[10px] text-[#686E78] pt-1 border-t border-[#EAE5DC]">
                   <span>Cipher: WebCrypto AES-256-GCM</span>
                   <span>Escrow: PLVK Emergency Kit Ready</span>
                 </div>

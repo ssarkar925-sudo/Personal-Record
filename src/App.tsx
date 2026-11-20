@@ -497,16 +497,16 @@ export function App() {
 
   if (authChecking) {
     return (
-      <div className="min-h-screen bg-[#0E1015] flex flex-col items-center justify-center p-4 text-white">
-        <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl overflow-hidden border border-[#C59B27]/60 shadow-[0_0_25px_rgba(197,155,39,0.35)] animate-pulse mb-4">
-          <AppLogo size={56} className="h-full w-full object-contain" />
+      <div className="min-h-screen bg-[#FAF8F5] flex flex-col items-center justify-center p-4 text-[#111318]">
+        <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl overflow-hidden border border-[#D6CFC2] bg-white shadow-2xs animate-pulse mb-4">
+          <AppLogo size={48} className="h-full w-full object-contain" />
         </div>
-        <div className="font-display text-lg font-bold text-[#E5C158] tracking-wider">
+        <div className="font-display text-lg font-bold text-[#111318] tracking-wider">
           PERSONAL LEDGER
         </div>
-        <div className="text-xs text-slate-400 font-mono-data mt-1 flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-[#E5C158] animate-ping" />
-          Verifying Sovereign Security Session...
+        <div className="text-xs text-[#686E78] font-mono-data mt-1 flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-[#C59B27] animate-ping" />
+          Checking Security Session...
         </div>
       </div>
     );
