@@ -46,6 +46,12 @@ import {
   dbFirstClearAppPin,
   dbFirstCommitImport,
 } from './database-first.ts';
+import {
+  getClientAgentHistory,
+  clearClientAgentHistory,
+  executeClientAgentCommand,
+  executeClientAgentVoice,
+} from './client-agent.ts';
 import { parseStatementInput } from './statement-parser.ts';
 
 export class ApiError extends Error {
@@ -736,6 +742,8 @@ export interface AgentExecutionResult {
   briefing?: AdvisorBriefing;
   suggestions?: AdvisorSuggestion[];
 }
+
+export type AgentUiEffects = AgentExecutionResult['uiEffects'];
 
 export const api = {
   getDashboard: async (scope?: Scope): Promise<DashboardSummary> => {
@@ -1814,19 +1822,45 @@ export const api = {
   },
   parseReceipt: (body: { imageBase64?: string; mimeType?: string; receiptText?: string }) =>
     request<{ data: ExtractedReceiptFields }>('/api/receipt/parse', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.data),
-  getAgentHistory: () => request<{ data: AgentHistoryRecord[] }>('/api/agent/history').then((r) => r.data),
-  clearAgentHistory: () => request<{ ok: boolean }>('/api/agent/history', { method: 'DELETE' }),
-  sendAgentCommand: (body: { commandText: string; confirmExecution?: boolean; pendingCalls?: unknown[] }) =>
-    request<{ data: AgentExecutionResult }>('/api/agent/command', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }).then((r) => r.data),
+  getAgentHistory: async (): Promise<AgentHistoryRecord[]> => {
+    if (isStandaloneClient()) return getClientAgentHistory();
+    try {
+      return await request<{ data: AgentHistoryRecord[] }>('/api/agent/history').then((r) => r.data);
+    } catch {
+      return getClientAgentHistory();
+    }
+  },
+  clearAgentHistory: async (): Promise<{ ok: boolean }> => {
+    if (isStandaloneClient()) return clearClientAgentHistory();
+    try {
+      return await request<{ ok: boolean }>('/api/agent/history', { method: 'DELETE' });
+    } catch {
+      return clearClientAgentHistory();
+    }
+  },
+  sendAgentCommand: async (body: { commandText: string; confirmExecution?: boolean; pendingCalls?: unknown[] }): Promise<AgentExecutionResult> => {
+    if (isStandaloneClient()) return executeClientAgentCommand(body);
+    try {
+      return await request<{ data: AgentExecutionResult }>('/api/agent/command', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }).then((r) => r.data);
+    } catch {
+      return executeClientAgentCommand(body);
+    }
+  },
 
-  sendAgentVoice: (body: { audioBase64: string; mimeType: string }) =>
-    request<{ data: { transcript: string; result: AgentExecutionResult } }>('/api/agent/voice', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }).then((r) => r.data),
+  sendAgentVoice: async (body: { audioBase64: string; mimeType: string }): Promise<{ transcript: string; result: AgentExecutionResult }> => {
+    if (isStandaloneClient()) return executeClientAgentVoice(body);
+    try {
+      return await request<{ data: { transcript: string; result: AgentExecutionResult } }>('/api/agent/voice', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }).then((r) => r.data);
+    } catch {
+      return executeClientAgentVoice(body);
+    }
+  },
 
   restoreBackup: (snapshot: unknown) =>
     request<{
