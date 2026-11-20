@@ -15,4 +15,4 @@ ENV AUTO_WAKEUP=true
 
 EXPOSE 10000
 
-CMD ["node", "--experimental-strip-types", "server/index.ts"]
+CMD ["node", "--experimental-strip-types", "--experimental-sqlite", "server/index.ts"]

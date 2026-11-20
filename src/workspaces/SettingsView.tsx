@@ -89,6 +89,8 @@ const RENDER_BLUEPRINT_YAML = `services:
     envVars:
       - key: NODE_VERSION
         value: 22.12.0
+      - key: NODE_OPTIONS
+        value: "--experimental-sqlite"
       - key: PORT
         value: 10000
       - key: HOST
