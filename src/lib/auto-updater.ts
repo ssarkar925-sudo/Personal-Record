@@ -16,8 +16,9 @@ export interface UpdateCheckResult {
   changelog: string;
 }
 
-export const CURRENT_APP_VERSION = '1.0.0';
-export const CURRENT_BUILD_NUMBER = 100;
+export const CURRENT_APP_VERSION = '1.0.1';
+export const CURRENT_BUILD_NUMBER = 101;
+export const APK_DOWNLOAD_URL = '/PersonalLedger-latest.apk';
 
 export async function checkForAppUpdate(): Promise<UpdateCheckResult> {
   const manifestUrl = `${window.location.origin}/version.json?_t=${Date.now()}`;

@@ -17,6 +17,7 @@ import {
   NotebookPen,
   Plus,
   Search,
+  Settings,
 } from 'lucide-react';
 import {
   api,
@@ -53,7 +54,6 @@ import { AgentDrawer } from './components/AgentDrawer.tsx';
 import { DashboardView, type WorkspaceId } from './workspaces/DashboardView.tsx';
 import { AlertsSettingsModal } from './workspaces/AlertsSettingsModal.tsx';
 import { AppLogo } from './components/ui/AppLogo.tsx';
-import { checkForAppUpdate, triggerApkDownload, type UpdateCheckResult } from './lib/auto-updater.ts';
 import { SCOPE_META } from './lib/format.ts';
 import type { Scope } from '../shared/ledger-core.ts';
 import { UI_STRINGS } from '../shared/i18n.ts';
@@ -71,6 +71,7 @@ const JobSheetsView = lazy(() =>
   import('./workspaces/JobSheetsView.tsx').then((m) => ({ default: m.JobSheetsView })),
 );
 const VaultView = lazy(() => import('./workspaces/VaultView.tsx').then((m) => ({ default: m.VaultView })));
+const SettingsView = lazy(() => import('./workspaces/SettingsView.tsx').then((m) => ({ default: m.SettingsView })));
 
 export function App() {
   const [activeTab, setActiveTab] = useState<WorkspaceId>('dashboard');
@@ -122,13 +123,6 @@ export function App() {
   const [appLocked, setAppLocked] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
-  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
-
-  useEffect(() => {
-    void checkForAppUpdate().then((res) => {
-      if (res.hasUpdate) setUpdateInfo(res);
-    });
-  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.privacy = privacyMasked ? 'masked' : 'visible';
@@ -267,9 +261,14 @@ export function App() {
         setAuthChecking(false);
 
         if (user) {
-          const { clientDb } = await import('./lib/client-db.ts');
-          await clientDb.pullDataFromSupabase({ force: true }).catch(() => {});
           void loadAll();
+          void (async () => {
+            const { clientDb } = await import('./lib/client-db.ts');
+            const pullRes = await clientDb.pullDataFromSupabase({ force: false }).catch(() => null);
+            if (pullRes && !pullRes.skipped && pullRes.count > 0 && isMounted) {
+              void loadAll();
+            }
+          })();
         } else {
           const { clientDb } = await import('./lib/client-db.ts');
           clientDb.resetToCleanSlate();
@@ -282,9 +281,14 @@ export function App() {
           setCurrentUser(nextUser);
           if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
             if (nextUser) {
-              const { clientDb } = await import('./lib/client-db.ts');
-              await clientDb.pullDataFromSupabase({ force: true }).catch(() => {});
               void loadAll();
+              void (async () => {
+                const { clientDb } = await import('./lib/client-db.ts');
+                const pullRes = await clientDb.pullDataFromSupabase({ force: false }).catch(() => null);
+                if (pullRes && !pullRes.skipped && pullRes.count > 0 && isMounted) {
+                  void loadAll();
+                }
+              })();
             }
           } else if (event === 'SIGNED_OUT') {
             setCurrentUser(null);
@@ -469,6 +473,12 @@ export function App() {
       label: dict.tabs.vault,
       shortLabel: 'Vault',
       icon: <Lock className="h-4 w-4" />,
+    },
+    {
+      id: 'settings',
+      label: 'Settings',
+      shortLabel: 'Settings',
+      icon: <Settings className="h-4 w-4" />,
     },
   ];
 
@@ -688,6 +698,20 @@ export function App() {
                   <span className="hidden sm:inline">{dict.aiAgent}</span>
                 </Button>
 
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('settings')}
+                  title="Application & Sovereign Security Settings"
+                  className={`inline-flex h-9 sm:h-8 items-center gap-1.5 rounded-xl border px-2 sm:px-2.5 text-xs font-semibold shadow-2xs transition-all cursor-pointer ${
+                    activeTab === 'settings'
+                      ? 'border-[#C59B27] bg-[#111318] text-[#E5C158]'
+                      : 'border-[#D6CFC2] bg-[#F3EFEA] text-[#111318] hover:bg-[#EAE5DC]'
+                  }`}
+                >
+                  <Settings className="h-3.5 w-3.5 text-[#C59B27]" />
+                  <span className="hidden sm:inline">Settings</span>
+                </button>
+
                 <Button
                   variant="primary"
                   size="sm"
@@ -736,39 +760,7 @@ export function App() {
           </div>
         </header>
 
-        {/* In-App Auto-Update Notification Banner */}
-        {updateInfo?.hasUpdate && (
-          <div className="sticky top-15 sm:top-16 z-25 border-b border-[#C59B27]/40 bg-gradient-to-r from-[#1B1E26] via-[#2A2312] to-[#1B1E26] px-4 py-2.5 text-xs text-[#FDE68A] shadow-md">
-            <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3 px-0 sm:px-2">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span className="relative flex h-2.5 w-2.5 shrink-0">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#E5C158] opacity-75" />
-                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#E5C158]" />
-                </span>
-                <span className="font-semibold text-white shrink-0">Android Update v{updateInfo.latestVersion}:</span>
-                <span className="truncate text-slate-300">{updateInfo.changelog}</span>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => triggerApkDownload(updateInfo.apkUrl)}
-                  className="rounded-lg bg-[#C59B27] px-3 py-1 font-mono-data text-[11px] font-bold text-[#111318] shadow hover:bg-[#D97706] active:scale-95 transition-all cursor-pointer"
-                >
-                  Download &amp; Install APK
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUpdateInfo(null)}
-                  className="text-slate-400 hover:text-white px-1.5 py-0.5 rounded cursor-pointer"
-                  title="Dismiss update notice"
-                  aria-label="Dismiss update banner"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+
 
         {/* Main Workspace Canvas (padded at bottom for Floating Glass Command Dock) */}
         {!(appLocked && preferences.hasAppPin) && (
@@ -894,6 +886,22 @@ export function App() {
                     onNotify={notify}
                     onNavigate={setActiveTab}
                     onOpenCloudSync={() => setCloudSyncOpen(true)}
+                  />
+                )}
+
+                {activeTab === 'settings' && (
+                  <SettingsView
+                    currentUser={currentUser}
+                    onUserChange={(u) => {
+                      setCurrentUser(u);
+                      void loadAll();
+                    }}
+                    preferences={preferences}
+                    onPreferencesChange={setPreferences}
+                    systemLanguage={preferences.systemLanguage}
+                    onLanguageChange={(lang) => setPreferences((prev) => ({ ...prev, systemLanguage: lang }))}
+                    onDataRefreshed={loadAll}
+                    notify={notify}
                   />
                 )}
               </Suspense>

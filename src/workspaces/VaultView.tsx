@@ -4,7 +4,6 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
-  Cloud,
   Copy,
   CreditCard,
   Download,
@@ -18,13 +17,13 @@ import {
   Lock,
   MessageSquare,
   Plus,
+  Shield,
   ShieldAlert,
   ShieldCheck,
   Smartphone,
   Star,
   Trash2,
   Unlock,
-  Upload,
   X,
 } from 'lucide-react';
 import {
@@ -92,12 +91,12 @@ export function VaultView({
   systemLanguage = 'en',
   onNotify,
   onNavigate,
-  onOpenCloudSync,
+  onOpenCloudSync: _onOpenCloudSync,
 }: {
   accounts?: AccountRecord[];
   systemLanguage?: AppLanguage;
   onNotify?: (msg: string, kind?: 'ok' | 'err') => void;
-  onNavigate?: (tab: 'dashboard' | 'cards' | 'money' | 'loans_dues' | 'reports' | 'notes' | 'sheets' | 'vault') => void;
+  onNavigate?: (tab: 'dashboard' | 'cards' | 'money' | 'loans_dues' | 'reports' | 'notes' | 'sheets' | 'vault' | 'settings') => void;
   onOpenCloudSync?: () => void;
 }) {
   const dict = UI_STRINGS[systemLanguage];
@@ -1554,62 +1553,16 @@ export function VaultView({
               </Button>
             </div>
 
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setRekeyError('');
-                setRekeyOpen(true);
-              }}
-              title="Change Master Password"
-            >
-              <KeyRound className="h-3.5 w-3.5" /> {dict.vault.changeMasterBtn}
-            </Button>
-
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setKitModalOpen(true)}
-              title="Emergency Recovery Kit"
-            >
-              <FileKey className="h-3.5 w-3.5 text-[#8C6D1F]" /> Kit
-            </Button>
-
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setExportPassphrase('');
-                setExportModalOpen(true);
-              }}
-              title="Export Encrypted Vault"
-            >
-              <Download className="h-3.5 w-3.5" /> Backup
-            </Button>
-
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setImportFileJson('');
-                setImportPassphrase('');
-                setImportPreviewCount(null);
-                setImportError('');
-                setImportModalOpen(true);
-              }}
-              title="Import Encrypted Vault"
-            >
-              <Upload className="h-3.5 w-3.5" /> Restore
-            </Button>
-
-            {onOpenCloudSync && (
+            {onNavigate && (
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={onOpenCloudSync}
-                title="Multi-Device Cloud Sync"
+                onClick={() => onNavigate('settings')}
+                title="Manage Master Password Rekey, Emergency Recovery Kit, and Encrypted Backups in Settings"
+                className="gap-1.5 text-xs text-slate-700 hover:text-slate-900 border-[#D6CFC2] bg-[#F3EFEA]"
               >
-                <Cloud className="h-3.5 w-3.5 text-[#059669]" /> Cloud Sync
+                <Shield className="h-3.5 w-3.5 text-[#C59B27]" />
+                <span>Vault Security in Settings</span>
               </Button>
             )}
 

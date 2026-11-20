@@ -13,7 +13,8 @@ export type WorkspaceId =
   | 'reports'
   | 'notes'
   | 'sheets'
-  | 'vault';
+  | 'vault'
+  | 'settings';
 
 export interface DashboardViewProps {
   data: DashboardSummary | null;

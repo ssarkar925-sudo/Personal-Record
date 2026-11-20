@@ -122,13 +122,28 @@ export function isSupabaseConfigured(): boolean {
   return getSupabaseConfig().isConfigured;
 }
 
+export function getAuthRedirectUrl(): string {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    const origin = window.location.origin;
+    // Localhost or Capacitor cannot be reached from an email client on another device/browser
+    if (
+      origin.includes('localhost') ||
+      origin.includes('127.0.0.1') ||
+      origin.startsWith('capacitor://') ||
+      origin.startsWith('file://')
+    ) {
+      return 'https://scbook.vercel.app/';
+    }
+    return `${origin}/`;
+  }
+  return 'https://scbook.vercel.app/';
+}
+
 // Authentication Helpers
 export async function signUpWithEmail(email: string, password: string) {
   const client = getSupabaseClient();
   if (!client) throw new Error('Supabase is not configured. Please provide Project URL and Anon Key.');
-  const redirectTo = typeof window !== 'undefined' && window.location?.origin
-    ? `${window.location.origin}/`
-    : 'https://personal-ledger-amber.vercel.app/';
+  const redirectTo = getAuthRedirectUrl();
   const { data, error } = await client.auth.signUp({
     email,
     password,
@@ -148,13 +163,33 @@ export async function signInWithEmail(email: string, password: string) {
   return data;
 }
 
+export async function updateAccountPassword(newPassword: string) {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('Supabase is not configured. Please provide Project URL and Anon Key.');
+  const { data, error } = await client.auth.updateUser({ password: newPassword });
+  if (error) throw error;
+  return data;
+}
+
+export async function resetPasswordForEmail(email: string) {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('Supabase is not configured. Please provide Project URL and Anon Key.');
+  const redirectTo = getAuthRedirectUrl();
+  const { data, error } = await client.auth.resetPasswordForEmail(email, {
+    redirectTo,
+  });
+  if (error) throw error;
+  return data;
+}
+
 export async function signInWithOAuth(provider: 'google' | 'github') {
   const client = getSupabaseClient();
   if (!client) throw new Error('Supabase is not configured. Please provide Project URL and Anon Key.');
+  const redirectTo = getAuthRedirectUrl();
   const { data, error } = await client.auth.signInWithOAuth({
     provider,
     options: {
-      redirectTo: window.location.origin,
+      redirectTo,
     },
   });
   if (error) throw error;
@@ -178,8 +213,17 @@ export async function getSession(): Promise<Session | null> {
 export async function getCurrentUser(): Promise<User | null> {
   const client = getSupabaseClient();
   if (!client) return null;
-  const { data } = await client.auth.getUser();
-  return data.user;
+  try {
+    // Instant local check first (reads from localStorage in 0.1ms)
+    const { data: { session } } = await client.auth.getSession();
+    if (session?.user) {
+      return session.user;
+    }
+    return null;
+  } catch (err) {
+    console.warn('getCurrentUser local session error:', err);
+    return null;
+  }
 }
 
 /**

@@ -119,6 +119,7 @@ class ClientDatabaseManager {
 
   resetToCleanSlate(): void {
     this.cache = null;
+    this.resetCloudPullThrottle();
     if (typeof window === 'undefined') return;
     try {
       localStorage.removeItem(DB_STORAGE_KEY);
@@ -1164,17 +1165,23 @@ class ClientDatabaseManager {
   }
 
   private lastCloudPullTimestamp = 0;
+  private lastPulledUserId: string | null = null;
   private inFlightPullPromise: Promise<{ count: number; skipped?: boolean }> | null = null;
 
   public resetCloudPullThrottle(): void {
     this.lastCloudPullTimestamp = 0;
+    this.lastPulledUserId = null;
     this.inFlightPullPromise = null;
   }
 
   public async pullDataFromSupabase(options: { force?: boolean } = {}): Promise<{ count: number; skipped?: boolean }> {
+    const user = await getCurrentUser();
+    if (!user) throw new Error('Please sign in to Supabase first.');
+
     const now = Date.now();
-    // Cache guard: Don't call server if pulled within the last 15 seconds unless forced
-    if (!options.force && now - this.lastCloudPullTimestamp < 15_000) {
+    const isSameUser = this.lastPulledUserId === user.id;
+    // Intelligent Cache Guard: Don't call server if pulled within the last 120 seconds unless explicitly forced
+    if (!options.force && isSameUser && now - this.lastCloudPullTimestamp < 120_000) {
       return { count: 0, skipped: true };
     }
 
@@ -1186,10 +1193,9 @@ class ClientDatabaseManager {
       try {
         const client = getSupabaseClient();
         if (!client) throw new Error('Supabase is not configured.');
-        const user = await getCurrentUser();
-        if (!user) throw new Error('Please sign in to Supabase first.');
 
         this.lastCloudPullTimestamp = Date.now();
+        this.lastPulledUserId = user.id;
         const userId = user.id;
         const [accRes, txRes, loanRes, dueRes, noteRes, sheetRes, billRes, vaultMetaRes, vaultEntriesRes, prefRes] = await Promise.all([
           client.from('accounts').select('*').eq('user_id', userId),
