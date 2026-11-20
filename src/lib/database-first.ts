@@ -643,6 +643,22 @@ export async function dbFirstDeleteNote(id: string): Promise<{ ok: boolean }> {
   return { ok: true };
 }
 
+export async function dbFirstToggleChecklistItem(noteId: string, itemId: string, done: boolean): Promise<NoteRecord> {
+  const notes = clientDb.getNotes();
+  const note = notes.find((n) => n.id === noteId);
+  if (!note) throw new Error(`Note not found: ${noteId}`);
+
+  const updatedChecklist = (note.checklist || []).map((item, idx) => {
+    const isTarget = item.id === itemId || (!item.id && String(idx) === itemId) || (itemId === 'undefined' && idx === 0);
+    if (isTarget) {
+      return { ...item, id: item.id || generateUUID(), done };
+    }
+    return item;
+  });
+
+  return dbFirstUpsertNote({ ...note, checklist: updatedChecklist });
+}
+
 // ============================================================================
 // JOB SHEETS / REGISTERS (DATABASE-FIRST)
 // ============================================================================

@@ -78,10 +78,12 @@ export function AuthScreen({
       const cleanDesc = errorDesc ? decodeURIComponent(errorDesc).replace(/\+/g, ' ') : '';
       if (errorCode === 'otp_expired' || cleanDesc.toLowerCase().includes('expired')) {
         setHashNotice(
-          'Email verification link was expired or invalid. Email confirmations are disabled on this cloud project, so you can sign in directly below with your email and password.'
+          'Email verification link was already used or expired. Your account is active and verified! Sign in directly below with your email and password.'
         );
+        setAuthMode('signin');
       } else {
-        setHashNotice(cleanDesc || 'Authentication error from verification link.');
+        setHashNotice(cleanDesc || 'Authentication notice from verification link.');
+        setAuthMode('signin');
       }
       window.history.replaceState(null, '', window.location.pathname);
     } else if (typeParam === 'recovery') {

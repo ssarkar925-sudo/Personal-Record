@@ -551,7 +551,7 @@ export function NotesView({
       setQTags(tpl.tags);
       if (tpl.checklist && tpl.checklist.length > 0) {
         setCaptureChecklistMode(true);
-        setQItems(tpl.checklist.map((text) => ({ text, done: false })));
+        setQItems(tpl.checklist.map((text) => ({ id: crypto.randomUUID(), text, done: false })));
       }
       onNotify?.(`Loaded "${tpl.name}" template ✓`);
     }
@@ -716,8 +716,14 @@ export function NotesView({
     const pendingItem = qItemText.trim();
     const finalChecklist = [
       ...qItems,
-      ...(pendingItem ? [{ text: pendingItem, done: false }] : []),
-    ].filter((i) => i.text.trim().length > 0);
+      ...(pendingItem ? [{ id: crypto.randomUUID(), text: pendingItem, done: false }] : []),
+    ]
+      .filter((i) => i.text.trim().length > 0)
+      .map((i) => ({
+        id: i.id || crypto.randomUUID(),
+        text: i.text.trim(),
+        done: Boolean(i.done),
+      }));
     const derivedTitle =
       qTitle.trim() ||
       (qBody.trim().split('\n')[0]?.slice(0, 60) ?? '') ||
@@ -758,8 +764,14 @@ export function NotesView({
       const pending = eNewItemText.trim();
       const checklistPayload = [
         ...eChecklist,
-        ...(pending ? [{ text: pending, done: false }] : []),
-      ].filter((i) => i.text.trim().length > 0);
+        ...(pending ? [{ id: crypto.randomUUID(), text: pending, done: false }] : []),
+      ]
+        .filter((i) => i.text.trim().length > 0)
+        .map((i) => ({
+          id: i.id || crypto.randomUUID(),
+          text: i.text.trim(),
+          done: Boolean(i.done),
+        }));
 
       const payload = {
         title: eTitle.trim(),
@@ -1381,13 +1393,13 @@ export function NotesView({
           {/* Checklist preview */}
           {n.checklist.length > 0 ? (
             <div className="space-y-1.5">
-              {n.checklist.slice(0, 4).map((item) => (
+              {n.checklist.slice(0, 4).map((item, idx) => (
                 <button
-                  key={item.id}
+                  key={item.id || `item-${idx}`}
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    void handleQuickToggleExisting(n, item.id, !item.done);
+                    void handleQuickToggleExisting(n, item.id || String(idx), !item.done);
                   }}
                   className="flex w-full items-start gap-2 text-left text-xs text-slate-700 hover:text-slate-950 cursor-pointer"
                 >
@@ -2241,11 +2253,11 @@ export function NotesView({
                   <div className="space-y-1.5">
                     {activeReaderNote.checklist
                       .filter((c) => !c.done)
-                      .map((item) => (
+                      .map((item, idx) => (
                         <button
-                          key={item.id}
+                          key={item.id || `open-${idx}`}
                           type="button"
-                          onClick={() => handleQuickToggleExisting(activeReaderNote, item.id, true)}
+                          onClick={() => handleQuickToggleExisting(activeReaderNote, item.id || String(idx), true)}
                           className="flex w-full items-start gap-2.5 rounded-lg p-2 text-left text-xs text-slate-800 hover:bg-black/5 cursor-pointer transition-colors"
                         >
                           <Square className="h-4 w-4 mt-0.5 text-slate-400 shrink-0" />
@@ -2264,11 +2276,11 @@ export function NotesView({
                       <div className="pt-2 space-y-1.5">
                         {activeReaderNote.checklist
                           .filter((c) => c.done)
-                          .map((item) => (
+                          .map((item, idx) => (
                             <button
-                              key={item.id}
+                              key={item.id || `done-${idx}`}
                               type="button"
-                              onClick={() => handleQuickToggleExisting(activeReaderNote, item.id, false)}
+                              onClick={() => handleQuickToggleExisting(activeReaderNote, item.id || String(idx), false)}
                               className="flex w-full items-start gap-2.5 rounded-lg p-2 text-left text-xs text-slate-500 hover:bg-black/5 cursor-pointer transition-colors"
                             >
                               <CheckSquare className="h-4 w-4 mt-0.5 text-teal-600 shrink-0" />

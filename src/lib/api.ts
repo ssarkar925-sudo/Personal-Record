@@ -29,6 +29,7 @@ import {
   dbFirstDeleteDue,
   dbFirstUpsertNote,
   dbFirstDeleteNote,
+  dbFirstToggleChecklistItem,
   dbFirstSaveJobSheet,
   dbFirstDeleteJobSheet,
   dbFirstCreateRecurringBill,
@@ -1306,11 +1307,19 @@ export const api = {
   deleteNoteAttachment: (noteId: string, attId: string) =>
     request<{ ok: boolean }>(`/api/notes/${noteId}/attachments/${attId}`, { method: 'DELETE' }),
 
-  toggleChecklistItem: (noteId: string, itemId: string, done: boolean) =>
-    request<{ data: NoteRecord }>(`/api/notes/${noteId}/checklist/${itemId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ done }),
-    }).then((r) => r.data),
+  toggleChecklistItem: async (noteId: string, itemId: string, done: boolean): Promise<NoteRecord> => {
+    if (isStandaloneClient()) {
+      return dbFirstToggleChecklistItem(noteId, itemId, done);
+    }
+    try {
+      return await request<{ data: NoteRecord }>(`/api/notes/${noteId}/checklist/${itemId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ done }),
+      }).then((r) => r.data);
+    } catch {
+      return dbFirstToggleChecklistItem(noteId, itemId, done);
+    }
+  },
 
   deleteNote: async (id: string): Promise<{ ok: boolean }> => {
     if (isStandaloneClient()) {
