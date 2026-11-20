@@ -73,6 +73,7 @@ export class BaileysWhatsAppBridge implements WhatsAppTransport {
   private incomingImageHandler: ((fromPhone: string, payload: IncomingWhatsAppImage) => Promise<void>) | null = null;
   private incomingAudioHandler: ((fromPhone: string, payload: IncomingWhatsAppAudio) => Promise<void>) | null = null;
   private recentBotMsgIds = new Set<string>();
+  private lastDisconnectCode: number | null = null;
   private state: WhatsAppBridgeState = {
     status: 'disconnected',
     qrDataUrl: null,
@@ -143,6 +144,10 @@ export class BaileysWhatsAppBridge implements WhatsAppTransport {
         printQRInTerminal: false,
         browser: ['Personal Ledger', 'Desktop', '1.0.0'],
         syncFullHistory: false,
+        connectTimeoutMs: 60_000,
+        keepAliveIntervalMs: 15_000,
+        defaultQueryTimeoutMs: 60_000,
+        retryRequestDelayMs: 500,
       });
 
       this.sock = sock;
@@ -245,6 +250,7 @@ export class BaileysWhatsAppBridge implements WhatsAppTransport {
           const statusCode = (lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)?.output
             ?.statusCode;
           const loggedOut = statusCode === DisconnectReason.loggedOut;
+          this.lastDisconnectCode = statusCode ?? null;
           this.sock = null;
 
           if (loggedOut) {
@@ -264,9 +270,10 @@ export class BaileysWhatsAppBridge implements WhatsAppTransport {
               qrDataUrl: null,
               lastError: statusCode ? `Connection closed (${statusCode}), reconnecting...` : 'Reconnecting...',
             });
+            const delay = statusCode === DisconnectReason.restartRequired ? 500 : 2500;
             this.reconnectTimer = setTimeout(() => {
               void this.connect();
-            }, 5000);
+            }, delay);
           } else {
             this.setState({ status: 'disconnected', qrDataUrl: null });
           }
@@ -323,8 +330,19 @@ export class BaileysWhatsAppBridge implements WhatsAppTransport {
   }
 
   async sendText(recipientPhone: string, text: string): Promise<{ ok: boolean; error?: string }> {
+    // Auto-heal: If socket is not open/ready but session credentials exist, trigger connect and wait briefly
+    if ((!this.sock || this.state.status !== 'connected') && this.hasSavedSession()) {
+      void this.connect();
+      let waited = 0;
+      while ((!this.sock || this.state.status !== 'connected') && waited < 6000) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        waited += 250;
+      }
+    }
+
     if (!this.sock || this.state.status !== 'connected') {
-      return { ok: false, error: 'WhatsApp QR bridge is not connected' };
+      const codeMsg = this.lastDisconnectCode ? ` (code ${this.lastDisconnectCode})` : '';
+      return { ok: false, error: `WhatsApp QR bridge is not connected${codeMsg}. Please tap Quick Connect to reconnect.` };
     }
     try {
       const targetPhone = recipientPhone.trim() || this.state.connectedPhone || '';
