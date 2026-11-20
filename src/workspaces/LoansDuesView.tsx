@@ -63,10 +63,10 @@ function safeRupeesToPaise(raw: string): number {
 }
 
 export function LoansDuesView({
-  loans,
-  dues,
-  dueSummaries,
-  accounts,
+  loans = [],
+  dues = [],
+  dueSummaries = [],
+  accounts = [],
   globalScopeFilter = 'all',
   onNotify,
   onRefresh,
@@ -157,7 +157,7 @@ export function LoansDuesView({
   const [isContributingGoal, setIsContributingGoal] = useState(false);
 
   const banks = useMemo(
-    () => accounts.filter((a) => a.accountGroup === 'bank' || a.type === 'bank'),
+    () => (accounts || []).filter((a) => a.accountGroup === 'bank' || a.type === 'bank'),
     [accounts],
   );
 
@@ -167,7 +167,7 @@ export function LoansDuesView({
       .getGoals()
       .then(setGoalsSummary)
       .catch(() => {});
-  }, [loans.length, accounts.length]);
+  }, [loans?.length, accounts?.length]);
 
   useEffect(() => {
     let cancelled = false;

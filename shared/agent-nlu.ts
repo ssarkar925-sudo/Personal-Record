@@ -329,12 +329,13 @@ export function extractTransactionParty(
 
 function matchAccount(
   text: string,
-  accounts: MinimalContextItem[],
+  accounts: MinimalContextItem[] = [],
   preferredType?: 'bank' | 'credit_card',
   preferredScope?: Scope,
 ): MinimalContextItem | undefined {
+  const safeAccounts = Array.isArray(accounts) ? accounts : [];
   const low = text.toLowerCase();
-  const pool = preferredType ? accounts.filter((a) => a.type === preferredType) : accounts;
+  const pool = preferredType ? safeAccounts.filter((a) => a.type === preferredType) : safeAccounts;
 
   for (const a of pool) {
     if (low.includes(a.name.toLowerCase())) return a;
@@ -346,7 +347,7 @@ function matchAccount(
     const byScope = pool.find((a) => a.scope === preferredScope);
     if (byScope) return byScope;
   }
-  return pool[0] ?? accounts[0];
+  return pool[0] ?? safeAccounts[0];
 }
 
 function extractPersonFromDueText(raw: string): string {
@@ -925,9 +926,18 @@ function planSingleCommand(
 
 export function planLocalCommand(
   rawText: string,
-  ctx: AgentPlannerContext,
+  ctx?: Partial<AgentPlannerContext> | null,
   now: Date = new Date(),
 ): AgentToolCall[] {
+  const safeCtx: AgentPlannerContext = {
+    accounts: Array.isArray(ctx?.accounts) ? ctx.accounts : [],
+    loans: Array.isArray(ctx?.loans) ? ctx.loans : [],
+    dues: Array.isArray(ctx?.dues) ? ctx.dues : [],
+    recurringBills: Array.isArray(ctx?.recurringBills) ? ctx.recurringBills : [],
+    notes: Array.isArray(ctx?.notes) ? ctx.notes : [],
+    goals: Array.isArray(ctx?.goals) ? ctx.goals : [],
+  };
+
   const trimmed = rawText.trim();
   if (!trimmed) return [{ tool: 'help' }];
 
@@ -937,7 +947,7 @@ export function planLocalCommand(
     .map((p) => p.trim())
     .filter(Boolean);
   if (explicitParts.length > 1) {
-    const combined = explicitParts.slice(0, 5).flatMap((part) => planSingleCommand(part, ctx, now));
+    const combined = explicitParts.slice(0, 5).flatMap((part) => planSingleCommand(part, safeCtx, now));
     const actionable = combined.filter((c) => c.tool !== 'help');
     if (actionable.length > 0) return actionable;
   }
@@ -951,8 +961,8 @@ export function planLocalCommand(
       .split(/,/)
       .map((p) => p.trim())
       .filter(Boolean);
-    if (commaParts.length >= 2 && commaParts.length <= 5) {
-      const mapped = commaParts.map((p) => planSingleCommand(p, ctx, now));
+    if (commaParts.length >= 2 && commaParts.length <= 10) {
+      const mapped = commaParts.map((p) => planSingleCommand(p, safeCtx, now));
       if (mapped.every((arr) => arr.length > 0 && arr[0].tool !== 'help')) {
         return mapped.flat();
       }
@@ -969,12 +979,12 @@ export function planLocalCommand(
       .map((p) => p.trim())
       .filter(Boolean);
     if (parts.length >= 2 && parts.length <= 4) {
-      const mapped = parts.map((p) => planSingleCommand(p, ctx, now));
+      const mapped = parts.map((p) => planSingleCommand(p, safeCtx, now));
       if (mapped.every((arr) => arr.length > 0 && arr[0].tool !== 'help')) {
         return mapped.flat();
       }
     }
   }
 
-  return planSingleCommand(trimmed, ctx, now);
+  return planSingleCommand(trimmed, safeCtx, now);
 }

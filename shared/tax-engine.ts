@@ -106,16 +106,17 @@ export function computeNewRegimeTax(
   income: TaxIncomeInputs,
   deductions: TaxDeductionInputs,
 ): TaxRegimeResult {
-  const grossTotalIncomeMinor =
-    Math.max(0, income.salaryIncomeMinor) +
-    Math.max(0, income.businessNetProfitMinor) +
-    Math.max(0, income.otherIncomeMinor) +
-    Math.max(0, income.stcgEquityMinor) +
-    Math.max(0, income.ltcgEquityMinor);
+  const safeSalary = Math.max(0, income?.salaryIncomeMinor ?? 0);
+  const safeBusiness = Math.max(0, income?.businessNetProfitMinor ?? 0);
+  const safeOther = Math.max(0, income?.otherIncomeMinor ?? 0);
+  const safeStcg = Math.max(0, income?.stcgEquityMinor ?? 0);
+  const safeLtcg = Math.max(0, income?.ltcgEquityMinor ?? 0);
+
+  const grossTotalIncomeMinor = safeSalary + safeBusiness + safeOther + safeStcg + safeLtcg;
 
   // New regime allows standard deduction of ₹75,000 for salaried employees
-  const standardDeductionMinor = deductions.isSalaried
-    ? Math.min(Math.max(0, income.salaryIncomeMinor), DEDUCTION_CAPS.NEW_STANDARD_DEDUCTION_MINOR)
+  const standardDeductionMinor = deductions?.isSalaried
+    ? Math.min(safeSalary, DEDUCTION_CAPS.NEW_STANDARD_DEDUCTION_MINOR)
     : 0;
 
   // Chapter VI-A deductions (80C, 80D, 80CCD1B, 24b) are NOT allowed under Section 115BAC
@@ -125,8 +126,8 @@ export function computeNewRegimeTax(
   const netTaxableIncomeMinor = Math.max(0, grossTotalIncomeMinor - totalDeductionsMinor);
 
   // Special rate capital gains separated
-  const stcgMinor = Math.max(0, income.stcgEquityMinor);
-  const ltcgGrossMinor = Math.max(0, income.ltcgEquityMinor);
+  const stcgMinor = safeStcg;
+  const ltcgGrossMinor = safeLtcg;
   const ltcgTaxableMinor = Math.max(0, ltcgGrossMinor - DEDUCTION_CAPS.LTCG_EXEMPTION_MINOR);
 
   // Normal income subject to slabs
@@ -256,41 +257,42 @@ export function computeOldRegimeTax(
   income: TaxIncomeInputs,
   deductions: TaxDeductionInputs,
 ): TaxRegimeResult {
-  const grossTotalIncomeMinor =
-    Math.max(0, income.salaryIncomeMinor) +
-    Math.max(0, income.businessNetProfitMinor) +
-    Math.max(0, income.otherIncomeMinor) +
-    Math.max(0, income.stcgEquityMinor) +
-    Math.max(0, income.ltcgEquityMinor);
+  const safeSalary = Math.max(0, income?.salaryIncomeMinor ?? 0);
+  const safeBusiness = Math.max(0, income?.businessNetProfitMinor ?? 0);
+  const safeOther = Math.max(0, income?.otherIncomeMinor ?? 0);
+  const safeStcg = Math.max(0, income?.stcgEquityMinor ?? 0);
+  const safeLtcg = Math.max(0, income?.ltcgEquityMinor ?? 0);
+
+  const grossTotalIncomeMinor = safeSalary + safeBusiness + safeOther + safeStcg + safeLtcg;
 
   // Standard deduction: ₹50,000 for salaried
-  const standardDeductionMinor = deductions.isSalaried
-    ? Math.min(Math.max(0, income.salaryIncomeMinor), DEDUCTION_CAPS.OLD_STANDARD_DEDUCTION_MINOR)
+  const standardDeductionMinor = deductions?.isSalaried
+    ? Math.min(safeSalary, DEDUCTION_CAPS.OLD_STANDARD_DEDUCTION_MINOR)
     : 0;
 
   // Chapter VI-A deductions
-  const sec80cClaimMinor = Math.min(Math.max(0, deductions.section80cMinor), DEDUCTION_CAPS.SEC_80C_MAX_MINOR);
+  const sec80cClaimMinor = Math.min(Math.max(0, deductions?.section80cMinor ?? 0), DEDUCTION_CAPS.SEC_80C_MAX_MINOR);
 
-  const max80dSelf = deductions.isSeniorCitizen
+  const max80dSelf = deductions?.isSeniorCitizen
     ? DEDUCTION_CAPS.SEC_80D_SELF_SENIOR_MINOR
     : DEDUCTION_CAPS.SEC_80D_SELF_NON_SENIOR_MINOR;
-  const sec80dSelfMinor = Math.min(Math.max(0, deductions.section80dSelfMinor), max80dSelf);
+  const sec80dSelfMinor = Math.min(Math.max(0, deductions?.section80dSelfMinor ?? 0), max80dSelf);
 
-  const max80dParents = deductions.isParentsSenior
+  const max80dParents = deductions?.isParentsSenior
     ? DEDUCTION_CAPS.SEC_80D_PARENTS_SENIOR_MINOR
     : DEDUCTION_CAPS.SEC_80D_PARENTS_NON_SENIOR_MINOR;
-  const sec80dParentsMinor = Math.min(Math.max(0, deductions.section80dParentsMinor), max80dParents);
+  const sec80dParentsMinor = Math.min(Math.max(0, deductions?.section80dParentsMinor ?? 0), max80dParents);
 
-  const sec80ccd1bMinor = Math.min(Math.max(0, deductions.section80ccd1bMinor), DEDUCTION_CAPS.SEC_80CCD1B_MAX_MINOR);
-  const sec24bMinor = Math.min(Math.max(0, deductions.section24bMinor), DEDUCTION_CAPS.SEC_24B_MAX_MINOR);
+  const sec80ccd1bMinor = Math.min(Math.max(0, deductions?.section80ccd1bMinor ?? 0), DEDUCTION_CAPS.SEC_80CCD1B_MAX_MINOR);
+  const sec24bMinor = Math.min(Math.max(0, deductions?.section24bMinor ?? 0), DEDUCTION_CAPS.SEC_24B_MAX_MINOR);
 
-  const max80tta = deductions.isSeniorCitizen
+  const max80tta = deductions?.isSeniorCitizen
     ? DEDUCTION_CAPS.SEC_80TTB_MAX_MINOR
     : DEDUCTION_CAPS.SEC_80TTA_MAX_MINOR;
-  const sec80ttaMinor = Math.min(Math.max(0, deductions.section80ttaMinor), max80tta);
+  const sec80ttaMinor = Math.min(Math.max(0, deductions?.section80ttaMinor ?? 0), max80tta);
 
-  const hraExemptionMinor = Math.max(0, deductions.hraExemptionMinor);
-  const otherDeductionsMinor = Math.max(0, deductions.otherDeductionsMinor ?? 0);
+  const hraExemptionMinor = Math.max(0, deductions?.hraExemptionMinor ?? 0);
+  const otherDeductionsMinor = Math.max(0, deductions?.otherDeductionsMinor ?? 0);
 
   const chapterVIAClaimsMinor =
     sec80cClaimMinor +

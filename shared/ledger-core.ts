@@ -207,6 +207,9 @@ export function formatINR(
   paise: number,
   opts: { compact?: boolean; signed?: boolean; decimals?: boolean } = {},
 ): string {
+  if (typeof paise !== 'number' || !Number.isFinite(paise)) {
+    return '₹0.00';
+  }
   const { compact = false, signed = false, decimals = true } = opts;
   const absPaise = Math.abs(paise);
   const sign = paise < 0 ? '-' : signed && paise > 0 ? '+' : '';
@@ -261,11 +264,16 @@ export function toISOFromUTC(year: number, monthIndex0: number, day: number): st
 }
 
 export function addMonthsISO(iso: string, months: number): string {
-  const { year, month, day } = parseISODate(iso);
-  const totalMonths = year * 12 + (month - 1) + months;
-  const newYear = Math.floor(totalMonths / 12);
-  const newMonth0 = ((totalMonths % 12) + 12) % 12;
-  return toISOFromUTC(newYear, newMonth0, day);
+  try {
+    const { year, month, day } = parseISODate(iso);
+    const totalMonths = year * 12 + (month - 1) + months;
+    const newYear = Math.floor(totalMonths / 12);
+    const newMonth0 = ((totalMonths % 12) + 12) % 12;
+    return toISOFromUTC(newYear, newMonth0, day);
+  } catch {
+    const now = new Date();
+    return toISOFromUTC(now.getFullYear(), now.getMonth() + months, now.getDate());
+  }
 }
 
 export function daysBetweenISO(fromISO: string, toISO: string): number {

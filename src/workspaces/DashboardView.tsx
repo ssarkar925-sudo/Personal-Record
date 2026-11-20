@@ -82,10 +82,10 @@ export function DashboardView({
   };
 
   const isFreshEmpty =
-    data.banks.length === 0 &&
-    data.cards.length === 0 &&
-    data.loans.length === 0 &&
-    data.pinnedNotes.length === 0;
+    (data?.banks?.length ?? 0) === 0 &&
+    (data?.cards?.length ?? 0) === 0 &&
+    (data?.loans?.length ?? 0) === 0 &&
+    (data?.pinnedNotes?.length ?? 0) === 0;
 
   return (
     <div className="space-y-5 animate-panel-in">

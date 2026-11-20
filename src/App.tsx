@@ -436,7 +436,7 @@ export function App() {
       label: dict.tabs.cards,
       shortLabel: 'Cards',
       icon: <CreditCard className="h-4 w-4" />,
-      badge: dashboard?.cards.length || undefined,
+      badge: dashboard?.cards?.length || undefined,
     },
     {
       id: 'money',
@@ -490,9 +490,9 @@ export function App() {
   ] as const;
 
   const monthSpentByScope: Record<Scope, number> = {
-    personal: dashboard?.allMonthExpenseByScope?.personal ?? dashboard?.monthByScope.personal.expenseMinor ?? 0,
-    business: dashboard?.allMonthExpenseByScope?.business ?? dashboard?.monthByScope.business.expenseMinor ?? 0,
-    family: dashboard?.allMonthExpenseByScope?.family ?? dashboard?.monthByScope.family.expenseMinor ?? 0,
+    personal: dashboard?.allMonthExpenseByScope?.personal ?? dashboard?.monthByScope?.personal?.expenseMinor ?? 0,
+    business: dashboard?.allMonthExpenseByScope?.business ?? dashboard?.monthByScope?.business?.expenseMinor ?? 0,
+    family: dashboard?.allMonthExpenseByScope?.family ?? dashboard?.monthByScope?.family?.expenseMinor ?? 0,
   };
 
   if (authChecking) {

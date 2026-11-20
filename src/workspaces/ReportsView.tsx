@@ -221,9 +221,9 @@ export function ReportsView({
     const salaryIncomeMinor =
       salaryOverrideRupees.trim() !== ''
         ? safeRupeesToPaise(salaryOverrideRupees)
-        : taxPack.scopePnl.personal.incomeMinor;
+        : (taxPack.scopePnl?.personal?.incomeMinor ?? 0);
 
-    const businessNetProfitMinor = Math.max(0, taxPack.scopePnl.business.netMinor);
+    const businessNetProfitMinor = Math.max(0, taxPack.scopePnl?.business?.netMinor ?? 0);
     const otherIncomeMinor = safeRupeesToPaise(sec80ttaRupees);
     const stcgEquityMinor = safeRupeesToPaise(stcgEquityRupees);
     const ltcgEquityMinor = safeRupeesToPaise(ltcgEquityRupees);
@@ -283,13 +283,13 @@ export function ReportsView({
       `_Period: ${taxPack.fromDate} to ${taxPack.toDate}_`,
       '',
       `💼 *BUSINESS SCOPE P&L:*`,
-      `• Gross Revenue: ${formatINR(taxPack.scopePnl.business.incomeMinor)}`,
-      `• Deductible Expenses: ${formatINR(taxPack.scopePnl.business.expenseMinor)}`,
-      `• Net Business Profit: ${formatINR(taxPack.scopePnl.business.netMinor, { signed: true })}`,
+      `• Gross Revenue: ${formatINR(taxPack.scopePnl?.business?.incomeMinor ?? 0)}`,
+      `• Deductible Expenses: ${formatINR(taxPack.scopePnl?.business?.expenseMinor ?? 0)}`,
+      `• Net Business Profit: ${formatINR(taxPack.scopePnl?.business?.netMinor ?? 0, { signed: true })}`,
       '',
       `👤 *PERSONAL CASHFLOW:*`,
-      `• Inflow: ${formatINR(taxPack.scopePnl.personal.incomeMinor)}`,
-      `• Outflow: ${formatINR(taxPack.scopePnl.personal.expenseMinor)}`,
+      `• Inflow: ${formatINR(taxPack.scopePnl?.personal?.incomeMinor ?? 0)}`,
+      `• Outflow: ${formatINR(taxPack.scopePnl?.personal?.expenseMinor ?? 0)}`,
       '',
       `⚖️ *INCOME TAX ESTIMATE (FY 2024-25+):*`,
       `• Recommended Choice: ${taxComparison.recommendedRegime === 'new' ? 'New Regime (Sec 115BAC)' : 'Old Regime'}`,
