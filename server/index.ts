@@ -371,7 +371,7 @@ const pendingAgentCallSchema = z.object({
 function isAllowedHostHeader(hostHeader: string | undefined): boolean {
   if (!hostHeader) return true;
   const hostOnly = hostHeader.replace(/:\d+$/, '').toLowerCase();
-  if (hostOnly === 'localhost' || hostOnly === '127.0.0.1' || hostOnly === '[::1]') return true;
+  if (hostOnly === 'localhost' || hostOnly === '127.0.0.1' || hostOnly === '[::1]' || hostOnly === '0.0.0.0') return true;
   // Allow Render hosting (*.onrender.com)
   if (hostOnly.endsWith('.onrender.com')) return true;
   // Allow hosts from RENDER_EXTERNAL_URL or ALLOWED_HOSTS env
@@ -1916,7 +1916,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(thisFile))
   const portArgIdx = argv.indexOf('--port');
   const hostArgIdx = argv.indexOf('--host');
   const port = Number((portArgIdx !== -1 && argv[portArgIdx + 1]) || process.env.PORT || 3000);
-  const host = (hostArgIdx !== -1 && argv[hostArgIdx + 1]) || process.env.HOST || '127.0.0.1';
+  const isCloudOrContainer = Boolean(process.env.RENDER || process.env.PORT || process.env.NODE_ENV === 'production');
+  const defaultHost = isCloudOrContainer ? '0.0.0.0' : '127.0.0.1';
+  const host = (hostArgIdx !== -1 && argv[hostArgIdx + 1]) || process.env.HOST || defaultHost;
   const keepAlive = new RenderKeepAliveService(undefined, Number(process.env.WAKEUP_INTERVAL_MINUTES || 5));
   const server = createAppServer({ db, transport: bridge, staticDir: distDir, keepAlive });
 
