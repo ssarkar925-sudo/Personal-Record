@@ -66,11 +66,11 @@ function safeRupeesToPaise(raw: string): number {
 }
 
 export function LoansHeroWorkstation({
-  loans,
-  dues,
-  goals,
-  dueSummaries,
-  accounts,
+  loans = [],
+  dues = [],
+  goals = [],
+  dueSummaries = [],
+  accounts = [],
   selectedItem,
   payoffPlan,
   payoffExtraRupees,
@@ -656,7 +656,7 @@ export function LoansHeroWorkstation({
               }`}
             >
               <Users className="w-3.5 h-3.5 text-[#E5C158]" />
-              <span>Khatabook ({dueSummaries.length})</span>
+              <span>Khatabook ({(dueSummaries || []).length})</span>
             </button>
           </div>
         </div>
@@ -953,7 +953,7 @@ export function LoansHeroWorkstation({
         {/* TAB 3: KHATABOOK COUNTERPARTY NET RADAR */}
         {telemetryTab === 'khatabook' && (
           <div className="space-y-2.5 flex-1 flex flex-col justify-between">
-            {dueSummaries.length === 0 ? (
+            {(dueSummaries || []).length === 0 ? (
               <div className="p-8 rounded-2xl border border-dashed border-[#E6E1D6] bg-[#FAF8F5] text-center space-y-2 my-auto">
                 <CheckCircle2 className="w-7 h-7 text-[#059669] mx-auto" />
                 <div className="text-xs font-bold text-[#111318]">All Personal Khatabook Balances Settled</div>
@@ -963,11 +963,11 @@ export function LoansHeroWorkstation({
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[240px] overflow-y-auto pr-1">
-                {dueSummaries.map((person) => {
+                {(dueSummaries || []).map((person) => {
                   const isNeed = person.netMinor >= 0;
-                  const matchingDue = dues.find(
+                  const matchingDue = (dues || []).find(
                     (d) =>
-                      d.personName.toLowerCase() === person.personName.toLowerCase() &&
+                      (d.personName || '').toLowerCase() === (person.personName || '').toLowerCase() &&
                       d.status !== 'settled',
                   );
                   const whatsappUrl = buildWhatsAppLink(

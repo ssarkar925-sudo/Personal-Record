@@ -815,7 +815,7 @@ export function App() {
 
         {/* Main Workspace Canvas (padded at bottom for Floating Glass Command Dock) */}
         {!(appLocked && preferences.hasAppPin) && (
-          <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 sm:px-6 lg:px-8 pt-5 sm:pt-6 pb-28">
+          <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 sm:px-6 lg:px-8 pt-5 sm:pt-6 pb-36 sm:pb-40">
             {loadError && (
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
                 <span>{loadError}</span>

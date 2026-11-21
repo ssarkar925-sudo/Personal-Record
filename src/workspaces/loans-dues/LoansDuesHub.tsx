@@ -61,12 +61,12 @@ export interface LoansDuesHubProps {
 }
 
 export function LoansDuesHub({
-  loans,
-  dues,
-  goals,
-  filteredLoans,
-  filteredDues,
-  filteredGoals,
+  loans = [],
+  dues = [],
+  goals = [],
+  filteredLoans = [],
+  filteredDues = [],
+  filteredGoals = [],
   selectedItem,
   searchQuery,
   activeTab,
@@ -90,7 +90,7 @@ export function LoansDuesHub({
   onOpenEditDue,
   onOpenDeleteConfirm,
 }: LoansDuesHubProps) {
-  const totalItemsCount = loans.length + dues.length + goals.length;
+  const totalItemsCount = (loans || []).length + (dues || []).length + (goals || []).length;
 
   return (
     <div className="w-full lg:w-[420px] xl:w-[460px] shrink-0 space-y-4">

@@ -225,15 +225,15 @@ export function LoansDuesView({
       if (triageFilter === 'you_are_owed' && l.direction !== 'lent') return false;
       if (triageFilter === 'due_soon') {
         if (l.status === 'closed') return false;
-        const parts = l.nextDueDate.split('-');
+        const parts = (l.nextDueDate || '').split('-');
         const dueDay = Number(parts[2]) || 1;
         const diff = dueDay - currentDayOfMonth;
         if (!((diff >= 0 && diff <= 7) || (diff < 0 && diff >= -3))) return false;
       }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const mName = l.name.toLowerCase().includes(q);
-        const mParty = l.counterparty.toLowerCase().includes(q);
+        const mName = (l.name || '').toLowerCase().includes(q);
+        const mParty = (l.counterparty || '').toLowerCase().includes(q);
         if (!mName && !mParty) return false;
       }
       return true;
@@ -244,7 +244,7 @@ export function LoansDuesView({
       if (sortOption === 'remaining_asc') return a.remainingMinor - b.remainingMinor;
       if (sortOption === 'next_due')
         return (a.nextDueDate || '9999').localeCompare(b.nextDueDate || '9999');
-      if (sortOption === 'name_asc') return a.name.localeCompare(b.name);
+      if (sortOption === 'name_asc') return (a.name || '').localeCompare(b.name || '');
       return 0;
     });
   }, [loans, scopeFilter, triageFilter, searchQuery, currentDayOfMonth, sortOption]);
@@ -260,14 +260,14 @@ export function LoansDuesView({
         return false;
       if (triageFilter === 'due_soon') {
         if (d.status === 'settled' || !d.dueDate) return false;
-        const parts = d.dueDate.split('-');
+        const parts = (d.dueDate || '').split('-');
         const dueDay = Number(parts[2]) || 1;
         const diff = dueDay - currentDayOfMonth;
         if (!((diff >= 0 && diff <= 7) || (diff < 0 && diff >= -3))) return false;
       }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const mPerson = d.personName.toLowerCase().includes(q);
+        const mPerson = (d.personName || '').toLowerCase().includes(q);
         const mPhone = (d.phone || '').includes(q);
         const mNote = (d.note || '').toLowerCase().includes(q);
         if (!mPerson && !mPhone && !mNote) return false;
@@ -280,7 +280,7 @@ export function LoansDuesView({
       if (sortOption === 'remaining_asc') return a.remainingMinor - b.remainingMinor;
       if (sortOption === 'next_due')
         return (a.dueDate || '9999').localeCompare(b.dueDate || '9999');
-      if (sortOption === 'name_asc') return a.personName.localeCompare(b.personName);
+      if (sortOption === 'name_asc') return (a.personName || '').localeCompare(b.personName || '');
       return 0;
     });
   }, [dues, scopeFilter, triageFilter, searchQuery, currentDayOfMonth, sortOption]);

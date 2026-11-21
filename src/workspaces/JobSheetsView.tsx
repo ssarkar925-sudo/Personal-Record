@@ -172,6 +172,10 @@ export function JobSheetsView({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
+  // Row Pagination (10, 20, 50, 100, or 'all' for large sheets)
+  const [pageSize, setPageSize] = useState<number | 'all'>(50);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+
   // New Tab Modal / Template Picker
   const [newTabOpen, setNewTabOpen] = useState(false);
   const [newTabName, setNewTabName] = useState('');
@@ -714,7 +718,7 @@ export function JobSheetsView({
     });
   };
 
-  const handleAddRow = () => {
+  const handleAddRow = (targetColId?: string) => {
     if (!activeSheet) return;
     const newRowIndex = activeSheet.rows.length + 1;
     const cells: Record<string, string> = {};
@@ -743,11 +747,17 @@ export function JobSheetsView({
       cells,
     };
 
+    const nextRowCount = activeSheet.rows.length + 1;
     updateActiveSheetLocal((curr) => ({
       ...curr,
       rows: [...curr.rows, newRow],
     }));
-    setSelectedCell({ rowIndex: activeSheet.rows.length, colId: activeSheet.columns[0]?.id ?? '' });
+    const targetCol = targetColId || activeSheet.columns[0]?.id || '';
+    setSelectedCell({ rowIndex: activeSheet.rows.length, colId: targetCol });
+    if (pageSize !== 'all') {
+      const targetPage = Math.ceil(nextRowCount / pageSize);
+      setCurrentPage(targetPage);
+    }
   };
 
   const handleDuplicateRow = (rowIndex: number) => {
@@ -1164,6 +1174,36 @@ export function JobSheetsView({
       });
   }, [activeSheet, statusFilter, searchQuery]);
 
+  // Pagination Telemetry & Slices
+  const totalRowsCount = displayedRows.length;
+  const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(totalRowsCount / pageSize));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+
+  const paginatedRows = useMemo(() => {
+    if (pageSize === 'all') return displayedRows;
+    const start = (safeCurrentPage - 1) * pageSize;
+    return displayedRows.slice(start, start + pageSize);
+  }, [displayedRows, safeCurrentPage, pageSize]);
+
+  // Reset pagination page on active sheet, filter, search, or page size change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeSheet?.id, statusFilter, searchQuery, pageSize]);
+
+  // Autofocus DOM cell input when selectedCell changes
+  useEffect(() => {
+    if (!selectedCell) return;
+    const el = document.querySelector<HTMLInputElement>(
+      `input[data-cell="${selectedCell.rowIndex}-${selectedCell.colId}"]`
+    );
+    if (el && document.activeElement !== el) {
+      el.focus();
+      try {
+        el.select();
+      } catch {}
+    }
+  }, [selectedCell]);
+
   const activeCellMeta = useMemo(() => {
     if (!activeSheet || !selectedCell) return null;
     const colIndex = activeSheet.columns.findIndex((c) => c.id === selectedCell.colId);
@@ -1464,7 +1504,7 @@ export function JobSheetsView({
                   ))}
                 </Select>
 
-                <Button variant="secondary" size="sm" onClick={handleAddRow}>
+                <Button variant="secondary" size="sm" onClick={() => handleAddRow()}>
                   <Plus className="h-3.5 w-3.5 text-[#059669]" /> + Row
                 </Button>
 
@@ -1566,15 +1606,90 @@ export function JobSheetsView({
           </div>
         )}
 
+        {/* Pagination Toolbar (10, 20, 50, 100, All) */}
+        {activeSheet && (
+          <div className="flex flex-wrap items-center justify-between gap-2.5 bg-[#FAF8F5] border-b border-[#E6E1D6] px-3.5 py-2 text-xs">
+            {/* Left: Row Count & Telemetry */}
+            <div className="flex items-center gap-2 text-[#52504C]">
+              <span className="font-semibold text-[#111318]">
+                {totalRowsCount === 0
+                  ? '0 rows'
+                  : pageSize === 'all'
+                    ? `Showing all ${totalRowsCount} rows`
+                    : `Showing ${(safeCurrentPage - 1) * (pageSize as number) + 1}–${Math.min(
+                        safeCurrentPage * (pageSize as number),
+                        totalRowsCount,
+                      )} of ${totalRowsCount} rows`}
+              </span>
+              {totalPages > 1 && (
+                <span className="text-[#686E78]">
+                  • Page {safeCurrentPage} of {totalPages}
+                </span>
+              )}
+            </div>
+
+            {/* Right: Page Size Selector (10, 20, 50, 100, All) + Prev/Next buttons */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] text-[#686E78] hidden sm:inline">Page split:</span>
+                <div className="inline-flex rounded-lg border border-[#E6E1D6] bg-white p-0.5">
+                  {([10, 20, 50, 100, 'all'] as const).map((size) => (
+                    <button
+                      key={String(size)}
+                      type="button"
+                      onClick={() => {
+                        setPageSize(size);
+                        setCurrentPage(1);
+                      }}
+                      className={cn(
+                        'px-2 py-0.5 text-[11px] font-semibold rounded cursor-pointer transition-colors',
+                        pageSize === size
+                          ? 'bg-[#111318] text-[#E5C158]'
+                          : 'text-[#686E78] hover:text-[#111318] hover:bg-[#F3EFEA]',
+                      )}
+                    >
+                      {size === 'all' ? 'All' : size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {pageSize !== 'all' && totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={safeCurrentPage <= 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    className="rounded-lg border border-[#E6E1D6] bg-white px-2 py-1 text-xs font-semibold text-[#111318] hover:bg-[#F3EFEA] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                  >
+                    ‹ Prev
+                  </button>
+                  <span className="font-mono text-xs font-bold px-1 text-[#111318]">
+                    {safeCurrentPage}/{totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={safeCurrentPage >= totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    className="rounded-lg border border-[#E6E1D6] bg-white px-2 py-1 text-xs font-semibold text-[#111318] hover:bg-[#F3EFEA] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                  >
+                    Next ›
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Mobile Cards View (< 768px when Cards view mode is active) */}
         {activeSheet && mobileViewMode === 'cards' && (
           <div className="md:hidden space-y-3">
-            {displayedRows.length === 0 ? (
+            {paginatedRows.length === 0 ? (
               <div className="py-10 text-center text-xs text-[#686E78] bg-[#FAF8F5] rounded-xl border border-[#E6E1D6]">
                 No rows match the current filter. Click <strong>+ Row</strong> to add an entry.
               </div>
             ) : (
-              displayedRows.map(({ row, originalIndex }) => {
+              paginatedRows.map(({ row, originalIndex }) => {
                 const firstTextCol =
                   activeSheet.columns.find((c) => c.type === 'text') ?? activeSheet.columns[0];
                 const rowPreviewText =
@@ -1747,6 +1862,21 @@ export function JobSheetsView({
                       </th>
                     );
                   })}
+                  {/* Quick + Add Column Header */}
+                  <th className="w-12 border-r border-[#E6E1D6] px-2 py-2 text-center bg-[#FAF8F5]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewColLabel('');
+                        setAddColOpen(true);
+                      }}
+                      className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-[#111318] text-[#E5C158] hover:bg-[#1E232D] text-xs font-bold cursor-pointer transition-transform hover:scale-105"
+                      title="Add New Column"
+                      aria-label="Add New Column"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </button>
+                  </th>
                   <th className="w-16 px-2 py-2 text-center font-mono text-[10px] uppercase text-[#686E78]">
                     Row
                   </th>
@@ -1754,17 +1884,17 @@ export function JobSheetsView({
               </thead>
 
               <tbody className="divide-y divide-[#E6E1D6]">
-                {displayedRows.length === 0 ? (
+                {paginatedRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={activeSheet.columns.length + 2}
+                      colSpan={activeSheet.columns.length + 3}
                       className="py-10 text-center text-xs text-[#686E78]"
                     >
                       No rows match the current filter. Click <strong>+ Row</strong> to add an entry.
                     </td>
                   </tr>
                 ) : (
-                  displayedRows.map(({ row, originalIndex }) => {
+                  paginatedRows.map(({ row, originalIndex }) => {
                     const firstTextCol = activeSheet.columns.find((c) => c.type === 'text') ?? activeSheet.columns[0];
                     const rowPreviewText =
                       (firstTextCol ? row.cells[firstTextCol.id] : '') || `Row #${originalIndex + 1}`;
@@ -1867,23 +1997,83 @@ export function JobSheetsView({
                                       ? 'date'
                                       : 'text'
                                   }
+                                  data-cell={`${originalIndex}-${col.id}`}
                                   value={rawVal}
                                   onFocus={() => setSelectedCell({ rowIndex: originalIndex, colId: col.id })}
                                   onChange={(e) => handleCellChange(originalIndex, col.id, e.target.value)}
                                   onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                       e.preventDefault();
-                                      const nextRow = Math.min(activeSheet.rows.length - 1, originalIndex + 1);
-                                      setSelectedCell({ rowIndex: nextRow, colId: col.id });
-                                    } else if (
-                                      e.key === 'Tab' &&
-                                      !e.shiftKey &&
-                                      colIdx < activeSheet.columns.length - 1
-                                    ) {
-                                      setSelectedCell({
-                                        rowIndex: originalIndex,
-                                        colId: activeSheet.columns[colIdx + 1].id,
-                                      });
+                                      if (e.shiftKey) {
+                                        if (originalIndex > 0) {
+                                          const prevRow = originalIndex - 1;
+                                          setSelectedCell({ rowIndex: prevRow, colId: col.id });
+                                          if (pageSize !== 'all') {
+                                            const targetPage = Math.floor(prevRow / pageSize) + 1;
+                                            if (targetPage !== safeCurrentPage) setCurrentPage(targetPage);
+                                          }
+                                        }
+                                      } else {
+                                        if (originalIndex >= activeSheet.rows.length - 1) {
+                                          handleAddRow(col.id);
+                                        } else {
+                                          const nextRow = originalIndex + 1;
+                                          setSelectedCell({ rowIndex: nextRow, colId: col.id });
+                                          if (pageSize !== 'all') {
+                                            const targetPage = Math.floor(nextRow / pageSize) + 1;
+                                            if (targetPage !== safeCurrentPage) setCurrentPage(targetPage);
+                                          }
+                                        }
+                                      }
+                                    } else if (e.key === 'ArrowDown') {
+                                      if (originalIndex < activeSheet.rows.length - 1) {
+                                        e.preventDefault();
+                                        const nextRow = originalIndex + 1;
+                                        setSelectedCell({ rowIndex: nextRow, colId: col.id });
+                                        if (pageSize !== 'all') {
+                                          const targetPage = Math.floor(nextRow / pageSize) + 1;
+                                          if (targetPage !== safeCurrentPage) setCurrentPage(targetPage);
+                                        }
+                                      }
+                                    } else if (e.key === 'ArrowUp') {
+                                      if (originalIndex > 0) {
+                                        e.preventDefault();
+                                        const prevRow = originalIndex - 1;
+                                        setSelectedCell({ rowIndex: prevRow, colId: col.id });
+                                        if (pageSize !== 'all') {
+                                          const targetPage = Math.floor(prevRow / pageSize) + 1;
+                                          if (targetPage !== safeCurrentPage) setCurrentPage(targetPage);
+                                        }
+                                      }
+                                    } else if (e.key === 'Tab') {
+                                      e.preventDefault();
+                                      if (e.shiftKey) {
+                                        if (colIdx > 0) {
+                                          setSelectedCell({ rowIndex: originalIndex, colId: activeSheet.columns[colIdx - 1].id });
+                                        } else if (originalIndex > 0) {
+                                          const prevRow = originalIndex - 1;
+                                          const lastCol = activeSheet.columns[activeSheet.columns.length - 1].id;
+                                          setSelectedCell({ rowIndex: prevRow, colId: lastCol });
+                                          if (pageSize !== 'all') {
+                                            const targetPage = Math.floor(prevRow / pageSize) + 1;
+                                            if (targetPage !== safeCurrentPage) setCurrentPage(targetPage);
+                                          }
+                                        }
+                                      } else {
+                                        if (colIdx < activeSheet.columns.length - 1) {
+                                          setSelectedCell({ rowIndex: originalIndex, colId: activeSheet.columns[colIdx + 1].id });
+                                        } else if (originalIndex < activeSheet.rows.length - 1) {
+                                          const nextRow = originalIndex + 1;
+                                          const firstCol = activeSheet.columns[0].id;
+                                          setSelectedCell({ rowIndex: nextRow, colId: firstCol });
+                                          if (pageSize !== 'all') {
+                                            const targetPage = Math.floor(nextRow / pageSize) + 1;
+                                            if (targetPage !== safeCurrentPage) setCurrentPage(targetPage);
+                                          }
+                                        } else {
+                                          handleAddRow(activeSheet.columns[0].id);
+                                        }
+                                      }
                                     }
                                   }}
                                   placeholder={col.type === 'currency' ? '0.00' : '...'}
@@ -1897,6 +2087,9 @@ export function JobSheetsView({
                             </td>
                           );
                         })}
+
+                        {/* Spacer for + Column */}
+                        <td className="border-r border-[#E6E1D6] bg-[#FAF8F5]/30 text-center" />
 
                         {/* Row Actions (Drawer Edit / Duplicate / Confirmed Delete) */}
                         <td className="px-2 py-1.5 text-center">
@@ -1976,6 +2169,8 @@ export function JobSheetsView({
                         </td>
                       );
                     })}
+                    {/* Spacer for + Column in Totals */}
+                    <td className="border-r border-[#E6E1D6] bg-[#FAF8F5]" />
                     <td className="px-2 py-2.5 text-center">
                       <button
                         type="button"
@@ -1990,6 +2185,53 @@ export function JobSheetsView({
                 </tfoot>
               )}
             </table>
+
+            {/* Quick Action Bottom Strip (+ Add Row, + Add Column, Bottom Pagination) */}
+            <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-[#FAF8F5] border-t border-[#E6E1D6]">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleAddRow()}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#111318] text-[#E5C158] hover:bg-[#1E232D] px-3 py-1.5 text-xs font-semibold cursor-pointer shadow-2xs transition-colors"
+                >
+                  <Plus className="h-3.5 w-3.5 text-[#E5C158]" /> + Add Row
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewColLabel('');
+                    setAddColOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#E6E1D6] bg-white hover:bg-[#F3EFEA] px-3 py-1.5 text-xs font-semibold text-[#111318] cursor-pointer transition-colors"
+                >
+                  <Columns className="h-3.5 w-3.5 text-[#8C6D1F]" /> + Add Column
+                </button>
+              </div>
+
+              {totalPages > 1 && pageSize !== 'all' && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={safeCurrentPage <= 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    className="rounded-lg border border-[#E6E1D6] bg-white px-2.5 py-1 text-xs font-semibold text-[#111318] hover:bg-[#F3EFEA] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                  >
+                    ‹ Prev Page
+                  </button>
+                  <span className="font-mono text-xs font-semibold px-1.5 text-[#52504C]">
+                    Page {safeCurrentPage} of {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={safeCurrentPage >= totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    className="rounded-lg border border-[#E6E1D6] bg-white px-2.5 py-1 text-xs font-semibold text-[#111318] hover:bg-[#F3EFEA] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                  >
+                    Next Page ›
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

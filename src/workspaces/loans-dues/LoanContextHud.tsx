@@ -560,19 +560,19 @@ export function LoanContextHud({
                 {formatINR(payoffPlan.totalDebtMinor)}
               </span>
               <span className="text-[11px] text-[#52504C] mt-0.5 block">
-                Across {payoffPlan.items.length} accounts
+                Across {(payoffPlan.items || []).length} accounts
               </span>
             </div>
           </div>
 
-          {payoffPlan.items.length > 0 && (
+          {(payoffPlan.items || []).length > 0 && (
             <div className="space-y-2 pt-1">
               <span className="text-xs font-semibold text-[#111318] block">
                 Prioritized Payoff Order (
                 {payoffStrategy === 'avalanche' ? 'Highest APR First' : 'Smallest Balance First'}):
               </span>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-                {payoffPlan.items.map((item) => (
+                {(payoffPlan.items || []).map((item) => (
                   <div
                     key={item.id}
                     className="rounded-2xl border border-[#E6E1D6] bg-[#FAF8F5] p-3 flex items-center justify-between"
@@ -580,7 +580,7 @@ export function LoanContextHud({
                     <div>
                       <div className="font-semibold text-[#111318] flex items-center gap-1.5">
                         <span className="w-5 h-5 rounded-full bg-[#111318] text-[#E5C158] text-[10px] font-mono font-bold flex items-center justify-center">
-                          #{item.payoffOrder}
+                          #{item.payoffOrder ?? (item as any).order ?? 1}
                         </span>
                         <span>{item.name}</span>
                       </div>

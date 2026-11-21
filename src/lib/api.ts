@@ -1931,9 +1931,99 @@ export const api = {
       return [];
     }
   },
-  getDebtPayoffPlan: async (params?: { extraMinor?: number; strategy?: 'avalanche' | 'snowball'; cardAprBps?: number }) => {
+  getDebtPayoffPlan: async (params?: { extraMinor?: number; strategy?: 'avalanche' | 'snowball'; cardAprBps?: number }): Promise<DebtPayoffResult> => {
+    const buildFallbackPlan = (): DebtPayoffResult => {
+      const strategy = params?.strategy || 'avalanche';
+      const extraMonthlyMinor = Math.max(0, Math.round(params?.extraMinor || 0));
+      const cardAprBps = params?.cardAprBps ?? 3600;
+
+      let accountsList: AccountRecord[] = [];
+      let loansList: LoanRecord[] = [];
+      try {
+        accountsList = clientDb.getAccounts();
+        loansList = clientDb.getLoans();
+      } catch {}
+
+      const activeLoans = (loansList || []).filter(
+        (l) => l.status === 'active' && l.direction === 'borrowed' && l.remainingMinor > 0
+      );
+      const activeCards = (accountsList || []).filter(
+        (c) => (c.accountGroup === 'credit_card' || c.type === 'credit_card') &&
+          ((c.cardCycle?.totalOutstandingMinor ?? c.currentBalanceMinor ?? 0) > 0)
+      );
+
+      const items: DebtPayoffResult['items'] = [];
+      let totalDebtMinor = 0;
+
+      for (const c of activeCards) {
+        const bal = c.cardCycle?.totalOutstandingMinor ?? c.currentBalanceMinor ?? 0;
+        if (bal > 0) {
+          totalDebtMinor += bal;
+          const monthlyMinMinor = Math.min(bal, Math.max(100_000, Math.round(bal * 0.05)));
+          items.push({
+            id: c.id,
+            name: c.name,
+            kind: 'credit_card',
+            scope: c.scope,
+            balanceMinor: bal,
+            aprBps: cardAprBps,
+            monthlyMinMinor,
+            payoffOrder: 0,
+            baselineMonths: Math.ceil(bal / monthlyMinMinor),
+            planMonths: Math.ceil(bal / (monthlyMinMinor + extraMonthlyMinor)),
+          });
+        }
+      }
+
+      for (const l of activeLoans) {
+        totalDebtMinor += l.remainingMinor;
+        const monthlyMinMinor = l.emiMinor > 0 ? l.emiMinor : Math.max(100_000, Math.round(l.remainingMinor / Math.max(1, l.tenureMonths)));
+        items.push({
+          id: l.id,
+          name: l.name,
+          kind: 'loan',
+          scope: l.scope,
+          balanceMinor: l.remainingMinor,
+          aprBps: l.annualRateBps,
+          monthlyMinMinor,
+          payoffOrder: 0,
+          baselineMonths: Math.ceil(l.remainingMinor / monthlyMinMinor),
+          planMonths: Math.ceil(l.remainingMinor / (monthlyMinMinor + extraMonthlyMinor)),
+        });
+      }
+
+      if (strategy === 'avalanche') {
+        items.sort((a, b) => b.aprBps - a.aprBps);
+      } else {
+        items.sort((a, b) => a.balanceMinor - b.balanceMinor);
+      }
+      items.forEach((it, idx) => {
+        it.payoffOrder = idx + 1;
+      });
+
+      const totalMinEmi = items.reduce((s, it) => s + it.monthlyMinMinor, 0);
+      const baselineMonths = totalMinEmi > 0 ? Math.ceil(totalDebtMinor / totalMinEmi) : 0;
+      const acceleratedMonthly = totalMinEmi + extraMonthlyMinor;
+      const planMonths = acceleratedMonthly > 0 ? Math.ceil(totalDebtMinor / acceleratedMonthly) : baselineMonths;
+      const monthsSaved = Math.max(0, baselineMonths - planMonths);
+      const approxInterestSaved = Math.round(extraMonthlyMinor * monthsSaved * 0.12);
+
+      return {
+        strategy,
+        extraMonthlyMinor,
+        totalDebtMinor,
+        baselineMonths,
+        planMonths,
+        monthsSaved,
+        baselineInterestMinor: Math.round(totalDebtMinor * 0.18),
+        planInterestMinor: Math.max(0, Math.round(totalDebtMinor * 0.18) - approxInterestSaved),
+        interestSavedMinor: approxInterestSaved,
+        items,
+      };
+    };
+
     if (isStandaloneClient()) {
-      return { totalDebtMinor: 0, monthsToDebtFree: 0, totalInterestMinor: 0, accounts: [] } as any;
+      return buildFallbackPlan();
     }
     try {
       const qs = new URLSearchParams();
@@ -1941,9 +2031,11 @@ export const api = {
       if (params?.strategy) qs.set('strategy', params.strategy);
       if (params?.cardAprBps !== undefined) qs.set('cardAprBps', String(params.cardAprBps));
       const q = qs.toString();
-      return await request<{ data: DebtPayoffResult }>(`/api/planner/debt-payoff${q ? `?${q}` : ''}`).then((r) => r.data);
+      const res = await request<{ data: DebtPayoffResult }>(`/api/planner/debt-payoff${q ? `?${q}` : ''}`);
+      if (res?.data?.items) return res.data;
+      return buildFallbackPlan();
     } catch {
-      return { totalDebtMinor: 0, monthsToDebtFree: 0, totalInterestMinor: 0, accounts: [] } as any;
+      return buildFallbackPlan();
     }
   },
   getGoals: async (): Promise<GoalsSummary> => {

@@ -35,7 +35,9 @@ export function SettlementStream({
   // 1. If a specific Person Due is selected: show all dues associated with this person
   if (selectedItem?.kind === 'due') {
     const personName = selectedItem.data.personName;
-    const personDues = dues.filter((d) => d.personName.toLowerCase() === personName.toLowerCase());
+    const personDues = (dues || []).filter(
+      (d) => (d.personName || '').toLowerCase() === (personName || '').toLowerCase(),
+    );
 
     return (
       <div className="bg-white rounded-3xl border border-[#E6E1D6] shadow-[0_8px_24px_rgba(17,19,24,0.03)] p-5 space-y-4">
@@ -217,7 +219,7 @@ export function SettlementStream({
             Khatabook Net Position by Person
           </h4>
           <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-[#F3EFEA] text-[#52504C] border border-[#E6E1D6]">
-            {dueSummaries.length} People
+            {(dueSummaries || []).length} People
           </span>
         </div>
 
@@ -231,13 +233,13 @@ export function SettlementStream({
         </button>
       </div>
 
-      {dueSummaries.length === 0 ? (
+      {(dueSummaries || []).length === 0 ? (
         <div className="p-8 text-center text-xs text-[#52504C] rounded-2xl border border-dashed border-[#E6E1D6] bg-[#FAF8F5]">
           No pending people dues recorded. All borrowing and lending balances are even.
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {dueSummaries.map((p) => {
+          {(dueSummaries || []).map((p) => {
             const isNeed = p.netMinor >= 0;
             const whatsappLink = buildWhatsAppLink(
               p.phone,

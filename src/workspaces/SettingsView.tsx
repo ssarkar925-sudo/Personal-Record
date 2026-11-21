@@ -202,6 +202,9 @@ export function SettingsView({
       ]);
       setWaState(status);
       onBridgeStateChange?.(status);
+      if (status.status === 'connected') {
+        setWaNotice((prev) => (prev?.kind === 'err' && prev.text.toLowerCase().includes('not connected') ? null : prev));
+      }
       setAlertSettings(settings);
       setAlertDeliveries(alerts);
       setKeepAliveStatus(keepalive);
@@ -806,7 +809,7 @@ export function SettingsView({
       {activeTab === 'whatsapp' && (
         <div className="space-y-5">
           {/* Status Message or Alert */}
-          {waNotice && (
+          {waNotice && !(waState.status === 'connected' && waNotice.kind === 'err' && waNotice.text.toLowerCase().includes('not connected')) && (
             <div
               className={`p-3.5 rounded-xl border text-xs flex items-center justify-between gap-2 ${
                 waNotice.kind === 'ok'

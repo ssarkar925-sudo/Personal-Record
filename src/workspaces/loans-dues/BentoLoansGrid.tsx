@@ -124,9 +124,9 @@ function TiltMetallicTile({
 }
 
 export function BentoLoansGrid({
-  loans,
-  dues,
-  goals,
+  loans = [],
+  dues = [],
+  goals = [],
   selectedItem,
   searchQuery = '',
   activeTab = 'all',
@@ -154,7 +154,7 @@ export function BentoLoansGrid({
   onOpenDeleteConfirm,
   onSwitchToSplit,
 }: BentoLoansGridProps) {
-  const totalCount = loans.length + dues.length + goals.length;
+  const totalCount = (loans || []).length + (dues || []).length + (goals || []).length;
   const handleSelect = (item: SelectedLoansItem) => {
     if (onSelectItem) onSelectItem(item);
     else onSelectAndSwitchToSplit(item);
