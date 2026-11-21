@@ -4,6 +4,13 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "cleanUrls": false,
+  "redirects": [
+    {
+      "source": "/(.*\\.apk)",
+      "destination": "https://raw.githubusercontent.com/ssarkar925-sudo/Personal-Record/main/public/PersonalLedger-latest.apk",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/((?!api/|.*\\.).*)",

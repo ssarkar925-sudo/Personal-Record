@@ -515,6 +515,7 @@ export const DEFAULT_ALERT_SETTINGS: AlertSettings = {
 };
 
 export const WHATSAPP_SERVER_STORAGE_KEY = 'pl_whatsapp_server_url';
+export const DEFAULT_WHATSAPP_SERVER_URL = 'https://personal-ledger-whatsapp.onrender.com';
 
 export function getWhatsAppServerUrl(): string {
   if (typeof window !== 'undefined') {
@@ -526,10 +527,14 @@ export function getWhatsAppServerUrl(): string {
     return envUrl.trim().replace(/\/$/, '');
   }
   if (typeof window !== 'undefined') {
+    const isCapacitor = typeof (window as any).Capacitor !== 'undefined' && Boolean((window as any).Capacitor?.isNativePlatform?.());
     const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') return '';
+    // In local desktop browser dev server (NOT Capacitor mobile app), allow relative /api
+    if (!isCapacitor && (host === 'localhost' || host === '127.0.0.1')) {
+      return '';
+    }
   }
-  return '';
+  return DEFAULT_WHATSAPP_SERVER_URL;
 }
 
 export function setWhatsAppServerUrl(url: string): void {

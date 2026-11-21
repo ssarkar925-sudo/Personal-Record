@@ -231,7 +231,9 @@ export function App() {
         setDues(duesRes.data);
         setDueSummaries(duesRes.summaries);
         setNotes(clientDb.getNotes());
-        setBridgeState(clientDb.getWhatsAppStatus());
+        void api.getWhatsAppStatus().then(wa => setBridgeState(wa)).catch(() => {
+          setBridgeState(clientDb.getWhatsAppStatus());
+        });
         setLoadError('');
       } catch (innerErr) {
         console.error('Fatal client load error, resetting storage to clean state:', innerErr);
@@ -334,6 +336,23 @@ export function App() {
   useEffect(() => {
     const stopPinger = api.startBrowserKeepAlive();
     return () => stopPinger();
+  }, []);
+
+  // Periodic 30-second WhatsApp status sync to keep header status pill reactive
+  useEffect(() => {
+    let isMounted = true;
+    const syncWa = async () => {
+      try {
+        const wa = await api.getWhatsAppStatus();
+        if (isMounted) setBridgeState(wa);
+      } catch {}
+    };
+    void syncWa();
+    const timer = window.setInterval(syncWa, 30_000);
+    return () => {
+      isMounted = false;
+      window.clearInterval(timer);
+    };
   }, []);
 
   const triggerServerLock = useCallback(() => {

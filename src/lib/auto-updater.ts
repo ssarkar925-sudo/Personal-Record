@@ -18,7 +18,7 @@ export interface UpdateCheckResult {
 
 export const CURRENT_APP_VERSION = '1.0.1';
 export const CURRENT_BUILD_NUMBER = 101;
-export const APK_DOWNLOAD_URL = '/PersonalLedger-latest.apk';
+export const APK_DOWNLOAD_URL = 'https://raw.githubusercontent.com/ssarkar925-sudo/Personal-Record/main/public/PersonalLedger-latest.apk';
 
 export async function checkForAppUpdate(): Promise<UpdateCheckResult> {
   const manifestUrl = `${window.location.origin}/version.json?_t=${Date.now()}`;
@@ -74,15 +74,12 @@ export function compareSemVer(a: string, b: string): number {
 
 export function triggerApkDownload(apkUrl: string): void {
   try {
-    // Open in external system browser or direct download
-    const link = document.createElement('a');
-    link.href = apkUrl;
-    link.setAttribute('download', 'PersonalLedger-latest.apk');
-    link.setAttribute('target', '_blank');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  } catch {
-    window.open(apkUrl, '_blank');
-  }
+    // If running in Capacitor native app, open in external Android system browser
+    if (typeof (window as any).Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform?.()) {
+      window.open(apkUrl, '_system');
+      return;
+    }
+  } catch {}
+  // In web browsers, navigating directly triggers Android's native download manager cleanly
+  window.location.href = apkUrl;
 }

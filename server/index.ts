@@ -392,7 +392,7 @@ function isAllowedHostHeader(hostHeader: string | undefined): boolean {
 
 function isSameOriginAllowed(req: http.IncomingMessage): boolean {
   const origin = req.headers.origin;
-  if (!origin) return true;
+  if (!origin || origin === 'null') return true;
   const host = req.headers.host;
   if (!host) return false;
   try {
@@ -474,26 +474,32 @@ export function createAppServer(opts: {
     const pathname = reqUrl.pathname;
     const clientIp = req.socket.remoteAddress || '127.0.0.1';
 
-    // Handle CORS headers for allowed origins (e.g. Vercel frontend, local dev, Capacitor)
+    // Handle CORS headers for allowed origins (e.g. Vercel frontend, local dev, Capacitor, Android WebView)
     const reqOrigin = req.headers.origin;
     if (reqOrigin) {
-      try {
-        const parsed = new URL(reqOrigin);
-        const hostName = parsed.hostname.toLowerCase();
-        const isAllowedOrigin =
-          hostName === 'scbook.vercel.app' ||
-          hostName.endsWith('.vercel.app') ||
-          parsed.protocol === 'capacitor:' ||
-          parsed.protocol === 'file:' ||
-          hostName === 'localhost' ||
-          hostName === '127.0.0.1';
-        if (isAllowedOrigin) {
-          res.setHeader('Access-Control-Allow-Origin', reqOrigin);
-          res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-          res.setHeader('Access-Control-Allow-Credentials', 'true');
-        }
-      } catch {}
+      if (reqOrigin === 'null') {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+      } else {
+        try {
+          const parsed = new URL(reqOrigin);
+          const hostName = parsed.hostname.toLowerCase();
+          const isAllowedOrigin =
+            hostName === 'scbook.vercel.app' ||
+            hostName.endsWith('.vercel.app') ||
+            parsed.protocol === 'capacitor:' ||
+            parsed.protocol === 'file:' ||
+            hostName === 'localhost' ||
+            hostName === '127.0.0.1';
+          if (isAllowedOrigin) {
+            res.setHeader('Access-Control-Allow-Origin', reqOrigin);
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+            res.setHeader('Access-Control-Allow-Credentials', 'true');
+          }
+        } catch {}
+      }
     }
 
     if (method === 'OPTIONS') {

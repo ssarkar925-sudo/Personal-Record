@@ -184,6 +184,13 @@ export function SettingsView({
     }
   }, [bridgeState]);
 
+  // Auto-clear stale disconnect error banner if WhatsApp is actually connected
+  useEffect(() => {
+    if (waState.status === 'connected' && waNotice?.kind === 'err' && waNotice.text.includes('not connected')) {
+      setWaNotice(null);
+    }
+  }, [waState.status, waNotice]);
+
   // Load WhatsApp and Alert data when WhatsApp tab is active
   const loadWhatsAppWorkspace = async () => {
     try {
@@ -597,7 +604,7 @@ export function SettingsView({
   };
 
   return (
-    <div className="space-y-6 animate-panel-in max-w-4xl mx-auto pb-12">
+    <div className="space-y-6 animate-panel-in max-w-4xl mx-auto pb-32 sm:pb-36">
       {/* Top Header Card */}
       <div className="rounded-2xl border border-[#EAE5DC] bg-white p-5 sm:p-6 shadow-xs text-[#111318]">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1342,14 +1349,25 @@ export function SettingsView({
                 </p>
               </div>
 
-              <Button
-                variant="primary"
-                onClick={() => triggerApkDownload(APK_DOWNLOAD_URL)}
-                className="gap-2 bg-[#111318] text-[#E5C158] hover:bg-[#1B1E26] border border-[#C59B27]/40 text-xs font-bold shrink-0 shadow-md cursor-pointer"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Download &amp; Install APK
-              </Button>
+              <div className="flex flex-col sm:flex-row items-center gap-2.5 shrink-0">
+                <Button
+                  variant="primary"
+                  onClick={() => triggerApkDownload(APK_DOWNLOAD_URL)}
+                  className="gap-2 bg-[#111318] text-[#E5C158] hover:bg-[#1B1E26] border border-[#C59B27]/40 text-xs font-bold shrink-0 shadow-md cursor-pointer"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Download &amp; Install APK
+                </Button>
+                <a
+                  href={APK_DOWNLOAD_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download="PersonalLedger-latest.apk"
+                  className="text-xs font-semibold text-emerald-800 hover:text-emerald-950 underline px-2 py-1"
+                >
+                  Direct APK Link
+                </a>
+              </div>
             </div>
 
             <div className="border-t border-emerald-200/60 pt-3 text-[11px] text-slate-600 space-y-1">
