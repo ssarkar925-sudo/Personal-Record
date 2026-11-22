@@ -1192,19 +1192,33 @@ export function JobSheetsView({
     setCurrentPage(1);
   }, [activeSheet?.id, statusFilter, searchQuery, pageSize]);
 
-  // Autofocus DOM cell input when selectedCell changes
+  // Autofocus DOM cell input when selectedCell or active page changes
   useEffect(() => {
     if (!selectedCell) return;
-    const el = document.querySelector<HTMLInputElement>(
-      `input[data-cell="${selectedCell.rowIndex}-${selectedCell.colId}"]`
-    );
-    if (el && document.activeElement !== el) {
-      el.focus();
-      try {
-        el.select();
-      } catch {}
+    const focusCell = () => {
+      const el = document.querySelector<HTMLInputElement>(
+        `input[data-cell="${selectedCell.rowIndex}-${selectedCell.colId}"]`
+      );
+      if (el && document.activeElement !== el) {
+        el.focus();
+        try {
+          el.select();
+        } catch {}
+        return true;
+      }
+      return Boolean(el && document.activeElement === el);
+    };
+
+    if (!focusCell()) {
+      const frameId = requestAnimationFrame(() => {
+        if (!focusCell()) {
+          const timerId = setTimeout(focusCell, 45);
+          return () => clearTimeout(timerId);
+        }
+      });
+      return () => cancelAnimationFrame(frameId);
     }
-  }, [selectedCell]);
+  }, [selectedCell, safeCurrentPage]);
 
   const activeCellMeta = useMemo(() => {
     if (!activeSheet || !selectedCell) return null;

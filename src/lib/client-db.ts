@@ -285,6 +285,7 @@ class ClientDatabaseManager {
     occurredAt: string;
     party?: string;
     note?: string;
+    split?: { participants: string[]; includeSelf: boolean; dueDate?: string | null };
   }): TransactionRecord {
     const db = this.load();
     const acc = db.accounts.find((a) => a.id === body.accountId);
@@ -310,6 +311,33 @@ class ClientDatabaseManager {
     };
 
     db.transactions.unshift(newTx);
+
+    // If split expense requested, create corresponding people_dues
+    if (body.split && Array.isArray(body.split.participants) && body.split.participants.length > 0) {
+      const names = body.split.participants.map((n) => n.trim()).filter(Boolean);
+      if (names.length > 0) {
+        const headcount = names.length + (body.split.includeSelf ? 1 : 0);
+        const perHeadMinor = Math.max(1, Math.round(body.amountMinor / headcount));
+        const noteText = `Split: ${body.party || body.category} (${body.occurredAt})`;
+        for (const personName of names) {
+          db.dues.unshift({
+            id: generateUUID(),
+            personName,
+            phone: '',
+            direction: 'need',
+            scope: body.scope,
+            amountMinor: perHeadMinor,
+            settledMinor: 0,
+            remainingMinor: perHeadMinor,
+            dueDate: body.split.dueDate || null,
+            status: 'open',
+            note: noteText,
+            createdAt: todayISO(),
+          });
+        }
+      }
+    }
+
     this.recomputeBalances();
     this.save();
     return newTx;
@@ -1199,11 +1227,11 @@ class ClientDatabaseManager {
         const userId = user.id;
         const [accRes, txRes, loanRes, dueRes, noteRes, sheetRes, billRes, vaultMetaRes, vaultEntriesRes, prefRes] = await Promise.all([
           client.from('accounts').select('*').eq('user_id', userId),
-          client.from('transactions').select('*').eq('user_id', userId),
+          client.from('transactions').select('*').eq('user_id', userId).order('occurred_at', { ascending: false }).limit(5000),
           client.from('loans').select('*').eq('user_id', userId),
           client.from('people_dues').select('*').eq('user_id', userId),
-          client.from('notes').select('*').eq('user_id', userId),
-          client.from('job_sheets').select('*').eq('user_id', userId),
+          client.from('notes').select('*').eq('user_id', userId).order('order_index', { ascending: true }),
+          client.from('job_sheets').select('*').eq('user_id', userId).order('order_index', { ascending: true }),
           client.from('recurring_bills').select('*').eq('user_id', userId),
           client.from('vault_meta').select('*').eq('user_id', userId).maybeSingle(),
           client.from('vault_entries').select('*').eq('user_id', userId),
@@ -1256,6 +1284,7 @@ class ClientDatabaseManager {
           hasAttachment: false,
         };
       });
+      db.transactions.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
       totalItems += db.transactions.length;
     }
 

@@ -4,8 +4,6 @@ export type { User, Session, SupabaseClient };
 
 export const DEFAULT_SUPABASE_URL = 'https://vcipljpdrgjwkjezbray.supabase.co';
 export const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_oHwRwizV0QF8R2sgNffH8Q_37mU6rgA';
-export const DEFAULT_LEDGER_EMAIL = 'test.ledger.pilot@gmail.com';
-export const DEFAULT_LEDGER_PASS = 'TestPassword123!';
 
 const STORAGE_KEY_URL = 'pl_supabase_url';
 const STORAGE_KEY_ANON = 'pl_supabase_anon_key';

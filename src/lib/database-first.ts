@@ -217,6 +217,53 @@ export async function dbFirstCreateTransaction(body: {
         }
 
         const db = clientDb.load();
+
+        // Handle Split Expense: create people_dues records for each participant
+        if (body.split && Array.isArray(body.split.participants) && body.split.participants.length > 0) {
+          try {
+            const names = body.split.participants.map((n) => n.trim()).filter(Boolean);
+            if (names.length > 0) {
+              const headcount = names.length + (body.split.includeSelf ? 1 : 0);
+              const perHeadMinor = Math.max(1, Math.round(body.amountMinor / headcount));
+              const noteText = `Split: ${body.party || body.category} (${body.occurredAt})`;
+              const duePayloads = names.map((personName) => ({
+                id: generateUUID(),
+                user_id: user.id,
+                person_name: personName,
+                direction: 'need',
+                scope: body.scope,
+                original_minor: perHeadMinor,
+                remaining_minor: perHeadMinor,
+                due_date: body.split?.dueDate || null,
+                status: 'open',
+                notes: noteText,
+              }));
+
+              const { data: createdDues } = await client
+                .from('people_dues')
+                .insert(duePayloads)
+                .select();
+
+              const localDues = (createdDues || duePayloads).map((d: any) => ({
+                id: d.id,
+                personName: d.person_name,
+                phone: '',
+                direction: 'need' as const,
+                scope: d.scope as Scope,
+                amountMinor: Number(d.original_minor),
+                settledMinor: 0,
+                remainingMinor: Number(d.remaining_minor),
+                dueDate: d.due_date || null,
+                status: 'open' as const,
+                note: d.notes || noteText,
+                createdAt: d.created_at || todayISO(),
+              }));
+              db.dues.unshift(...localDues);
+            }
+          } catch (splitErr) {
+            console.warn('[Database-First] Split expense dues creation failed:', splitErr);
+          }
+        }
         const acc = db.accounts.find((a) => a.id === body.accountId);
         const toAcc = body.toAccountId ? db.accounts.find((a) => a.id === body.toAccountId) : null;
         const newTx: TransactionRecord = {

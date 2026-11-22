@@ -392,7 +392,15 @@ function isAllowedHostHeader(hostHeader: string | undefined): boolean {
 
 function isSameOriginAllowed(req: http.IncomingMessage): boolean {
   const origin = req.headers.origin;
-  if (!origin || origin === 'null') return true;
+  const isCloudEnv = Boolean(process.env.RENDER || process.env.NODE_ENV === 'production');
+  if (!origin || origin === 'null') {
+    // In cloud environments, mutating requests without Origin must provide valid internal token or loopback
+    if (isCloudEnv && req.headers.host && !req.headers.host.includes('127.0.0.1') && !req.headers.host.includes('localhost')) {
+      const hasAuth = Boolean(req.headers.authorization || req.headers['x-admin-key'] || req.headers['x-sync-token']);
+      if (!hasAuth) return false;
+    }
+    return true;
+  }
   const host = req.headers.host;
   if (!host) return false;
   try {
@@ -589,11 +597,23 @@ export function createAppServer(opts: {
         const body = (await readJsonBody(req, 10_000_000)) as any;
         return sendJson(res, 200, ingestDifferentialSync(db, body));
       }
-      if (method === 'POST' && pathname === '/api/system/seed') {
-        const summary = seedFinancialData(db);
-        return sendJson(res, 200, { ok: true, data: summary });
-      }
-      if (method === 'POST' && pathname === '/api/system/clean') {
+      if (method === 'POST' && (pathname === '/api/system/seed' || pathname === '/api/system/clean')) {
+        const adminKey = req.headers['x-admin-key'];
+        const isLoopback = req.socket.remoteAddress === '127.0.0.1' || req.socket.remoteAddress === '::1';
+        const isAuthorized =
+          hasValidSession(req) ||
+          (process.env.ADMIN_KEY && adminKey === process.env.ADMIN_KEY) ||
+          (!process.env.RENDER && isLoopback);
+
+        if (!isAuthorized) {
+          return sendError(res, 403, 'FORBIDDEN', 'Administrative authorization required for system reset/seed.');
+        }
+
+        if (pathname === '/api/system/seed') {
+          const summary = seedFinancialData(db);
+          return sendJson(res, 200, { ok: true, data: summary });
+        }
+
         withTransaction(db, () => {
           db.exec(`
             DELETE FROM transaction_attachments;
