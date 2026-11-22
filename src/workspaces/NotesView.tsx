@@ -6,6 +6,7 @@ import {
   Building2,
   Check,
   CheckSquare,
+  ChevronDown,
   Copy,
   CreditCard,
   Download,
@@ -428,6 +429,7 @@ export function NotesView({
 
   // Local notes state for instantaneous drag-and-drop feedback
   const [notes, setNotes] = useState<NoteRecord[]>(initialNotes);
+  const [mobileHeroOpen, setMobileHeroOpen] = useState(false);
   useEffect(() => {
     setNotes(initialNotes);
   }, [initialNotes]);
@@ -1494,21 +1496,57 @@ export function NotesView({
 
   return (
     <div className="space-y-4 animate-panel-in relative pb-16">
-      {/* 0. Executive Notes Hero Workstation (3D Metallic Memo Card + SVG Checklist Ring) */}
-      <NotesHeroWorkstation
-        intelligence={notesIntelligence}
-        activeScopeFilter={scopeFilter}
-        onScopeFilterChange={setScopeFilter}
-        onStartQuickNote={() => {
-          setCaptureExpanded(true);
-          setCaptureChecklistMode(false);
-        }}
-        onStartQuickChecklist={() => {
-          setCaptureExpanded(true);
-          setCaptureChecklistMode(true);
-        }}
-        onOpenFullEditor={() => openEditor(null)}
-      />
+      {/* Mobile Content-First Quick Ribbon (< 768px) */}
+      <div className="md:hidden flex items-center justify-between gap-2 rounded-xl bg-white border border-[#EAE5DC] p-2.5 shadow-2xs">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs">
+          <div className="rounded-lg bg-[#FAF8F5] border border-[#EAE5DC] px-2.5 py-1 shrink-0">
+            <span className="text-[10px] text-[#858078] block">All Notes</span>
+            <span className="font-mono-data font-bold text-[#111318] text-xs">
+              {notes.length}
+            </span>
+          </div>
+          <div className="rounded-lg bg-[#FAF8F5] border border-[#EAE5DC] px-2.5 py-1 shrink-0">
+            <span className="text-[10px] text-[#858078] block">Pinned</span>
+            <span className="font-mono-data font-bold text-[#C59B27] text-xs">
+              {notesIntelligence.pinnedCount}
+            </span>
+          </div>
+          <div className="rounded-lg bg-[#FAF8F5] border border-[#EAE5DC] px-2.5 py-1 shrink-0">
+            <span className="text-[10px] text-[#858078] block">Checklists</span>
+            <span className="font-mono-data font-bold text-[#059669] text-xs">
+              {notesIntelligence.checklistsCount}
+            </span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setMobileHeroOpen(!mobileHeroOpen)}
+          className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-[#111318] text-[#E5C158] px-2.5 py-1.5 text-xs font-semibold cursor-pointer shadow-2xs"
+        >
+          <span>{mobileHeroOpen ? 'Hide 3D' : '📊 3D Memo & Stats'}</span>
+          <ChevronDown className={cn('h-3.5 w-3.5 transition-transform duration-200', mobileHeroOpen && 'rotate-180')} />
+        </button>
+      </div>
+
+      {/* Collapsible on Mobile, Full on Desktop */}
+      <div className={cn(mobileHeroOpen ? 'block' : 'hidden md:block')}>
+        {/* 0. Executive Notes Hero Workstation (3D Metallic Memo Card + SVG Checklist Ring) */}
+        <NotesHeroWorkstation
+          intelligence={notesIntelligence}
+          activeScopeFilter={scopeFilter}
+          onScopeFilterChange={setScopeFilter}
+          onStartQuickNote={() => {
+            setCaptureExpanded(true);
+            setCaptureChecklistMode(false);
+          }}
+          onStartQuickChecklist={() => {
+            setCaptureExpanded(true);
+            setCaptureChecklistMode(true);
+          }}
+          onOpenFullEditor={() => openEditor(null)}
+        />
+      </div>
 
       {/* Active Reminders Notice Banner (when reminders due/overdue) */}
       {(overdueReminders.length > 0 || todayReminders.length > 0) && (

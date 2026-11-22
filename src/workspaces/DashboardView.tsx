@@ -2,11 +2,12 @@ import { useState } from 'react';
 import {
   Building2,
   Calendar,
+  ChevronDown,
   Plus,
 } from 'lucide-react';
 import { api, type AdvisorBriefing, type DashboardSummary } from '../lib/api.ts';
 import { formatDisplayDate } from '../lib/format.ts';
-import { Button, Card } from '../components/ui/Primitives.tsx';
+import { Button, Card, cn } from '../components/ui/Primitives.tsx';
 import { AdvisorBillboard } from '../components/AdvisorBillboard.tsx';
 import { CardSkeleton, MetricsSkeleton, Skeleton } from '../components/ui/Skeleton.tsx';
 import type { Scope } from '../../shared/ledger-core.ts';
@@ -48,6 +49,7 @@ export function DashboardView({
   onRefresh: () => void;
 }) {
   const [drillDownSpec, setDrillDownSpec] = useState<DrillDownFilterSpec | null>(null);
+  const [mobileChartsOpen, setMobileChartsOpen] = useState(false);
   const dict = UI_STRINGS[systemLanguage];
 
   if (loading || !data) {
@@ -130,8 +132,26 @@ export function DashboardView({
         </Card>
       )}
 
-      {/* BENTO ROW 1: 7-Col Interactive SVG Wealth & Cashflow Chart + 5-Col Realistic 3D-Tilt Metallic Card Deck */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-stretch">
+      {/* BENTO ROW 1: 4-Column Precision Telemetry Strip (Swipeable Snap Carousel on Mobile) */}
+      <DashboardExecutiveKpiStrip
+        data={data}
+        onNavigate={onNavigate}
+      />
+
+      {/* Mobile 3D Deck & Wealth Chart Toggle */}
+      <div className="md:hidden flex justify-center pt-1">
+        <button
+          type="button"
+          onClick={() => setMobileChartsOpen(!mobileChartsOpen)}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-white border border-[#EAE5DC] px-3.5 py-1.5 text-xs font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer shadow-2xs transition-colors"
+        >
+          <span>{mobileChartsOpen ? 'Hide 3D Deck & Charts' : '📊 View 3D Card Deck & Wealth Chart'}</span>
+          <ChevronDown className={cn('h-3.5 w-3.5 transition-transform duration-200', mobileChartsOpen && 'rotate-180')} />
+        </button>
+      </div>
+
+      {/* BENTO ROW 2: 7-Col Interactive SVG Wealth & Cashflow Chart + 5-Col Realistic 3D-Tilt Metallic Card Deck (Collapsible on Mobile, Full on Desktop) */}
+      <div className={cn('gap-5 items-stretch', mobileChartsOpen ? 'grid grid-cols-1' : 'hidden md:grid md:grid-cols-1 xl:grid-cols-12')}>
         <div className="xl:col-span-7">
           <InteractiveWealthChart
             data={data}
@@ -149,12 +169,6 @@ export function DashboardView({
           />
         </div>
       </div>
-
-      {/* BENTO ROW 2: 4-Column Precision Telemetry Strip */}
-      <DashboardExecutiveKpiStrip
-        data={data}
-        onNavigate={onNavigate}
-      />
 
       {/* BENTO ROW 3: 8-Col 30-Day Stress-Test Simulator & Macro Radar + 4-Col Priority Settlement & Live Ledger */}
       <div id="advisor-billboard" className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-stretch">

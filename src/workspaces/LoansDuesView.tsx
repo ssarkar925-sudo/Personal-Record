@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import {
   api,
   type AccountRecord,
@@ -23,6 +24,7 @@ import {
   FieldLabel,
   Input,
   Select,
+  cn,
 } from '../components/ui/Primitives.tsx';
 import type { DueDirection, GoalKind, LoanDirection, Scope } from '../../shared/ledger-core.ts';
 import type { AppLanguage } from '../../shared/i18n.ts';
@@ -90,6 +92,8 @@ export function LoansDuesView({
     id: string;
     label: string;
   } | null>(null);
+
+  const [mobileHeroOpen, setMobileHeroOpen] = useState(false);
 
   // Debt Payoff Planner state
   const [payoffExtraRupees, setPayoffExtraRupees] = useState('5000');
@@ -661,46 +665,82 @@ export function LoansDuesView({
 
   return (
     <div className="space-y-6">
-      {/* 1. TOP EXECUTIVE FINANCIAL KPI STRIP (Warm Alabaster & Obsidian Bento Strip) */}
-      <LoansDuesKpiStrip
-        totalBorrowingsMinor={portfolioMetrics.totalBorrowingsMinor}
-        totalReceivablesMinor={portfolioMetrics.totalReceivablesMinor}
-        monthlyEmiCommitmentMinor={portfolioMetrics.monthlyEmiCommitmentMinor}
-        weightedAvgAprBps={portfolioMetrics.weightedAvgAprBps}
-        principalClearedPct={portfolioMetrics.principalClearedPct}
-        activeLoansCount={portfolioMetrics.activeLoansCount}
-        openDuesCount={portfolioMetrics.openDuesCount}
-        urgentDueCount={portfolioMetrics.urgentDueCount}
-        nextEmiLoan={portfolioMetrics.nextEmiLoan}
-        onOpenAddLoan={openCreateLoan}
-        onOpenAddDue={openCreateDue}
-        onOpenAddGoal={openCreateGoal}
-      />
+      {/* Mobile Content-First Quick Ribbon (< 768px) */}
+      <div className="md:hidden flex items-center justify-between gap-2 rounded-xl bg-white border border-[#EAE5DC] p-2.5 shadow-2xs">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs">
+          <div className="rounded-lg bg-[#FAF8F5] border border-[#EAE5DC] px-2.5 py-1 shrink-0">
+            <span className="text-[10px] text-[#858078] block">You Owe</span>
+            <span className="font-mono-data font-bold text-[#E11D48] text-xs">
+              {formatINR(portfolioMetrics.totalBorrowingsMinor)}
+            </span>
+          </div>
+          <div className="rounded-lg bg-[#FAF8F5] border border-[#EAE5DC] px-2.5 py-1 shrink-0">
+            <span className="text-[10px] text-[#858078] block">Owed to You</span>
+            <span className="font-mono-data font-bold text-[#059669] text-xs">
+              {formatINR(portfolioMetrics.totalReceivablesMinor)}
+            </span>
+          </div>
+          <div className="rounded-lg bg-[#FAF8F5] border border-[#EAE5DC] px-2.5 py-1 shrink-0">
+            <span className="text-[10px] text-[#858078] block">Monthly EMI</span>
+            <span className="font-mono-data font-bold text-[#111318] text-xs">
+              {formatINR(portfolioMetrics.monthlyEmiCommitmentMinor)}
+            </span>
+          </div>
+        </div>
 
-      {/* 2. HERO 3D COVENANT STAGE & INTERACTIVE SVG AMORTIZATION / MIX WORKSTATION */}
-      <LoansHeroWorkstation
-        loans={filteredLoans}
-        dues={filteredDues}
-        goals={filteredGoals}
-        dueSummaries={dueSummaries}
-        accounts={accounts}
-        selectedItem={selectedItem}
-        payoffPlan={payoffPlan}
-        payoffExtraRupees={payoffExtraRupees}
-        payoffStrategy={payoffStrategy}
-        onPayoffExtraChange={setPayoffExtraRupees}
-        onPayoffStrategyChange={setPayoffStrategy}
-        onSelectItem={setSelectedItem}
-        onOpenPayEmi={openPayEmiForLoan}
-        onOpenSettleDue={openSettleForDue}
-        onOpenContributeGoal={openContribForGoal}
-        onOpenEditLoan={openEditLoan}
-        onOpenEditDue={openEditDue}
-        onOpenEditGoal={openEditGoal}
-        onOpenAddLoan={openCreateLoan}
-        onOpenAddDue={openCreateDue}
-        onNotify={onNotify}
-      />
+        <button
+          type="button"
+          onClick={() => setMobileHeroOpen(!mobileHeroOpen)}
+          className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-[#111318] text-[#E5C158] px-2.5 py-1.5 text-xs font-semibold cursor-pointer shadow-2xs"
+        >
+          <span>{mobileHeroOpen ? 'Hide 3D' : '📊 3D & Plan'}</span>
+          <ChevronDown className={cn('h-3.5 w-3.5 transition-transform duration-200', mobileHeroOpen && 'rotate-180')} />
+        </button>
+      </div>
+
+      {/* Collapsible on Mobile, Full on Desktop */}
+      <div className={cn('space-y-6', mobileHeroOpen ? 'block' : 'hidden md:block')}>
+        {/* 1. TOP EXECUTIVE FINANCIAL KPI STRIP (Warm Alabaster & Obsidian Bento Strip) */}
+        <LoansDuesKpiStrip
+          totalBorrowingsMinor={portfolioMetrics.totalBorrowingsMinor}
+          totalReceivablesMinor={portfolioMetrics.totalReceivablesMinor}
+          monthlyEmiCommitmentMinor={portfolioMetrics.monthlyEmiCommitmentMinor}
+          weightedAvgAprBps={portfolioMetrics.weightedAvgAprBps}
+          principalClearedPct={portfolioMetrics.principalClearedPct}
+          activeLoansCount={portfolioMetrics.activeLoansCount}
+          openDuesCount={portfolioMetrics.openDuesCount}
+          urgentDueCount={portfolioMetrics.urgentDueCount}
+          nextEmiLoan={portfolioMetrics.nextEmiLoan}
+          onOpenAddLoan={openCreateLoan}
+          onOpenAddDue={openCreateDue}
+          onOpenAddGoal={openCreateGoal}
+        />
+
+        {/* 2. HERO 3D COVENANT STAGE & INTERACTIVE SVG AMORTIZATION / MIX WORKSTATION */}
+        <LoansHeroWorkstation
+          loans={filteredLoans}
+          dues={filteredDues}
+          goals={filteredGoals}
+          dueSummaries={dueSummaries}
+          accounts={accounts}
+          selectedItem={selectedItem}
+          payoffPlan={payoffPlan}
+          payoffExtraRupees={payoffExtraRupees}
+          payoffStrategy={payoffStrategy}
+          onPayoffExtraChange={setPayoffExtraRupees}
+          onPayoffStrategyChange={setPayoffStrategy}
+          onSelectItem={setSelectedItem}
+          onOpenPayEmi={openPayEmiForLoan}
+          onOpenSettleDue={openSettleForDue}
+          onOpenContributeGoal={openContribForGoal}
+          onOpenEditLoan={openEditLoan}
+          onOpenEditDue={openEditDue}
+          onOpenEditGoal={openEditGoal}
+          onOpenAddLoan={openCreateLoan}
+          onOpenAddDue={openCreateDue}
+          onNotify={onNotify}
+        />
+      </div>
 
       {/* 3. MAIN WORKSTATION: 3D METALLIC BENTO DECK OR SPLIT DUAL-PANE VIEW */}
       {workstationLayout === 'bento' ? (

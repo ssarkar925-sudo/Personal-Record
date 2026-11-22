@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowRightLeft,
+  ChevronDown,
   CreditCard,
   PiggyBank,
   Zap,
@@ -24,6 +25,7 @@ import {
   FieldLabel,
   Input,
   Select,
+  cn,
 } from '../components/ui/Primitives.tsx';
 import {
   getCategoryOptions,
@@ -108,6 +110,8 @@ export function MoneyCardsView({
   const [accountSort, setAccountSort] = useState<AccountSortOption>('balance_desc');
   const [triageFilter, setTriageFilter] = useState<TriageFilter>('all');
   const [workstationLayout, setWorkstationLayout] = useState<WorkstationLayout>('bento');
+
+  const [mobileHeroOpen, setMobileHeroOpen] = useState(false);
 
   // Search and Scope/Kind Filters for Ledger Stream
   const [searchQuery, setSearchQuery] = useState('');
@@ -704,38 +708,74 @@ export function MoneyCardsView({
 
   return (
     <div className="space-y-5 pb-6">
-      {/* 1. TOP EXECUTIVE TREASURY KPI STRIP */}
-      <MoneyKpiStrip
-        accounts={liquidAccounts}
-        creditCards={creditCards}
-        metrics={treasuryMetrics}
-        unmatchedTransfersCount={unmatchedTransfers.length}
-        onOpenRecordTx={() => handleOpenAddTx('expense')}
-        onOpenNewAccount={handleOpenAddAccount}
-        onOpenTransferMatch={() => setTransferMatchModalOpen(true)}
-        onOpenPayCard={(card) => setCardPayModalAccount(card)}
-        onNavigateToCards={onNavigateToCards}
-      />
+      {/* Mobile Content-First Quick Ribbon (< 768px) */}
+      <div className="md:hidden flex items-center justify-between gap-2 rounded-xl bg-white border border-[#EAE5DC] p-2.5 shadow-2xs">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs">
+          <div className="rounded-lg bg-[#FAF8F5] border border-[#EAE5DC] px-2.5 py-1 shrink-0">
+            <span className="text-[10px] text-[#858078] block">Liquid Total</span>
+            <span className="font-mono-data font-bold text-[#059669] text-xs">
+              {formatINR(treasuryMetrics.totalLiquidMinor)}
+            </span>
+          </div>
+          <div className="rounded-lg bg-[#FAF8F5] border border-[#EAE5DC] px-2.5 py-1 shrink-0">
+            <span className="text-[10px] text-[#858078] block">Banks / Cash</span>
+            <span className="font-mono-data font-bold text-[#111318] text-xs">
+              {liquidAccounts.length} accounts
+            </span>
+          </div>
+          <div className="rounded-lg bg-[#FAF8F5] border border-[#EAE5DC] px-2.5 py-1 shrink-0">
+            <span className="text-[10px] text-[#858078] block">Unmatched</span>
+            <span className="font-mono-data font-bold text-[#C59B27] text-xs">
+              {unmatchedTransfers.length}
+            </span>
+          </div>
+        </div>
 
-      {/* 2. HERO 3D METALLIC PASSBOOK & 14D CASHFLOW PULSE WORKSTATION */}
-      <TreasuryHeroWorkstation
-        liquidAccounts={liquidAccounts}
-        creditCards={creditCards}
-        transactions={transactions}
-        metrics={treasuryMetrics}
-        selectedAccountId={selectedAccountId}
-        onSelectAccountId={(id) => setSelectedAccountId(id)}
-        onOpenRecordTx={(k, accId) => handleOpenAddTx(k || 'expense', accId)}
-        onOpenReconcileBank={(bank) => {
-          setReconcileBankAcc(bank);
-          setActualBalanceStr(((bank.currentBalanceMinor || 0) / 100).toFixed(2));
-        }}
-        onOpenEditAccount={handleOpenEditAccount}
-        onOpenNewAccount={handleOpenAddAccount}
-        onOpenPayCard={(card) => setCardPayModalAccount(card)}
-        bankFinishOverrides={bankFinishOverrides}
-        onChangeBankFinish={handleChangeBankFinish}
-      />
+        <button
+          type="button"
+          onClick={() => setMobileHeroOpen(!mobileHeroOpen)}
+          className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-[#111318] text-[#E5C158] px-2.5 py-1.5 text-xs font-semibold cursor-pointer shadow-2xs"
+        >
+          <span>{mobileHeroOpen ? 'Hide 3D' : '📊 3D & KPIs'}</span>
+          <ChevronDown className={cn('h-3.5 w-3.5 transition-transform duration-200', mobileHeroOpen && 'rotate-180')} />
+        </button>
+      </div>
+
+      {/* Collapsible on Mobile, Full on Desktop */}
+      <div className={cn('space-y-5', mobileHeroOpen ? 'block' : 'hidden md:block')}>
+        {/* 1. TOP EXECUTIVE TREASURY KPI STRIP */}
+        <MoneyKpiStrip
+          accounts={liquidAccounts}
+          creditCards={creditCards}
+          metrics={treasuryMetrics}
+          unmatchedTransfersCount={unmatchedTransfers.length}
+          onOpenRecordTx={() => handleOpenAddTx('expense')}
+          onOpenNewAccount={handleOpenAddAccount}
+          onOpenTransferMatch={() => setTransferMatchModalOpen(true)}
+          onOpenPayCard={(card) => setCardPayModalAccount(card)}
+          onNavigateToCards={onNavigateToCards}
+        />
+
+        {/* 2. HERO 3D METALLIC PASSBOOK & 14D CASHFLOW PULSE WORKSTATION */}
+        <TreasuryHeroWorkstation
+          liquidAccounts={liquidAccounts}
+          creditCards={creditCards}
+          transactions={transactions}
+          metrics={treasuryMetrics}
+          selectedAccountId={selectedAccountId}
+          onSelectAccountId={(id) => setSelectedAccountId(id)}
+          onOpenRecordTx={(k, accId) => handleOpenAddTx(k || 'expense', accId)}
+          onOpenReconcileBank={(bank) => {
+            setReconcileBankAcc(bank);
+            setActualBalanceStr(((bank.currentBalanceMinor || 0) / 100).toFixed(2));
+          }}
+          onOpenEditAccount={handleOpenEditAccount}
+          onOpenNewAccount={handleOpenAddAccount}
+          onOpenPayCard={(card) => setCardPayModalAccount(card)}
+          bankFinishOverrides={bankFinishOverrides}
+          onChangeBankFinish={handleChangeBankFinish}
+        />
+      </div>
 
       {/* 3. RAPID TREASURY & UPI PASSBOOK DESK + BANK SMS PARSER */}
       <TreasuryRapidLogger

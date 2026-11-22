@@ -48,7 +48,7 @@ export function DashboardExecutiveKpiStrip({
   const topBank = [...data.banks].sort((a, b) => b.currentBalanceMinor - a.currentBalanceMinor)[0];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+    <div className="flex overflow-x-auto snap-x no-scrollbar pb-1 sm:grid sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
       {/* 1. Liquid Treasury & Passbooks */}
       <div
         onClick={() => onNavigate('money')}
@@ -60,7 +60,7 @@ export function DashboardExecutiveKpiStrip({
             onNavigate('money');
           }
         }}
-        className="bento-card bento-card-hover rounded-2xl p-5 flex flex-col justify-between cursor-pointer"
+        className="bento-card bento-card-hover rounded-2xl p-5 flex flex-col justify-between cursor-pointer min-w-[270px] sm:min-w-0 snap-start flex-1 shrink-0 sm:shrink"
       >
         <div>
           <div className="flex items-center justify-between">
@@ -120,7 +120,7 @@ export function DashboardExecutiveKpiStrip({
             onNavigate('reports');
           }
         }}
-        className="bento-card bento-card-hover rounded-2xl p-5 flex flex-col justify-between cursor-pointer"
+        className="bento-card bento-card-hover rounded-2xl p-5 flex flex-col justify-between cursor-pointer min-w-[270px] sm:min-w-0 snap-start flex-1 shrink-0 sm:shrink"
       >
         <div>
           <div className="flex items-center justify-between">
@@ -193,7 +193,7 @@ export function DashboardExecutiveKpiStrip({
             onNavigate('cards');
           }
         }}
-        className="bento-card bento-card-hover rounded-2xl p-5 flex flex-col justify-between cursor-pointer"
+        className="bento-card bento-card-hover rounded-2xl p-5 flex flex-col justify-between cursor-pointer min-w-[270px] sm:min-w-0 snap-start flex-1 shrink-0 sm:shrink"
       >
         <div>
           <div className="flex items-center justify-between">
@@ -270,7 +270,7 @@ export function DashboardExecutiveKpiStrip({
             onNavigate('loans_dues');
           }
         }}
-        className="bento-card bento-card-hover rounded-2xl p-5 flex flex-col justify-between cursor-pointer"
+        className="bento-card bento-card-hover rounded-2xl p-5 flex flex-col justify-between cursor-pointer min-w-[270px] sm:min-w-0 snap-start flex-1 shrink-0 sm:shrink"
       >
         <div>
           <div className="flex items-center justify-between">

@@ -5,6 +5,7 @@ import {
   BookmarkPlus,
   Calendar,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Copy,
   CreditCard,
@@ -51,6 +52,7 @@ import {
   Select,
   SortSelect,
   ViewModeToggle,
+  cn,
 } from '../components/ui/Primitives.tsx';
 import {
   getCategoryOptions,
@@ -201,6 +203,7 @@ export function CardsView({
   }, [creditCards, cardSort]);
 
   // Filters for Spend Feed
+  const [mobileHeroOpen, setMobileHeroOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [localScopeFilter, setLocalScopeFilter] = useState<Scope | 'all'>(
     globalScopeFilter ?? 'all',
@@ -1014,7 +1017,42 @@ export function CardsView({
         </div>
       </div>
 
-      {/* ==================== 2. BENTO ROW 1: 3D METALLIC CARD INSPECTOR + 14D VELOCITY WORKSTATION ==================== */}
+      {/* Mobile Content-First Quick Ribbon (< 768px) */}
+      <div className="md:hidden flex items-center justify-between gap-2 rounded-xl bg-white border border-[#EAE5DC] p-2.5 shadow-2xs">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs">
+          <div className="rounded-lg bg-[#FAF8F5] border border-[#EAE5DC] px-2.5 py-1 shrink-0">
+            <span className="text-[10px] text-[#858078] block">Today's Spend</span>
+            <span className="font-mono-data font-bold text-[#111318] text-xs">
+              {formatINR(todayCardSpendMinor)}
+            </span>
+          </div>
+          <div className="rounded-lg bg-[#FAF8F5] border border-[#EAE5DC] px-2.5 py-1 shrink-0">
+            <span className="text-[10px] text-[#858078] block">Liability</span>
+            <span className="font-mono-data font-bold text-[#E11D48] text-xs">
+              {formatINR(portfolioMetrics.totalDebtMinor)}
+            </span>
+          </div>
+          <div className="rounded-lg bg-[#FAF8F5] border border-[#EAE5DC] px-2.5 py-1 shrink-0">
+            <span className="text-[10px] text-[#858078] block">Used</span>
+            <span className="font-mono-data font-bold text-[#111318] text-xs">
+              {portfolioMetrics.overallUtilizationPct}%
+            </span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setMobileHeroOpen(!mobileHeroOpen)}
+          className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-[#111318] text-[#E5C158] px-2.5 py-1.5 text-xs font-semibold cursor-pointer shadow-2xs"
+        >
+          <span>{mobileHeroOpen ? 'Hide 3D' : '📊 3D & KPIs'}</span>
+          <ChevronDown className={cn('h-3.5 w-3.5 transition-transform duration-200', mobileHeroOpen && 'rotate-180')} />
+        </button>
+      </div>
+
+      {/* Collapsible on Mobile, Full on Desktop */}
+      <div className={cn('space-y-4', mobileHeroOpen ? 'block' : 'hidden md:block')}>
+        {/* ==================== 2. BENTO ROW 1: 3D METALLIC CARD INSPECTOR + 14D VELOCITY WORKSTATION ==================== */}
       <CardsHeroWorkstation
         creditCards={sortedCreditCards}
         cardTransactions={cardTransactions}
@@ -1140,6 +1178,7 @@ export function CardsView({
           </div>
         </div>
       </div>
+    </div>
 
       {/* ==================== 4. BENTO ROW 3: METALLIC CREDIT CARD FLEET GRID / LIST ==================== */}
       <section className="bento-card rounded-2xl p-5 space-y-4">

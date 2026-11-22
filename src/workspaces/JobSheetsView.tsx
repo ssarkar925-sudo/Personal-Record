@@ -4,6 +4,7 @@ import writeXlsxFile from 'write-excel-file/browser';
 import {
   Calculator,
   Check,
+  ChevronDown,
   Columns,
   Copy,
   Download,
@@ -175,6 +176,7 @@ export function JobSheetsView({
   // Row Pagination (10, 20, 50, 100, or 'all' for large sheets)
   const [pageSize, setPageSize] = useState<number | 'all'>(50);
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [mobileHeroOpen, setMobileHeroOpen] = useState(false);
 
   // New Tab Modal / Template Picker
   const [newTabOpen, setNewTabOpen] = useState(false);
@@ -1234,25 +1236,61 @@ export function JobSheetsView({
 
   return (
     <div className="space-y-3.5 animate-panel-in">
-      {/* Compact, Collapsible & Data-Adaptive Top Bar + Optional 3D Card */}
-      <SheetsHeroWorkstation
-        telemetry={telemetry}
-        activeSummary={activeSheetSummary}
-        activeSheetId={activeSheet?.id ?? ''}
-        saving={saving}
-        lastSavedLabel={lastSavedLabel}
-        onSelectSheet={(id) => setActiveSheetId(id)}
-        onCreateNewTab={(tpl) => openNewTabModal(tpl)}
-        onOpenImportExcel={() => {
-          setExcelPreviews([]);
-          setImportedFileName('');
-          setImportSavedMessage('');
-          setImportScope(
-            globalScopeFilter !== 'all' ? globalScopeFilter : (activeSheet?.scope ?? 'business'),
-          );
-          setImportModalOpen(true);
-        }}
-      />
+      {/* Mobile Content-First Quick Ribbon (< 768px) */}
+      <div className="md:hidden flex items-center justify-between gap-2 rounded-xl bg-white border border-[#E6E1D6] p-2.5 shadow-2xs">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs">
+          <div className="rounded-lg bg-[#FAF8F5] border border-[#E6E1D6] px-2.5 py-1 shrink-0">
+            <span className="text-[10px] text-[#686E78] block">Active Sheet</span>
+            <span className="font-semibold text-[#111318] text-xs truncate max-w-[120px] block">
+              {activeSheet?.name || 'Sheet'}
+            </span>
+          </div>
+          <div className="rounded-lg bg-[#FAF8F5] border border-[#E6E1D6] px-2.5 py-1 shrink-0">
+            <span className="text-[10px] text-[#686E78] block">Rows</span>
+            <span className="font-mono font-bold text-[#111318] text-xs">
+              {activeSheet?.rows.length ?? 0}
+            </span>
+          </div>
+          <div className="rounded-lg bg-[#FAF8F5] border border-[#E6E1D6] px-2.5 py-1 shrink-0">
+            <span className="text-[10px] text-[#686E78] block">Tabs</span>
+            <span className="font-mono font-bold text-[#111318] text-xs">
+              {sheets.length}
+            </span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setMobileHeroOpen(!mobileHeroOpen)}
+          className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-[#111318] text-[#E5C158] px-2.5 py-1.5 text-xs font-semibold cursor-pointer shadow-2xs"
+        >
+          <span>{mobileHeroOpen ? 'Hide' : '📊 Telemetry'}</span>
+          <ChevronDown className={cn('h-3.5 w-3.5 transition-transform duration-200', mobileHeroOpen && 'rotate-180')} />
+        </button>
+      </div>
+
+      {/* Collapsible on Mobile, Full on Desktop */}
+      <div className={cn(mobileHeroOpen ? 'block' : 'hidden md:block')}>
+        {/* Compact, Collapsible & Data-Adaptive Top Bar + Optional 3D Card */}
+        <SheetsHeroWorkstation
+          telemetry={telemetry}
+          activeSummary={activeSheetSummary}
+          activeSheetId={activeSheet?.id ?? ''}
+          saving={saving}
+          lastSavedLabel={lastSavedLabel}
+          onSelectSheet={(id) => setActiveSheetId(id)}
+          onCreateNewTab={(tpl) => openNewTabModal(tpl)}
+          onOpenImportExcel={() => {
+            setExcelPreviews([]);
+            setImportedFileName('');
+            setImportSavedMessage('');
+            setImportScope(
+              globalScopeFilter !== 'all' ? globalScopeFilter : (activeSheet?.scope ?? 'business'),
+            );
+            setImportModalOpen(true);
+          }}
+        />
+      </div>
 
       {/* Google Sheets Multi-Tab Workbook Container */}
       <div className="rounded-2xl border border-[#E6E1D6] bg-white shadow-[0_14px_36px_-18px_rgba(17,19,24,0.12)] overflow-hidden">
