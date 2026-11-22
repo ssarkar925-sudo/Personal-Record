@@ -557,20 +557,20 @@ export function App() {
       <div className="relative z-10 min-h-screen flex flex-col">
         {/* Editorial Sovereign Top Command Bar */}
         <header className="sticky top-0 z-30 border-b border-[#EAE5DC] bg-[#FAF8F5]/92 backdrop-blur-md">
-          <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8">
-            <div className="flex h-15 sm:h-16 items-center justify-between gap-2 sm:gap-3">
+          <div className="mx-auto max-w-[1440px] px-2.5 sm:px-6 lg:px-8">
+            <div className="flex h-14 sm:h-16 items-center justify-between gap-1.5 sm:gap-3">
               {/* Brand Crest & Editorial Wordmark */}
-              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+              <div className="flex items-center gap-2 sm:gap-3 shrink-0 min-w-0">
                 <button
                   type="button"
                   onClick={() => setActiveTab('dashboard')}
-                  className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl overflow-hidden border border-[#C59B27]/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_2px_8px_rgba(17,19,24,0.25)] cursor-pointer transition-transform duration-150 active:scale-95"
-                  title="Personal Ledger Sovereign Crest - Return to Executive Dashboard"
+                  className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl overflow-hidden border border-[#C59B27]/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_2px_8px_rgba(17,19,24,0.25)] bg-white cursor-pointer transition-transform duration-150 active:scale-95"
+                  title="Return to Executive Dashboard"
                 >
                   <AppLogo size={36} className="h-full w-full object-contain" />
                 </button>
                 <div className="min-w-0">
-                  <div className="font-display text-sm sm:text-base font-bold tracking-tight text-[#111318] leading-none whitespace-nowrap truncate">
+                  <div className="font-display text-xs xs:text-sm sm:text-base font-bold tracking-tight text-[#111318] leading-none whitespace-nowrap truncate max-w-[90px] xs:max-w-[140px] sm:max-w-none">
                     {dict.appName}
                   </div>
                   <div className="text-[11px] text-[#858078] font-mono-data mt-0.5 hidden sm:block truncate">
@@ -618,13 +618,13 @@ export function App() {
                   onClick={() => setPrivacyMasked((v) => !v)}
                   aria-label={privacyMasked ? 'Show INR amounts' : 'Mask INR amounts'}
                   title={privacyMasked ? 'Show amounts' : 'Mask amounts (₹••••)'}
-                  className={`inline-flex h-9 min-w-9 sm:h-8 sm:min-w-8 items-center justify-center gap-1.5 rounded-xl border px-2 sm:px-2.5 text-xs font-medium transition-colors cursor-pointer ${
+                  className={`inline-flex h-8 sm:h-8 min-w-8 sm:min-w-8 items-center justify-center gap-1 rounded-xl border px-2 sm:px-2.5 text-xs font-medium transition-colors cursor-pointer shrink-0 ${
                     privacyMasked
                       ? 'border-[#C59B27] bg-[#111318] text-[#E5C158]'
                       : 'border-[#EAE5DC] bg-white text-[#52504C] hover:bg-[#F3EFEA] hover:text-[#111318]'
                   }`}
                 >
-                  {privacyMasked ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  {privacyMasked ? <EyeOff className="h-3.5 w-3.5 shrink-0" /> : <Eye className="h-3.5 w-3.5 shrink-0" />}
                   <span className="hidden xl:inline">{privacyMasked ? 'Masked' : 'Privacy'}</span>
                 </button>
 
@@ -638,9 +638,9 @@ export function App() {
                     }}
                     aria-label="Lock app now"
                     title="Lock app with PIN"
-                    className="inline-flex h-9 min-w-9 sm:h-8 sm:min-w-8 items-center justify-center gap-1 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#52504C] hover:bg-[#F3EFEA] hover:text-[#111318] cursor-pointer"
+                    className="inline-flex h-8 w-8 sm:h-8 sm:w-auto sm:min-w-8 items-center justify-center gap-1 rounded-xl border border-[#EAE5DC] bg-white p-0 sm:px-2.5 text-xs font-medium text-[#52504C] hover:bg-[#F3EFEA] hover:text-[#111318] cursor-pointer shrink-0"
                   >
-                    <KeyRound className="h-3.5 w-3.5" />
+                    <KeyRound className="h-3.5 w-3.5 shrink-0" />
                   </button>
                 )}
 
@@ -650,9 +650,9 @@ export function App() {
                   onClick={() => setCommandPaletteOpen(true)}
                   title="Command Palette (⌘K / Ctrl+K)"
                   aria-label="Command Palette"
-                  className="hidden sm:inline-flex h-8 items-center gap-1.5 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#111318] hover:bg-[#F3EFEA] transition-colors cursor-pointer"
+                  className="hidden sm:inline-flex h-8 items-center gap-1.5 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#111318] hover:bg-[#F3EFEA] transition-colors cursor-pointer shrink-0"
                 >
-                  <Command className="h-3.5 w-3.5 text-[#858078]" />
+                  <Command className="h-3.5 w-3.5 text-[#858078] shrink-0" />
                   <span className="hidden md:inline font-medium">Commands</span>
                   <kbd className="hidden sm:inline-flex items-center rounded bg-[#F3EFEA] px-1.5 py-0.5 text-[10px] font-mono-data font-semibold text-[#52504C] border border-[#D6CFC2]">
                     ⌘K
@@ -664,9 +664,9 @@ export function App() {
                   onClick={() => setSearchOpen(true)}
                   title="Search records"
                   aria-label="Search records"
-                  className="inline-flex h-9 min-w-9 sm:h-8 sm:min-w-8 items-center justify-center gap-1 rounded-xl border border-[#EAE5DC] bg-white px-2 sm:px-2.5 text-xs font-medium text-[#52504C] hover:bg-[#F3EFEA] hover:text-[#111318] cursor-pointer"
+                  className="inline-flex h-8 w-8 sm:h-8 sm:w-auto sm:min-w-8 items-center justify-center gap-1 rounded-xl border border-[#EAE5DC] bg-white p-0 sm:px-2.5 text-xs font-medium text-[#52504C] hover:bg-[#F3EFEA] hover:text-[#111318] cursor-pointer shrink-0"
                 >
-                  <Search className="h-3.5 w-3.5" />
+                  <Search className="h-3.5 w-3.5 shrink-0" />
                 </button>
 
                 {/* WhatsApp Status / Quick Connect Button */}
@@ -679,13 +679,13 @@ export function App() {
                     }}
                     title={`WhatsApp: Connected (${bridgeState.connectedPhone || 'Linked'}) • Click to open settings`}
                     aria-label="WhatsApp Connected"
-                    className="inline-flex h-9 sm:h-8 items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-2 sm:px-2.5 text-xs font-semibold text-emerald-900 shadow-2xs hover:bg-emerald-100 transition-all cursor-pointer"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-2 sm:px-2.5 text-xs font-semibold text-emerald-900 shadow-2xs hover:bg-emerald-100 transition-all cursor-pointer shrink-0"
                   >
                     <span className="relative flex h-2 w-2 shrink-0">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                       <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                     </span>
-                    <MessageSquare className="h-3.5 w-3.5 text-emerald-600" />
+                    <MessageSquare className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                     <span className="hidden sm:inline font-mono-data text-[11px]">Connected</span>
                   </button>
                 ) : (
@@ -701,10 +701,10 @@ export function App() {
                     }}
                     title="WhatsApp: Not Connected • Click for Quick Connect"
                     aria-label="WhatsApp Quick Connect"
-                    className="inline-flex h-9 sm:h-8 items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50/90 px-2 sm:px-2.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 transition-all cursor-pointer"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50/90 px-2 sm:px-2.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 transition-all cursor-pointer shrink-0"
                   >
                     <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
-                    <MessageSquare className="h-3.5 w-3.5 text-amber-700" />
+                    <MessageSquare className="h-3.5 w-3.5 text-amber-700 shrink-0" />
                     <span className="hidden sm:inline font-mono-data text-[11px]">Quick Connect</span>
                   </button>
                 )}
@@ -715,13 +715,13 @@ export function App() {
                     type="button"
                     onClick={() => setAuthModalOpen(true)}
                     title={`Sovereign Account: ${currentUser.email} • Realtime Cloud Sync Active`}
-                    className="inline-flex h-9 sm:h-8 items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50/90 px-2 sm:px-2.5 text-xs font-semibold text-emerald-900 shadow-2xs hover:bg-emerald-100 transition-all cursor-pointer"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50/90 px-2 sm:px-2.5 text-xs font-semibold text-emerald-900 shadow-2xs hover:bg-emerald-100 transition-all cursor-pointer shrink-0"
                   >
                     <span className="relative flex h-2 w-2 shrink-0">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                       <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                     </span>
-                    <span className="max-w-[100px] sm:max-w-[140px] truncate font-mono-data text-[11px]">
+                    <span className="hidden sm:inline max-w-[140px] truncate font-mono-data text-[11px]">
                       {currentUser.email}
                     </span>
                   </button>
@@ -729,11 +729,11 @@ export function App() {
                   <Button
                     variant="primary"
                     size="sm"
-                    className="h-9 sm:h-8 border-[#C59B27]/40 bg-[#111318] text-[#E5C158] hover:bg-[#1B1E26] px-2.5 sm:px-3 font-bold text-xs"
+                    className="h-8 border-[#C59B27]/40 bg-[#111318] text-[#E5C158] hover:bg-[#1B1E26] px-2 sm:px-3 font-bold text-xs shrink-0"
                     onClick={() => setAuthModalOpen(true)}
                     title="Sign into Sovereign Account to sync across mobile and web"
                   >
-                    <LogIn className="h-3.5 w-3.5 text-[#E5C158]" />
+                    <LogIn className="h-3.5 w-3.5 text-[#E5C158] shrink-0" />
                     <span className="hidden sm:inline">Sign In to Sync</span>
                     <span className="sm:hidden">Sign In</span>
                   </Button>
@@ -742,10 +742,11 @@ export function App() {
                 <Button
                   variant="secondary"
                   size="sm"
-                  className="h-9 sm:h-8 border-[#D6CFC2] bg-[#F3EFEA] text-[#111318] hover:bg-[#EAE5DC] px-2.5 sm:px-3"
+                  className="h-8 w-8 sm:h-8 sm:w-auto border-[#D6CFC2] bg-[#F3EFEA] text-[#111318] hover:bg-[#EAE5DC] p-0 sm:px-3 shrink-0"
                   onClick={() => handleOpenAgent()}
+                  title={dict.aiAgent}
                 >
-                  <Bot className="h-3.5 w-3.5 text-[#C59B27]" />
+                  <Bot className="h-3.5 w-3.5 text-[#C59B27] shrink-0" />
                   <span className="hidden sm:inline">{dict.aiAgent}</span>
                 </Button>
 
@@ -753,23 +754,23 @@ export function App() {
                   type="button"
                   onClick={() => setActiveTab('settings')}
                   title="Application & Sovereign Security Settings"
-                  className={`inline-flex h-9 sm:h-8 items-center gap-1.5 rounded-xl border px-2 sm:px-2.5 text-xs font-semibold shadow-2xs transition-all cursor-pointer ${
+                  className={`inline-flex h-8 w-8 sm:h-8 sm:w-auto items-center justify-center sm:justify-start gap-1.5 rounded-xl border p-0 sm:px-2.5 text-xs font-semibold shadow-2xs transition-all cursor-pointer shrink-0 ${
                     activeTab === 'settings'
                       ? 'border-[#C59B27] bg-[#111318] text-[#E5C158]'
                       : 'border-[#D6CFC2] bg-[#F3EFEA] text-[#111318] hover:bg-[#EAE5DC]'
                   }`}
                 >
-                  <Settings className="h-3.5 w-3.5 text-[#C59B27]" />
+                  <Settings className="h-3.5 w-3.5 text-[#C59B27] shrink-0" />
                   <span className="hidden sm:inline">Settings</span>
                 </button>
 
                 <Button
                   variant="primary"
                   size="sm"
-                  className="hidden sm:inline-flex h-8 px-3.5"
+                  className="hidden sm:inline-flex h-8 px-3.5 shrink-0"
                   onClick={() => setQuickAddOpen(true)}
                 >
-                  <Plus className="h-3.5 w-3.5 text-[#E5C158]" />
+                  <Plus className="h-3.5 w-3.5 text-[#E5C158] shrink-0" />
                   <span>{dict.quickAdd}</span>
                 </Button>
               </div>
