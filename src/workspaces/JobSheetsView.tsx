@@ -1655,6 +1655,34 @@ export function JobSheetsView({
                 {saving ? 'Auto-saving...' : lastSavedLabel}
               </span>
             </div>
+
+            {/* Quick Formula Helper Chips */}
+            {activeCellMeta && (
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-mono text-[#52504C]">
+                <span className="text-[10px] uppercase font-bold text-[#8C6D1F]">Insert:</span>
+                {[
+                  { label: '=SUM', formula: (letter: string, r: number) => `=SUM(${letter}1:${letter}${r})` },
+                  { label: '=AVG', formula: (letter: string, r: number) => `=AVG(${letter}1:${letter}${r})` },
+                  { label: '=MIN', formula: (letter: string, r: number) => `=MIN(${letter}1:${letter}${r})` },
+                  { label: '=MAX', formula: (letter: string, r: number) => `=MAX(${letter}1:${letter}${r})` },
+                  { label: '=COUNT', formula: (letter: string, r: number) => `=COUNT(${letter}1:${letter}${r})` },
+                ].map((fn) => (
+                  <button
+                    key={fn.label}
+                    type="button"
+                    onClick={() => {
+                      const colLetter = activeCellMeta.coord.replace(/\d+$/, '');
+                      const rowNum = Math.max(1, activeCellMeta.rowIndex);
+                      handleCellChange(activeCellMeta.rowIndex, activeCellMeta.col.id, fn.formula(colLetter, rowNum));
+                    }}
+                    className="rounded border border-[#E6E1D6] bg-white px-1.5 py-0.5 text-[10px] font-semibold text-[#111318] hover:bg-[#F3EFEA] hover:border-[#C59B27] transition-all cursor-pointer"
+                    title={`Insert ${fn.label} formula for column`}
+                  >
+                    {fn.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

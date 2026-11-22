@@ -46,6 +46,7 @@ import {
   updateAppPreferences,
   writeAutoBackupFile,
 } from '../db/settings-repo.ts';
+import { mirrorTransactionToCloud } from '../sync/supabase-bridge.ts';
 
 export interface CandidateAlert {
   dedupeBase: string;
@@ -477,6 +478,7 @@ function commitReceiptWithProof(db: DatabaseSync, draft: Omit<PendingWhatsAppRec
       note: `${draft.fields.note} (via WhatsApp)`,
       sourceRef: 'whatsapp_receipt',
     });
+    void mirrorTransactionToCloud(tx);
     let attached = false;
     const cleanedB64 = draft.imageBase64.replace(/^data:[^;]+;base64,/, '');
     if (cleanedB64.length > 16 && cleanedB64.length <= 3_150_000) {

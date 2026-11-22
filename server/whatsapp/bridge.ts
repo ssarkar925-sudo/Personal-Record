@@ -8,6 +8,7 @@ import makeWASocket, {
   type WASocket,
 } from '@whiskeysockets/baileys';
 import QRCode from 'qrcode';
+import { backupBaileysAuthToCloud, restoreBaileysAuthFromCloud } from '../sync/supabase-bridge.ts';
 
 export type BridgeStatus = 'disconnected' | 'connecting' | 'qr_ready' | 'connected';
 
@@ -125,6 +126,8 @@ export class BaileysWhatsAppBridge implements WhatsAppTransport {
     }
 
     fs.mkdirSync(this.authDir, { recursive: true });
+    // Restore session credentials from cloud backup if running on ephemeral container disk
+    await restoreBaileysAuthFromCloud(this.authDir).catch(() => {});
     this.setState({ status: 'connecting', lastError: null });
 
     try {
@@ -151,7 +154,12 @@ export class BaileysWhatsAppBridge implements WhatsAppTransport {
       });
 
       this.sock = sock;
-      sock.ev.on('creds.update', saveCreds);
+      sock.ev.on('creds.update', async () => {
+        try {
+          await saveCreds();
+          void backupBaileysAuthToCloud(this.authDir);
+        } catch {}
+      });
 
       sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify' || (!this.incomingHandler && !this.incomingImageHandler && !this.incomingAudioHandler)) return;
@@ -169,6 +177,12 @@ export class BaileysWhatsAppBridge implements WhatsAppTransport {
 
           if (innerMsg?.imageMessage && this.incomingImageHandler) {
             try {
+              // Pre-check fileLength before streaming media into RAM
+              const reportedLen = Number(innerMsg.imageMessage.fileLength || 0);
+              if (reportedLen > 4_500_000) {
+                console.warn('[WhatsApp] Rejected image exceeding 4.5MB limit:', reportedLen);
+                continue;
+              }
               const rawMedia = await downloadMediaMessage(
                 msg,
                 'buffer',
@@ -191,6 +205,12 @@ export class BaileysWhatsAppBridge implements WhatsAppTransport {
 
           if (innerMsg?.audioMessage && this.incomingAudioHandler) {
             try {
+              // Pre-check fileLength before streaming media into RAM
+              const reportedLen = Number(innerMsg.audioMessage.fileLength || 0);
+              if (reportedLen > 10_000_000) {
+                console.warn('[WhatsApp] Rejected audio exceeding 10MB limit:', reportedLen);
+                continue;
+              }
               const rawMedia = await downloadMediaMessage(
                 msg,
                 'buffer',
