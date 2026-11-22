@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertTriangle,
@@ -68,6 +68,7 @@ export function AgentDrawer({
   const [briefing, setBriefing] = useState<AdvisorBriefing | null>(null);
   const [liveSuggestions, setLiveSuggestions] = useState<AdvisorSuggestion[]>([]);
   const [commandInput, setCommandInput] = useState('');
+  const [pendingUserText, setPendingUserText] = useState('');
   const [listening, setListening] = useState(false);
   const [running, setRunning] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
@@ -83,6 +84,21 @@ export function AgentDrawer({
   const recognitionRef = useRef<any>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+
+  // Chronological ordering: oldest messages at top, newest at bottom (down)
+  const chronologicalHistory = useMemo(() => {
+    return [...history].sort((a, b) => {
+      const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (tA && tB && tA !== tB) return tA - tB;
+      const matchA = a.id?.match(/agent-hist-(\d+)/);
+      const matchB = b.id?.match(/agent-hist-(\d+)/);
+      if (matchA && matchB) {
+        return Number(matchA[1]) - Number(matchB[1]);
+      }
+      return 0;
+    });
+  }, [history]);
 
   useEffect(() => {
     setProviderDraft(preferences.llmProvider);
@@ -114,8 +130,11 @@ export function AgentDrawer({
 
   useEffect(() => {
     if (!open) return;
-    scrollEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [history.length, pendingConfirm, open]);
+    const timer = setTimeout(() => {
+      scrollEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [history.length, pendingConfirm, running, open, pendingUserText]);
 
   useEffect(() => {
     if (!open) {
@@ -140,6 +159,8 @@ export function AgentDrawer({
     if (!trimmed) return;
     setError('');
     setRunning(true);
+    setPendingUserText(trimmed);
+    setCommandInput('');
     try {
       const res = await api.sendAgentCommand({
         commandText: trimmed,
@@ -151,7 +172,6 @@ export function AgentDrawer({
         setPendingConfirm({ commandText: trimmed, result: res });
       } else {
         setPendingConfirm(null);
-        setCommandInput('');
         if (res.briefing) setBriefing(res.briefing);
         else void api.getAgentBriefing().then(setBriefing).catch(() => {});
         if (res.suggestions) setLiveSuggestions(res.suggestions);
@@ -163,6 +183,7 @@ export function AgentDrawer({
       setError((err as Error).message);
     } finally {
       setRunning(false);
+      setPendingUserText('');
     }
   };
 
@@ -519,7 +540,7 @@ export function AgentDrawer({
             </div>
           )}
 
-          {history.length === 0 ? (
+          {chronologicalHistory.length === 0 && !pendingUserText ? (
             <div className="space-y-3">
               <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3.5 text-xs text-slate-700 leading-relaxed">
                 {dict.welcomeMessage}
@@ -541,48 +562,71 @@ export function AgentDrawer({
               </div>
             </div>
           ) : (
-            history.map((item) => (
-              <div key={item.id} className="space-y-1.5">
-                {/* User Command Bubble */}
-                <div className="flex justify-end">
-                  <div className="max-w-[85%] rounded-2xl rounded-tr-xs bg-slate-900 px-3.5 py-2 text-xs text-white shadow-2xs">
-                    <div>{item.commandText}</div>
-                    <div className="mt-1 text-[10px] text-slate-300">
-                      {dict.commandLangLabel}: {LANGUAGE_META[item.detectedLanguage].nativeLabel} →{' '}
-                      {dict.systemLangLabel}: {LANGUAGE_META[item.systemLanguage].nativeLabel}
+            <>
+              {chronologicalHistory.map((item) => (
+                <div key={item.id} className="space-y-1.5">
+                  {/* User Command Bubble */}
+                  <div className="flex justify-end">
+                    <div className="max-w-[85%] rounded-2xl rounded-tr-xs bg-slate-900 px-3.5 py-2 text-xs text-white shadow-2xs">
+                      <div>{item.commandText}</div>
+                      <div className="mt-1 text-[10px] text-slate-300">
+                        {dict.commandLangLabel}: {LANGUAGE_META[item.detectedLanguage]?.nativeLabel || item.detectedLanguage} →{' '}
+                        {dict.systemLangLabel}: {LANGUAGE_META[item.systemLanguage]?.nativeLabel || item.systemLanguage}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Agent Response Bubble */}
+                  <div className="flex justify-start">
+                    <div className="max-w-[92%] rounded-2xl rounded-tl-xs border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs text-slate-900 space-y-2">
+                      <div className="leading-relaxed whitespace-pre-line">{item.replyText}</div>
+                      {item.actions.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {item.actions.map((a, idx) => (
+                            <Badge
+                              key={idx}
+                              className={
+                                a.ok
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : 'bg-amber-50 text-amber-800 border-amber-200'
+                              }
+                            >
+                              {a.ok ? (
+                                <CheckCircle2 className="h-3 w-3" />
+                              ) : (
+                                <XCircle className="h-3 w-3" />
+                              )}
+                              {a.tool}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
+              ))}
 
-                {/* Agent Response Bubble */}
-                <div className="flex justify-start">
-                  <div className="max-w-[92%] rounded-2xl rounded-tl-xs border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs text-slate-900 space-y-2">
-                    <div className="leading-relaxed whitespace-pre-line">{item.replyText}</div>
-                    {item.actions.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {item.actions.map((a, idx) => (
-                          <Badge
-                            key={idx}
-                            className={
-                              a.ok
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : 'bg-amber-50 text-amber-800 border-amber-200'
-                            }
-                          >
-                            {a.ok ? (
-                              <CheckCircle2 className="h-3 w-3" />
-                            ) : (
-                              <XCircle className="h-3 w-3" />
-                            )}
-                            {a.tool}
-                          </Badge>
-                        ))}
+              {/* Optimistic Live User Message & Thinking Indicator at Bottom */}
+              {running && pendingUserText && (
+                <div className="space-y-1.5">
+                  <div className="flex justify-end">
+                    <div className="max-w-[85%] rounded-2xl rounded-tr-xs bg-slate-900 px-3.5 py-2 text-xs text-white shadow-2xs">
+                      <div>{pendingUserText}</div>
+                      <div className="mt-1 text-[10px] text-[#E5C158] flex items-center gap-1.5">
+                        <span className="h-1.5 w-1.5 rounded-full bg-[#E5C158] animate-ping" />
+                        <span>Sending...</span>
                       </div>
-                    )}
+                    </div>
+                  </div>
+                  <div className="flex justify-start">
+                    <div className="max-w-[92%] rounded-2xl rounded-tl-xs border border-blue-200 bg-blue-50/70 px-3.5 py-2.5 text-xs text-blue-900 flex items-center gap-2">
+                      <Bot className="h-4 w-4 text-[#C59B27] animate-pulse" />
+                      <span className="font-medium">{dict.thinking}...</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              )}
+            </>
           )}
 
           {/* 1-Click Recommended Advisor Actions */}
