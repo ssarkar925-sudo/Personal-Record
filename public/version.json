@@ -1,7 +1,7 @@
 {
-  "version": "1.0.1",
-  "build": 101,
-  "releaseDate": "2026-11-19",
+  "version": "1.0.6",
+  "build": 106,
+  "releaseDate": "2026-11-23",
   "apkUrl": "https://raw.githubusercontent.com/ssarkar925-sudo/Personal-Record/main/public/PersonalLedger-latest.apk",
-  "changelog": "Sovereign Executive Gold Insignia logo, automatic Android update engine, and real-time multi-device cloud sync."
+  "changelog": "Vault enhancements: all categories always visible with item counts, uniform fixed-size cards, view-first popup with 1-click edit, drag and move card ordering, card accent color picker, and soft delete to archive."
 }

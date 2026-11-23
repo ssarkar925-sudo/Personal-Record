@@ -137,6 +137,7 @@ interface SettingsViewProps {
   initialTab?: SettingsTab;
   inactivityMinutes?: number;
   onInactivityMinutesChange?: (minutes: number) => void;
+  onNavigate?: (tab: string) => void;
 }
 
 export type SettingsTab = 'account' | 'archive' | 'whatsapp' | 'updates' | 'vault_security' | 'cloud' | 'system';
@@ -155,6 +156,7 @@ export function SettingsView({
   initialTab,
   inactivityMinutes = 15,
   onInactivityMinutesChange,
+  onNavigate,
 }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'account');
 
@@ -255,7 +257,7 @@ export function SettingsView({
   const [copiedBlueprint, setCopiedBlueprint] = useState(false);
 
   // Universal Module-Wise Archive Center State
-  const [archivedModule, setArchivedModule] = useState<'all' | 'sheets' | 'notes' | 'loans_dues' | 'accounts'>('all');
+  const [archivedModule, setArchivedModule] = useState<'all' | 'sheets' | 'notes' | 'loans_dues' | 'accounts' | 'vault'>('all');
   const [archiveSearch, setArchiveSearch] = useState('');
   const [archivedSheets, setArchivedSheets] = useState<JobSheetRecord[]>([]);
   const [archivedNotes, setArchivedNotes] = useState<NoteRecord[]>([]);
@@ -1278,6 +1280,7 @@ export function SettingsView({
                   icon: HandCoins,
                 },
                 { id: 'accounts', label: 'Cards & Banks', count: archivedAccounts.length, icon: CreditCard },
+                { id: 'vault', label: 'Vault Credentials', count: 'Protected', icon: Lock },
               ].map((m) => {
                 const active = archivedModule === m.id;
                 return (
@@ -1521,6 +1524,39 @@ export function SettingsView({
                       </Button>
                     </div>
                   ))}
+
+              {/* 5. Vault Encrypted Archive Banner & Link */}
+              {(archivedModule === 'all' || archivedModule === 'vault') && (
+                <div className="flex items-center justify-between p-3.5 rounded-xl border border-amber-200 bg-amber-50/50 hover:bg-amber-50 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="h-9 w-9 rounded-lg bg-amber-100 border border-amber-300 flex items-center justify-center shrink-0">
+                      <Lock className="h-4 w-4 text-amber-800" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-xs text-[#111318]">Vault Encrypted Archive</span>
+                        <span className="rounded bg-amber-200 text-amber-900 text-[10px] px-1.5 py-0.5 font-bold uppercase">
+                          Zero-Knowledge
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#686E78] mt-0.5">
+                        Deleted credentials are safely held in the Vault Archive. Unlock your Vault workspace to decrypt, restore, or permanently destroy archived items.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      if (onNavigate) onNavigate('vault');
+                      else window.location.hash = '#vault';
+                    }}
+                    className="h-8 text-xs bg-[#111318] text-[#E5C158] hover:bg-[#2A2E39] shrink-0"
+                  >
+                    <Lock className="h-3.5 w-3.5 mr-1" /> Open Vault Archive
+                  </Button>
+                </div>
+              )}
 
               {/* Empty State */}
               {archivedSheets.length === 0 &&

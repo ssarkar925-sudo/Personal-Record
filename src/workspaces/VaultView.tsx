@@ -1,22 +1,28 @@
 import React, { useEffect, useState } from 'react';
 import {
   AlertTriangle,
+  Archive,
   Check,
-  ChevronDown,
-  ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   CreditCard,
   Download,
+  Edit3,
+  ExternalLink,
   Eye,
   EyeOff,
   FileKey,
   FileText,
+  GripVertical,
   History,
   KeyRound,
   Link2,
   Lock,
   MessageSquare,
+  Palette,
   Plus,
+  RotateCcw,
   Shield,
   ShieldAlert,
   ShieldCheck,
@@ -80,8 +86,28 @@ interface DecryptedVaultEntry {
   payload: VaultSecretPayload;
 }
 
-type VaultSort = 'name_asc' | 'starred_first' | 'oldest_rotated' | 'updated_desc';
+type VaultSort = 'custom_order' | 'starred_first' | 'name_asc' | 'oldest_rotated' | 'updated_desc';
 type VaultAuditFilter = 'all' | 'reused' | 'stale' | 'weak' | 'starred';
+
+export const STANDARD_VAULT_CATEGORIES = [
+  'Logins',
+  'Banking',
+  'Identity',
+  'Secure Notes',
+  'API Keys',
+  'Business',
+  'Personal',
+] as const;
+
+export const CARD_COLORS = [
+  { id: 'gold', label: 'Champagne Gold', borderL: 'border-l-[#C59B27]', bg: 'bg-[#FDFBF4]', border: 'border-[#E6D5A7]', text: 'text-[#8C6D1F]', dot: '#D4AF37' },
+  { id: 'emerald', label: 'Emerald Green', borderL: 'border-l-emerald-600', bg: 'bg-[#F0FDF4]', border: 'border-emerald-200', text: 'text-emerald-700', dot: '#10B981' },
+  { id: 'blue', label: 'Sapphire Blue', borderL: 'border-l-blue-600', bg: 'bg-[#EFF6FF]', border: 'border-blue-200', text: 'text-blue-700', dot: '#3B82F6' },
+  { id: 'purple', label: 'Amethyst Purple', borderL: 'border-l-purple-600', bg: 'bg-[#F5F3FF]', border: 'border-purple-200', text: 'text-purple-700', dot: '#8B5CF6' },
+  { id: 'rose', label: 'Ruby Rose', borderL: 'border-l-rose-600', bg: 'bg-[#FFF1F2]', border: 'border-rose-200', text: 'text-rose-700', dot: '#F43F5E' },
+  { id: 'amber', label: 'Amber Warm', borderL: 'border-l-amber-600', bg: 'bg-[#FFFBEB]', border: 'border-amber-200', text: 'text-amber-700', dot: '#F59E0B' },
+  { id: 'obsidian', label: 'Obsidian Slate', borderL: 'border-l-slate-700', bg: 'bg-[#F8FAFC]', border: 'border-slate-300', text: 'text-slate-700', dot: '#334155' },
+] as const;
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const PRESET_SECRET_TYPES = ['Transaction Password', 'ATM PIN', 'UPI MPIN', 'TPIN', 'App PIN'] as const;
@@ -107,15 +133,17 @@ export function VaultView({
   const [entries, setEntries] = useState<DecryptedVaultEntry[]>([]);
   const [lastActivityAt, setLastActivityAt] = useState<number>(Date.now());
   const [deleteTarget, setDeleteTarget] = useState<DecryptedVaultEntry | null>(null);
+  const [deletePermanentTarget, setDeletePermanentTarget] = useState<DecryptedVaultEntry | null>(null);
+  const [viewingEntry, setViewingEntry] = useState<DecryptedVaultEntry | null>(null);
+  const [vaultTab, setVaultTab] = useState<'active' | 'archived'>('active');
+  const [cardColor, setCardColor] = useState<string>('gold');
 
   // Display state: category tab + audit filter + search + sort + grid/list + single-card reveal
   const [activeCategory, setActiveCategory] = useState<string>('__auto__');
   const [auditFilter, setAuditFilter] = useState<VaultAuditFilter>('all');
   const [search, setSearch] = useState('');
-  const [sortBy, setSortBy] = useState<VaultSort>('starred_first');
+  const [sortBy, setSortBy] = useState<VaultSort>('custom_order');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
-  const [legacyOpenIds, setLegacyOpenIds] = useState<Record<string, boolean>>({});
   const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -203,8 +231,7 @@ export function VaultView({
   const lockVault = () => {
     setVaultKey(null);
     setEntries([]);
-    setExpandedEntryId(null);
-    setLegacyOpenIds({});
+    setViewingEntry(null);
     setRevealedKeys({});
     setMasterPass('');
     setCopiedKey(null);
@@ -301,12 +328,18 @@ export function VaultView({
             starred: !!payload.starred,
             secrets: Array.isArray(payload.secrets) ? payload.secrets : [],
             legacyHistory: Array.isArray(payload.legacyHistory) ? payload.legacyHistory : [],
+            color: payload.color || 'gold',
+            archived: !!payload.archived,
+            archivedAt: payload.archivedAt,
+            orderIndex: typeof payload.orderIndex === 'number' ? payload.orderIndex : 0,
           },
         });
       } catch {
         // Ignore corrupt/mismatched entry safely
       }
     }
+    // Sort by orderIndex
+    out.sort((a, b) => (a.payload.orderIndex ?? 0) - (b.payload.orderIndex ?? 0));
     setEntries(out);
   };
 
@@ -589,6 +622,7 @@ export function VaultView({
       // Identity defaults
       setIdType('PAN');
       setIdNumber('');
+      setCardColor('gold');
     } else {
       const p = entry.payload;
       setItemType(p.itemType ?? 'login');
@@ -596,6 +630,7 @@ export function VaultView({
       setCategory(entry.category);
       setStarred(!!p.starred);
       setLinkedAccountId(p.linkedAccountId ?? '');
+      setCardColor(p.color || 'gold');
 
       // Login fields
       setUsername(p.username ?? '');
@@ -678,10 +713,16 @@ export function VaultView({
         // Identity
         idType,
         idNumber: idNumber.trim(),
+
+        // Color & Archive & Order
+        color: cardColor,
+        archived: editingEntry ? !!editingEntry.payload.archived : false,
+        archivedAt: editingEntry ? editingEntry.payload.archivedAt : undefined,
+        orderIndex: editingEntry?.payload.orderIndex ?? entries.length,
       };
 
       const { iv, ciphertext } = await encryptVaultPayload(vaultKey, payload);
-      const saved = await api.saveVaultEntry({
+      await api.saveVaultEntry({
         id: editingEntry?.id,
         label: label.trim(),
         category: catClean,
@@ -694,10 +735,120 @@ export function VaultView({
       await decryptAllEntries(vaultKey, raw);
       setEntryModalOpen(false);
       setActiveCategory(catClean);
-      setExpandedEntryId(saved.id);
       onNotify?.(`${dict.common.save} ✓`);
     } catch (err) {
       setError((err as Error).message);
+    }
+  };
+
+  const handleArchiveEntry = async (entry: DecryptedVaultEntry) => {
+    if (!vaultKey) return;
+    touchActivity();
+    try {
+      const updatedPayload: VaultSecretPayload = {
+        ...entry.payload,
+        archived: true,
+        archivedAt: new Date().toISOString(),
+      };
+      const { iv, ciphertext } = await encryptVaultPayload(vaultKey, updatedPayload);
+      await api.saveVaultEntry({
+        id: entry.id,
+        label: entry.label,
+        category: entry.category,
+        iv,
+        ciphertext,
+        lastRotatedAt: entry.lastRotatedAt,
+      });
+      const raw = await api.getVaultEntries();
+      await decryptAllEntries(vaultKey, raw);
+      setViewingEntry(null);
+      setDeleteTarget(null);
+      onNotify?.(`Moved "${entry.label}" to Archive ✓ (Can be restored anytime)`);
+    } catch (err) {
+      onNotify?.((err as Error).message, 'err');
+    }
+  };
+
+  const handleRestoreEntry = async (entry: DecryptedVaultEntry) => {
+    if (!vaultKey) return;
+    touchActivity();
+    try {
+      const updatedPayload: VaultSecretPayload = {
+        ...entry.payload,
+        archived: false,
+        archivedAt: undefined,
+      };
+      const { iv, ciphertext } = await encryptVaultPayload(vaultKey, updatedPayload);
+      await api.saveVaultEntry({
+        id: entry.id,
+        label: entry.label,
+        category: entry.category,
+        iv,
+        ciphertext,
+        lastRotatedAt: entry.lastRotatedAt,
+      });
+      const raw = await api.getVaultEntries();
+      await decryptAllEntries(vaultKey, raw);
+      setViewingEntry(null);
+      onNotify?.(`Restored "${entry.label}" to Active Vault ✓`);
+    } catch (err) {
+      onNotify?.((err as Error).message, 'err');
+    }
+  };
+
+  const handlePermanentDelete = async (entry: DecryptedVaultEntry) => {
+    touchActivity();
+    try {
+      await api.deleteVaultEntry(entry.id);
+      const raw = await api.getVaultEntries();
+      if (vaultKey) await decryptAllEntries(vaultKey, raw);
+      setViewingEntry(null);
+      setDeletePermanentTarget(null);
+      onNotify?.(`Permanently deleted "${entry.label}" ✓`);
+    } catch (err) {
+      onNotify?.((err as Error).message, 'err');
+    }
+  };
+
+  const handleReorderEntries = async (fromIdx: number, toIdx: number, currentList: DecryptedVaultEntry[]) => {
+    if (!vaultKey || fromIdx === toIdx) return;
+    touchActivity();
+    if (fromIdx < 0 || fromIdx >= currentList.length || toIdx < 0 || toIdx >= currentList.length) return;
+
+    const listCopy = [...currentList];
+    const [moved] = listCopy.splice(fromIdx, 1);
+    listCopy.splice(toIdx, 0, moved);
+
+    const updated = listCopy.map((item, idx) => ({
+      ...item,
+      payload: {
+        ...item.payload,
+        orderIndex: idx,
+      },
+    }));
+
+    // Optimistic local update
+    setEntries((prev) => {
+      const map = new Map(updated.map((u) => [u.id, u]));
+      return prev.map((p) => map.get(p.id) || p);
+    });
+
+    try {
+      const { iv, ciphertext } = await encryptVaultPayload(vaultKey, {
+        ...moved.payload,
+        orderIndex: toIdx,
+      });
+      await api.saveVaultEntry({
+        id: moved.id,
+        label: moved.label,
+        category: moved.category,
+        iv,
+        ciphertext,
+        lastRotatedAt: moved.lastRotatedAt,
+      });
+      onNotify?.(`Reordered "${moved.label}" ✓`);
+    } catch (err) {
+      console.error('Failed to persist order', err);
     }
   };
 
@@ -1352,35 +1503,48 @@ export function VaultView({
     healthScore,
   } = vaultTelemetry;
 
-  const categoryCounts = new Map<string, number>();
-  for (const e of entries) {
-    categoryCounts.set(e.category, (categoryCounts.get(e.category) ?? 0) + 1);
-  }
+  const activeEntries = entries.filter((e) => !e.payload.archived);
+  const archivedEntries = entries.filter((e) => Boolean(e.payload.archived));
+  const currentPool = vaultTab === 'active' ? activeEntries : archivedEntries;
 
-  const categories = Array.from(categoryCounts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  // Always show all standard categories + any user-created custom categories
+  const allKnownCategories = Array.from(
+    new Set([
+      ...STANDARD_VAULT_CATEGORIES,
+      ...entries.map((e) => e.category).filter(Boolean),
+    ]),
+  );
+
+  const categoryCounts = new Map<string, number>();
+  for (const cat of allKnownCategories) {
+    const c = activeEntries.filter(
+      (e) => e.category.toLowerCase() === cat.toLowerCase(),
+    ).length;
+    categoryCounts.set(cat, c);
+  }
 
   const resolvedCategory =
     activeCategory !== '__auto__'
       ? activeCategory
       : starredCount > 0
         ? '__starred__'
-        : categories.length > 1 && entries.length > 3
-          ? categories[0][0]
-          : '__all__';
+        : '__all__';
 
-  const filtered = entries
+  const filtered = currentPool
     .filter((e) => {
-      // Audit filter pills
-      if (auditFilter === 'reused') {
-        const h = entryHashById[e.id];
-        if (!h || !reusedHashes.has(h)) return false;
-      } else if (auditFilter === 'weak') {
-        const pw = e.payload.password || e.payload.upiMpin || e.payload.cardPin || '';
-        if (calculatePasswordStrength(pw).label !== 'Weak') return false;
-      } else if (auditFilter === 'stale') {
-        if (daysBetweenISO(e.lastRotatedAt, todayISO()) <= 90) return false;
-      } else if (auditFilter === 'starred') {
-        if (!e.payload.starred) return false;
+      // Audit filter pills (apply in active tab)
+      if (vaultTab === 'active') {
+        if (auditFilter === 'reused') {
+          const h = entryHashById[e.id];
+          if (!h || !reusedHashes.has(h)) return false;
+        } else if (auditFilter === 'weak') {
+          const pw = e.payload.password || e.payload.upiMpin || e.payload.cardPin || '';
+          if (calculatePasswordStrength(pw).label !== 'Weak') return false;
+        } else if (auditFilter === 'stale') {
+          if (daysBetweenISO(e.lastRotatedAt, todayISO()) <= 90) return false;
+        } else if (auditFilter === 'starred') {
+          if (!e.payload.starred) return false;
+        }
       }
 
       // Search
@@ -1401,21 +1565,28 @@ export function VaultView({
         );
       }
 
-      // Category tab
-      if (resolvedCategory === '__starred__') return !!e.payload.starred;
-      if (resolvedCategory !== '__all__') return e.category === resolvedCategory;
+      // Category filter (in active tab)
+      if (vaultTab === 'active') {
+        if (resolvedCategory === '__starred__') return !!e.payload.starred;
+        if (resolvedCategory !== '__all__' && resolvedCategory !== '__auto__') {
+          return e.category.toLowerCase() === resolvedCategory.toLowerCase();
+        }
+      }
       return true;
     })
     .slice()
     .sort((a, b) => {
+      if (sortBy === 'custom_order') {
+        return (a.payload.orderIndex ?? 0) - (b.payload.orderIndex ?? 0);
+      }
       if (sortBy === 'starred_first') {
         const as = a.payload.starred ? 1 : 0;
         const bs = b.payload.starred ? 1 : 0;
-        return bs - as || a.label.localeCompare(b.label);
+        return bs - as || (a.payload.orderIndex ?? 0) - (b.payload.orderIndex ?? 0) || a.label.localeCompare(b.label);
       }
       if (sortBy === 'oldest_rotated') return a.lastRotatedAt.localeCompare(b.lastRotatedAt);
       if (sortBy === 'updated_desc') return b.updatedAt.localeCompare(a.updatedAt);
-      return a.label.localeCompare(b.label);
+      return (a.payload.orderIndex ?? 0) - (b.payload.orderIndex ?? 0) || a.label.localeCompare(b.label);
     });
 
   const renderSecretRow = (
@@ -1515,6 +1686,7 @@ export function VaultView({
               value={sortBy}
               onChange={(v) => setSortBy(v as VaultSort)}
               options={[
+                { value: 'custom_order', label: 'Custom Drag Order' },
                 { value: 'starred_first', label: 'Starred First' },
                 { value: 'name_asc', label: 'Name: A → Z' },
                 { value: 'oldest_rotated', label: 'Rotation Needed First' },
@@ -1676,54 +1848,99 @@ export function VaultView({
           </div>
         </div>
 
-        {/* Category Tabs */}
-        {entries.length > 0 && (
-          <div className="mt-2.5 pt-2 border-t border-[#E6E1D6] flex flex-wrap items-center gap-1.5">
+        {/* Category Tabs & Archive Toggle - ALWAYS shows all categories */}
+        <div className="mt-2.5 pt-2 border-t border-[#E6E1D6] flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               onClick={() => {
+                setVaultTab('active');
                 setActiveCategory('__all__');
-                setExpandedEntryId(null);
               }}
               className={cn(
-                'rounded-lg px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors',
-                resolvedCategory === '__all__'
-                  ? 'bg-[#111318] text-white'
+                'rounded-lg px-2.5 py-1 text-xs font-semibold cursor-pointer transition-colors',
+                vaultTab === 'active' && resolvedCategory === '__all__'
+                  ? 'bg-[#111318] text-[#E5C158] shadow-xs'
                   : 'bg-[#FAF8F5] border border-[#E6E1D6] text-[#111318] hover:bg-white',
               )}
             >
-              All Categories ({entries.length})
+              All Categories ({activeEntries.length})
             </button>
-            {categories.map(([cat, count]) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => {
-                  setActiveCategory(cat);
-                  setExpandedEntryId(null);
-                }}
-                className={cn(
-                  'rounded-lg px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5',
-                  resolvedCategory === cat
-                    ? 'bg-[#111318] text-[#E5C158] shadow-xs'
-                    : 'bg-[#FAF8F5] border border-[#E6E1D6] text-[#111318] hover:bg-white',
-                )}
-              >
-                <span>{cat}</span>
-                <span className="text-[10px] opacity-75">({count})</span>
-              </button>
-            ))}
+            {allKnownCategories.map((cat) => {
+              const count = categoryCounts.get(cat) ?? 0;
+              const isSel = vaultTab === 'active' && resolvedCategory.toLowerCase() === cat.toLowerCase();
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => {
+                    setVaultTab('active');
+                    setActiveCategory(cat);
+                  }}
+                  className={cn(
+                    'rounded-lg px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5',
+                    isSel
+                      ? 'bg-[#111318] text-[#E5C158] shadow-xs font-semibold'
+                      : 'bg-[#FAF8F5] border border-[#E6E1D6] text-[#111318] hover:bg-white',
+                  )}
+                >
+                  <span>{cat}</span>
+                  <span className="text-[10px] opacity-75">({count})</span>
+                </button>
+              );
+            })}
           </div>
-        )}
+
+          {/* Archive Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setVaultTab(vaultTab === 'active' ? 'archived' : 'active')}
+            className={cn(
+              'rounded-lg px-3 py-1 text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5 border',
+              vaultTab === 'archived'
+                ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
+                : archivedEntries.length > 0
+                  ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+                  : 'bg-[#FAF8F5] text-[#686E78] border-[#E6E1D6] hover:text-[#111318]',
+            )}
+          >
+            <Archive className="h-3.5 w-3.5" />
+            <span>Vault Archive</span>
+            <span className="font-mono text-[10px] px-1.5 py-0.2 rounded-full bg-black/10">
+              {archivedEntries.length}
+            </span>
+          </button>
+        </div>
       </Card>
 
       {/* 3. Items Display Grid / List */}
+      {vaultTab === 'archived' && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50/70 p-3 flex items-center justify-between text-xs text-amber-900">
+          <div className="flex items-center gap-2">
+            <Archive className="h-4 w-4 text-amber-700 shrink-0" />
+            <span>
+              <strong>Vault Archive Mode:</strong> Showing {archivedEntries.length} archived credentials. Click any card to view, restore to active, or permanently delete.
+            </span>
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setVaultTab('active')}
+            className="h-7 text-xs bg-white text-[#111318] border-[#E6E1D6]"
+          >
+            ← Back to Active Vault
+          </Button>
+        </div>
+      )}
+
       {filtered.length === 0 ? (
         <Card className="p-10 text-center text-xs text-[#686E78] border-[#E6E1D6] bg-white space-y-2">
           <p>
-            {auditFilter !== 'all'
-              ? `No vault items matched the audit filter "${auditFilter}".`
-              : 'No credentials stored in this category yet. Click "+ New Item" above to add one.'}
+            {vaultTab === 'archived'
+              ? 'No credentials currently in the archive.'
+              : auditFilter !== 'all'
+                ? `No vault items matched the audit filter "${auditFilter}".`
+                : 'No credentials stored in this category yet. Click "+ New Item" above to add one.'}
           </p>
         </Card>
       ) : (
@@ -1734,8 +1951,7 @@ export function VaultView({
               : 'space-y-2.5'
           }
         >
-          {filtered.map((entry) => {
-            const isExpanded = expandedEntryId === entry.id;
+          {filtered.map((entry, index) => {
             const daysSinceRotated = daysBetweenISO(entry.lastRotatedAt, todayISO());
             const needsRotation = daysSinceRotated > 90;
             const itemT = entry.payload.itemType ?? 'login';
@@ -1746,299 +1962,208 @@ export function VaultView({
             const primarySecret = entry.payload.password || entry.payload.upiMpin || entry.payload.cardPin || '';
             const strength = primarySecret ? calculatePasswordStrength(primarySecret) : null;
 
-            // Linked account record (Pillar 4)
-            const linkedAcc = entry.payload.linkedAccountId
-              ? accounts.find((a) => a.id === entry.payload.linkedAccountId)
-              : null;
+            // Color preset
+            const cardTheme = CARD_COLORS.find((c) => c.id === entry.payload.color) || CARD_COLORS[0];
 
             return (
               <div
                 key={entry.id}
-                onClick={() => setExpandedEntryId(isExpanded ? null : entry.id)}
+                draggable={vaultTab === 'active'}
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/plain', String(index));
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+                  if (!isNaN(fromIdx) && fromIdx !== index) {
+                    void handleReorderEntries(fromIdx, index, filtered);
+                  }
+                }}
+                onClick={() => setViewingEntry(entry)}
                 className={cn(
-                  'studio-card-hover group relative rounded-2xl border bg-white p-4 flex flex-col justify-between space-y-3 cursor-pointer shadow-[0_10px_28px_-18px_rgba(17,19,24,0.12)] transition-all border-[#E6E1D6]',
-                  isExpanded && 'ring-2 ring-[#111318] border-[#111318]',
-                  entry.payload.starred && 'border-[#E6D5A7] bg-[#FDFBF4]',
+                  'studio-card-hover group relative rounded-2xl border p-3.5 h-[210px] min-h-[210px] max-h-[210px] flex flex-col justify-between cursor-pointer transition-all border-l-4 shadow-[0_4px_16px_-6px_rgba(17,19,24,0.08)] hover:shadow-md select-none',
+                  cardTheme.bg,
+                  cardTheme.border,
+                  cardTheme.borderL,
+                  entry.payload.starred && 'ring-1 ring-amber-400',
                 )}
               >
-                <div className="space-y-2.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        {itemT === 'card' ? (
-                          <CreditCard className="h-4 w-4 text-emerald-600 shrink-0" />
-                        ) : itemT === 'upi' ? (
-                          <Smartphone className="h-4 w-4 text-teal-600 shrink-0" />
-                        ) : itemT === 'identity' ? (
-                          <FileKey className="h-4 w-4 text-[#111318] shrink-0" />
-                        ) : itemT === 'note' ? (
-                          <FileText className="h-4 w-4 text-[#686E78] shrink-0" />
-                        ) : (
-                          <KeyRound className="h-4 w-4 text-[#8C6D1F] shrink-0" />
-                        )}
-                        <h3 className="text-sm font-semibold text-[#111318] truncate">{entry.label}</h3>
+                {/* Header (32px) */}
+                <div className="flex items-center justify-between gap-1.5 h-8 shrink-0">
+                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                    {vaultTab === 'active' && (
+                      <div
+                        className="cursor-grab active:cursor-grabbing p-1 text-slate-400 hover:text-slate-700 -ml-1 rounded shrink-0"
+                        title="Drag to reorder card"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <GripVertical className="h-3.5 w-3.5" />
                       </div>
-                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                        <Badge className="bg-[#FAF8F5] text-[#111318] border-[#E6E1D6]">{entry.category}</Badge>
-                        {itemT !== 'login' && (
-                          <span className="rounded bg-[#FAF8F5] border border-[#E6E1D6] px-1.5 py-0.2 text-[10px] font-semibold text-[#8C6D1F] uppercase">
-                            {itemT}
-                          </span>
-                        )}
-                        {strength && (
-                          <span className={cn('rounded px-1.5 py-0.2 text-[10px] font-medium border', strength.badgeClass)}>
-                            {strength.label}
-                          </span>
-                        )}
-                        {isReused && (
-                          <span className="rounded bg-amber-100 border border-amber-300 px-1.5 py-0.2 text-[10px] font-bold text-amber-900">
-                            Reused
-                          </span>
-                        )}
-                      </div>
+                    )}
+                    <div className="shrink-0">
+                      {itemT === 'card' ? (
+                        <CreditCard className="h-4 w-4 text-emerald-600" />
+                      ) : itemT === 'upi' ? (
+                        <Smartphone className="h-4 w-4 text-teal-600" />
+                      ) : itemT === 'identity' ? (
+                        <FileKey className="h-4 w-4 text-blue-600" />
+                      ) : itemT === 'note' ? (
+                        <FileText className="h-4 w-4 text-slate-600" />
+                      ) : (
+                        <KeyRound className="h-4 w-4 text-[#8C6D1F]" />
+                      )}
                     </div>
+                    <h3 className="text-xs font-bold text-[#111318] truncate flex-1" title={entry.label}>
+                      {entry.label}
+                    </h3>
+                  </div>
 
-                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                  {/* Header Actions */}
+                  <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    {vaultTab === 'active' && (
+                      <div className="hidden group-hover:flex items-center gap-0.5">
+                        <button
+                          type="button"
+                          disabled={index === 0}
+                          onClick={() => {
+                            if (index > 0) void handleReorderEntries(index, index - 1, filtered);
+                          }}
+                          className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-black/5 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed"
+                          title="Move Left / Earlier"
+                        >
+                          <ChevronLeft className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={index === filtered.length - 1}
+                          onClick={() => {
+                            if (index < filtered.length - 1) void handleReorderEntries(index, index + 1, filtered);
+                          }}
+                          className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-black/5 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed"
+                          title="Move Right / Later"
+                        >
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
+                    <div
+                      className="h-2.5 w-2.5 rounded-full border border-black/10 shrink-0"
+                      style={{ backgroundColor: cardTheme.dot }}
+                      title={`Card Accent: ${cardTheme.label}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleToggleStar(entry)}
+                      className={cn(
+                        'p-1 rounded-md cursor-pointer transition-colors shrink-0',
+                        entry.payload.starred ? 'text-[#C59B27]' : 'text-slate-300 hover:text-[#C59B27]',
+                      )}
+                      title={entry.payload.starred ? 'Starred' : 'Star'}
+                    >
+                      <Star className="h-3.5 w-3.5 fill-current" />
+                    </button>
+                    {vaultTab === 'active' ? (
                       <button
                         type="button"
-                        onClick={() => void handleToggleStar(entry)}
-                        className={cn(
-                          'rounded-lg p-1.5 cursor-pointer transition-colors',
-                          entry.payload.starred
-                            ? 'text-[#C59B27] hover:text-[#8C6D1F]'
-                            : 'text-slate-300 hover:text-[#C59B27]',
-                        )}
-                        title={entry.payload.starred ? 'Unstar' : 'Star'}
+                        onClick={() => void handleArchiveEntry(entry)}
+                        className="p-1 rounded text-slate-400 hover:text-amber-700 hover:bg-amber-50 cursor-pointer shrink-0"
+                        title="Move to Archive"
                       >
-                        <Star className="h-4 w-4 fill-current" />
+                        <Archive className="h-3.5 w-3.5" />
                       </button>
+                    ) : (
                       <button
                         type="button"
-                        onClick={() => openEntryModal(entry)}
-                        className="rounded-lg p-1.5 text-[#686E78] hover:bg-[#FAF8F5] hover:text-[#111318] cursor-pointer"
-                        title="Edit Entry"
-                      >
-                        <KeyRound className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeleteTarget(entry)}
-                        className="rounded-lg p-1.5 text-[#686E78] hover:bg-rose-50 hover:text-rose-600 cursor-pointer"
-                        title="Delete"
+                        onClick={() => setDeletePermanentTarget(entry)}
+                        className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer shrink-0"
+                        title="Permanently Delete"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
-                    </div>
+                    )}
                   </div>
-
-                  {/* Financial Account Link Badge (Pillar 4) */}
-                  {linkedAcc && (
-                    <div
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onNavigate?.(linkedAcc.type === 'credit_card' ? 'cards' : 'money');
-                      }}
-                      className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-medium text-emerald-900 hover:bg-emerald-100 cursor-pointer"
-                      title="Linked Ledger Account (Click to view in Treasury)"
-                    >
-                      <Link2 className="h-3 w-3 text-emerald-600" />
-                      <span>Linked: {linkedAcc.name} ({linkedAcc.scope})</span>
-                    </div>
-                  )}
-
-                  {/* Summary preview according to item type */}
-                  {itemT === 'card' && entry.payload.cardNumber && (
-                    <div className="font-mono text-xs text-[#111318] bg-[#FAF8F5] border border-[#E6E1D6] rounded-lg p-2 flex items-center justify-between">
-                      <span>•••• •••• •••• {entry.payload.cardNumber.slice(-4)}</span>
-                      {entry.payload.cardExpiry && (
-                        <span className="text-[10px] text-[#686E78] font-sans">Exp: {entry.payload.cardExpiry}</span>
-                      )}
-                    </div>
-                  )}
-
-                  {itemT === 'upi' && entry.payload.upiVpa && (
-                    <div className="text-xs text-[#111318] bg-[#FAF8F5] border border-[#E6E1D6] rounded-lg p-2 truncate">
-                      <span className="text-[#686E78] font-mono">UPI: </span>
-                      <span className="font-semibold">{entry.payload.upiVpa}</span>
-                    </div>
-                  )}
-
-                  {itemT === 'identity' && entry.payload.idNumber && (
-                    <div className="text-xs text-slate-700 bg-slate-50 border border-slate-200/80 rounded-lg p-2 font-mono">
-                      <span className="text-slate-400 font-sans">{entry.payload.idType || 'ID'}: </span>
-                      <span>•••• {entry.payload.idNumber.slice(-4)}</span>
-                    </div>
-                  )}
-
-                  {itemT === 'login' && entry.payload.username && (
-                    <div className="text-xs text-slate-600 truncate">
-                      <span className="text-slate-400">User: </span>
-                      <span className="font-medium text-slate-800">{entry.payload.username}</span>
-                    </div>
-                  )}
-
-                  {/* Expanded 1-Card View for Reveal & Actions */}
-                  {isExpanded && (
-                    <div
-                      className="space-y-2 pt-2 border-t border-slate-100 animate-slide-up"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {/* Login Specific Secrets */}
-                      {itemT === 'login' && (
-                        <>
-                          {entry.payload.password &&
-                            renderSecretRow(
-                              `${entry.id}-pw`,
-                              'Password',
-                              entry.payload.password,
-                              strength?.label,
-                            )}
-
-                          {entry.payload.url && (() => {
-                            const rawUrl = entry.payload.url.trim();
-                            let safeHref: string | null = null;
-                            try {
-                              const parsed = new URL(/^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`);
-                              if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-                                safeHref = parsed.toString();
-                              }
-                            } catch {
-                              safeHref = null;
-                            }
-                            return (
-                              <div className="text-[11px] text-slate-600 truncate">
-                                <span className="text-slate-400">URL: </span>
-                                {safeHref ? (
-                                  <a
-                                    href={safeHref}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 underline hover:text-blue-800"
-                                  >
-                                    {entry.payload.url}
-                                  </a>
-                                ) : (
-                                  <span>{entry.payload.url}</span>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </>
-                      )}
-
-                      {/* Card Specific Secrets */}
-                      {itemT === 'card' && (
-                        <>
-                          {entry.payload.cardHolder && (
-                            <div className="text-xs text-slate-700">
-                              <span className="text-slate-400">Name on Card: </span>
-                              <span className="font-medium">{entry.payload.cardHolder}</span>
-                            </div>
-                          )}
-                          {entry.payload.cardNumber &&
-                            renderSecretRow(`${entry.id}-card-num`, 'Card Number', entry.payload.cardNumber)}
-                          <div className="grid grid-cols-2 gap-2">
-                            {entry.payload.cardExpiry && (
-                              <div className="rounded-xl bg-slate-50 border border-slate-200 p-2 text-xs">
-                                <span className="text-slate-400 text-[10px] block">Expiry</span>
-                                <span className="font-mono font-medium">{entry.payload.cardExpiry}</span>
-                              </div>
-                            )}
-                            {entry.payload.cardCvv &&
-                              renderSecretRow(`${entry.id}-card-cvv`, 'CVV', entry.payload.cardCvv)}
-                          </div>
-                          {entry.payload.cardPin &&
-                            renderSecretRow(`${entry.id}-card-pin`, 'ATM PIN', entry.payload.cardPin)}
-                        </>
-                      )}
-
-                      {/* UPI Specific Secrets */}
-                      {itemT === 'upi' && (
-                        <>
-                          {entry.payload.upiMpin &&
-                            renderSecretRow(`${entry.id}-upi-mpin`, 'UPI MPIN', entry.payload.upiMpin)}
-                          {entry.payload.upiDailyLimit && (
-                            <div className="text-xs text-slate-700">
-                              <span className="text-slate-400">Daily Limit: </span>
-                              <span className="font-medium">₹{entry.payload.upiDailyLimit.toLocaleString('en-IN')}</span>
-                            </div>
-                          )}
-                        </>
-                      )}
-
-                      {/* Identity Specific Secrets */}
-                      {itemT === 'identity' && (
-                        <>
-                          {entry.payload.idNumber &&
-                            renderSecretRow(
-                              `${entry.id}-id-num`,
-                              `${entry.payload.idType || 'ID'} Number`,
-                              entry.payload.idNumber,
-                            )}
-                        </>
-                      )}
-
-                      {/* Extra Secrets (ATM PIN, UPI MPIN, TPIN, etc.) */}
-                      {(entry.payload.secrets ?? []).map((sec) =>
-                        renderSecretRow(`${entry.id}-extra-${sec.id}`, sec.label, sec.value, sec.kind),
-                      )}
-
-                      {/* Notes / Markdown */}
-                      {entry.payload.notes && (
-                        <div className="rounded-xl bg-slate-50 border border-slate-200 p-2.5 text-xs text-slate-700 whitespace-pre-wrap">
-                          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                            Notes / Confidential Info:
-                          </span>
-                          {entry.payload.notes}
-                        </div>
-                      )}
-
-                      {/* Legacy Password History */}
-                      {(entry.payload.legacyHistory ?? []).length > 0 && (
-                        <div className="pt-1">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setLegacyOpenIds((prev) => ({ ...prev, [entry.id]: !prev[entry.id] }))
-                            }
-                            className="text-[11px] text-slate-500 hover:text-slate-800 flex items-center gap-1 cursor-pointer font-medium"
-                          >
-                            <History className="h-3 w-3" />
-                            <span>
-                              Legacy Secrets ({entry.payload.legacyHistory?.length})
-                            </span>
-                            {legacyOpenIds[entry.id] ? (
-                              <ChevronUp className="h-3 w-3" />
-                            ) : (
-                              <ChevronDown className="h-3 w-3" />
-                            )}
-                          </button>
-
-                          {legacyOpenIds[entry.id] && (
-                            <div className="space-y-1.5 pt-1.5">
-                              {entry.payload.legacyHistory?.map((leg) =>
-                                renderSecretRow(
-                                  `${entry.id}-legacy-${leg.id}`,
-                                  leg.label,
-                                  leg.value,
-                                  `Archived ${leg.archivedAt}`,
-                                ),
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
 
-                {/* Footer metadata */}
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                {/* Middle Body (~110px) */}
+                <div className="my-auto py-1 space-y-1.5 overflow-hidden text-xs">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Badge className="bg-white/80 text-[#111318] border-[#E6E1D6] text-[10px] py-0 px-1.5 font-medium truncate max-w-[120px]">
+                      {entry.category}
+                    </Badge>
+                    {itemT !== 'login' && (
+                      <span className="rounded bg-white/80 border border-[#E6E1D6] px-1.5 py-0 text-[10px] font-semibold text-[#8C6D1F] uppercase">
+                        {itemT}
+                      </span>
+                    )}
+                    {entry.payload.archived && (
+                      <span className="rounded bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0 text-[10px] font-bold">
+                        Archived
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Primary credential preview */}
+                  <div className="text-xs text-[#111318] truncate font-medium">
+                    {itemT === 'login' && <span>👤 {entry.payload.username || 'No username'}</span>}
+                    {itemT === 'card' && (
+                      <span className="font-mono">💳 •••• •••• •••• {entry.payload.cardNumber ? entry.payload.cardNumber.slice(-4) : '••••'}</span>
+                    )}
+                    {itemT === 'upi' && <span className="font-mono">📱 {entry.payload.upiVpa || 'UPI VPA'}</span>}
+                    {itemT === 'identity' && (
+                      <span className="font-mono">🪪 {entry.payload.idType || 'ID'}: •••• {entry.payload.idNumber ? entry.payload.idNumber.slice(-4) : '••••'}</span>
+                    )}
+                    {itemT === 'note' && (
+                      <span className="line-clamp-2 text-[11px] text-[#52504C]">{entry.payload.notes || 'Secure note entry...'}</span>
+                    )}
+                  </div>
+
+                  {/* Secondary info preview */}
+                  <div className="text-[11px] text-[#686E78] truncate">
+                    {itemT === 'login' && (
+                      <span>{entry.payload.url ? `🔗 ${entry.payload.url.replace(/^https?:\/\//i, '')}` : '—'}</span>
+                    )}
+                    {itemT === 'card' && (
+                      <span>Exp: {entry.payload.cardExpiry || '—'} {entry.payload.cardHolder ? `• ${entry.payload.cardHolder}` : ''}</span>
+                    )}
+                    {itemT === 'upi' && (
+                      <span>{entry.payload.upiDailyLimit ? `Limit: ₹${entry.payload.upiDailyLimit.toLocaleString('en-IN')}` : 'Instant UPI'}</span>
+                    )}
+                    {itemT === 'identity' && <span>Gov ID Document</span>}
+                  </div>
+
+                  {/* Status audit tags */}
+                  <div className="flex items-center gap-1 text-[10px]">
+                    {strength && (
+                      <span className={cn('rounded px-1.5 py-0.2 border font-medium', strength.badgeClass)}>
+                        {strength.label}
+                      </span>
+                    )}
+                    {isReused && (
+                      <span className="rounded bg-amber-100 border border-amber-300 px-1.5 py-0.2 font-bold text-amber-900">
+                        Reused
+                      </span>
+                    )}
+                    {needsRotation && (
+                      <span className="rounded bg-amber-50 border border-amber-300 px-1.5 py-0.2 font-medium text-amber-800">
+                        Rotate &gt;90d
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Footer (28px) */}
+                <div className="pt-2 border-t border-[#E6E1D6]/60 flex items-center justify-between text-[11px] text-[#686E78] h-7 shrink-0">
                   <span className={cn(needsRotation && 'text-amber-700 font-medium')}>
-                    Rotated {daysSinceRotated}d ago {needsRotation && '⚠️'}
+                    {entry.payload.archived
+                      ? `Archived ${entry.payload.archivedAt ? new Date(entry.payload.archivedAt).toLocaleDateString() : ''}`
+                      : `Rotated ${daysSinceRotated}d ago`}
                   </span>
-                  <span className="text-[10px] text-slate-400">
-                    {isExpanded ? 'Click to collapse' : 'Click to reveal'}
+                  <span className="inline-flex items-center gap-1 font-semibold text-[#8C6D1F] group-hover:underline">
+                    <Eye className="h-3.5 w-3.5" /> View Details
                   </span>
                 </div>
               </div>
@@ -2046,6 +2171,281 @@ export function VaultView({
           })}
         </div>
       )}
+
+      {/* Viewing Pop-up (View Mode First) */}
+      <Dialog
+        open={!!viewingEntry}
+        onClose={() => setViewingEntry(null)}
+        title={viewingEntry?.label || 'Vault Credential'}
+        maxWidth="max-w-xl"
+      >
+        {viewingEntry && (() => {
+          const vTheme = CARD_COLORS.find((c) => c.id === viewingEntry.payload.color) || CARD_COLORS[0];
+          const vItemT = viewingEntry.payload.itemType ?? 'login';
+          const vRotated = daysBetweenISO(viewingEntry.lastRotatedAt, todayISO());
+          const vStrength = (viewingEntry.payload.password || viewingEntry.payload.upiMpin || viewingEntry.payload.cardPin)
+            ? calculatePasswordStrength(viewingEntry.payload.password || viewingEntry.payload.upiMpin || viewingEntry.payload.cardPin || '')
+            : null;
+          const vLinked = viewingEntry.payload.linkedAccountId
+            ? accounts.find((a) => a.id === viewingEntry.payload.linkedAccountId)
+            : null;
+
+          return (
+            <div className="space-y-4">
+              {/* Top Banner with Accent Color & Category & Status */}
+              <div className={cn('p-3 rounded-xl border flex items-center justify-between gap-2 border-l-4', vTheme.bg, vTheme.border, vTheme.borderL)}>
+                <div className="flex items-center gap-2 min-w-0">
+                  {vItemT === 'card' ? (
+                    <CreditCard className="h-5 w-5 text-emerald-600 shrink-0" />
+                  ) : vItemT === 'upi' ? (
+                    <Smartphone className="h-5 w-5 text-teal-600 shrink-0" />
+                  ) : vItemT === 'identity' ? (
+                    <FileKey className="h-5 w-5 text-blue-600 shrink-0" />
+                  ) : vItemT === 'note' ? (
+                    <FileText className="h-5 w-5 text-slate-600 shrink-0" />
+                  ) : (
+                    <KeyRound className="h-5 w-5 text-[#8C6D1F] shrink-0" />
+                  )}
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-sm text-[#111318] truncate">{viewingEntry.label}</h3>
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      <Badge className="bg-white text-[#111318] border-[#E6E1D6] text-[10px] py-0 px-1.5">
+                        {viewingEntry.category}
+                      </Badge>
+                      <span className="rounded bg-white border border-[#E6E1D6] px-1.5 py-0 text-[10px] font-semibold text-[#8C6D1F] uppercase">
+                        {vItemT}
+                      </span>
+                      {vStrength && (
+                        <span className={cn('rounded px-1.5 py-0 text-[10px] font-medium border', vStrength.badgeClass)}>
+                          {vStrength.label}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <div
+                    className="h-3.5 w-3.5 rounded-full border border-black/10 shrink-0"
+                    style={{ backgroundColor: vTheme.dot }}
+                    title={`Color: ${vTheme.label}`}
+                  />
+                  {viewingEntry.payload.starred && <Star className="h-4 w-4 fill-current text-[#C59B27]" />}
+                </div>
+              </div>
+
+              {/* Archived Notice Banner */}
+              {viewingEntry.payload.archived && (
+                <div className="rounded-xl border border-amber-300 bg-amber-50 p-2.5 flex items-center justify-between text-xs text-amber-900">
+                  <div className="flex items-center gap-2">
+                    <Archive className="h-4 w-4 text-amber-700 shrink-0" />
+                    <span>Archived on {viewingEntry.payload.archivedAt ? new Date(viewingEntry.payload.archivedAt).toLocaleString() : 'Yes'}.</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => void handleRestoreEntry(viewingEntry)}
+                    className="h-7 text-xs bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-50"
+                  >
+                    <RotateCcw className="h-3 w-3 mr-1" /> Restore
+                  </Button>
+                </div>
+              )}
+
+              {/* Secrets Display */}
+              <div className="space-y-2.5">
+                {/* Login Specific Secrets */}
+                {vItemT === 'login' && (
+                  <>
+                    {viewingEntry.payload.username &&
+                      renderSecretRow(`${viewingEntry.id}-view-user`, 'Username / Email', viewingEntry.payload.username)}
+                    {viewingEntry.payload.password &&
+                      renderSecretRow(`${viewingEntry.id}-view-pw`, 'Password', viewingEntry.payload.password, vStrength?.label)}
+                    {viewingEntry.payload.url && (
+                      <div className="rounded-xl bg-[#FAF8F5] border border-[#E6E1D6] px-3 py-2 flex items-center justify-between gap-2 text-xs">
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[11px] font-semibold text-[#111318]">Website URL</span>
+                          <div className="font-mono text-xs text-blue-700 truncate mt-0.5">
+                            {viewingEntry.payload.url}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <a
+                            href={viewingEntry.payload.url.startsWith('http') ? viewingEntry.payload.url : `https://${viewingEntry.payload.url}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 rounded-md text-[#686E78] hover:bg-white hover:text-blue-700 cursor-pointer"
+                            title="Open in new tab"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => void handleCopySecret(`${viewingEntry.id}-view-url`, viewingEntry.payload.url, 'URL')}
+                            className="p-1.5 rounded-md text-[#686E78] hover:bg-white hover:text-[#8C6D1F] cursor-pointer"
+                            title="Copy URL"
+                          >
+                            {copiedKey === `${viewingEntry.id}-view-url` ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Card Specific Secrets */}
+                {vItemT === 'card' && (
+                  <>
+                    {viewingEntry.payload.cardHolder &&
+                      renderSecretRow(`${viewingEntry.id}-view-holder`, 'Cardholder Name', viewingEntry.payload.cardHolder)}
+                    {viewingEntry.payload.cardNumber &&
+                      renderSecretRow(`${viewingEntry.id}-view-num`, 'Card Number', viewingEntry.payload.cardNumber)}
+                    <div className="grid grid-cols-2 gap-2">
+                      {viewingEntry.payload.cardExpiry && (
+                        <div className="rounded-xl bg-[#FAF8F5] border border-[#E6E1D6] p-2 text-xs">
+                          <span className="text-[10px] text-[#686E78] block">Expiry</span>
+                          <span className="font-mono font-bold text-[#111318]">{viewingEntry.payload.cardExpiry}</span>
+                        </div>
+                      )}
+                      {viewingEntry.payload.cardCvv &&
+                        renderSecretRow(`${viewingEntry.id}-view-cvv`, 'CVV', viewingEntry.payload.cardCvv)}
+                    </div>
+                    {viewingEntry.payload.cardPin &&
+                      renderSecretRow(`${viewingEntry.id}-view-cpin`, 'ATM PIN', viewingEntry.payload.cardPin)}
+                  </>
+                )}
+
+                {/* UPI Specific Secrets */}
+                {vItemT === 'upi' && (
+                  <>
+                    {viewingEntry.payload.upiVpa &&
+                      renderSecretRow(`${viewingEntry.id}-view-vpa`, 'UPI ID / VPA', viewingEntry.payload.upiVpa)}
+                    {viewingEntry.payload.upiMpin &&
+                      renderSecretRow(`${viewingEntry.id}-view-mpin`, 'UPI MPIN', viewingEntry.payload.upiMpin)}
+                    {viewingEntry.payload.upiDailyLimit && (
+                      <div className="rounded-xl bg-[#FAF8F5] border border-[#E6E1D6] p-2 text-xs">
+                        <span className="text-[10px] text-[#686E78] block">Daily Transfer Limit</span>
+                        <span className="font-bold text-[#111318]">₹{viewingEntry.payload.upiDailyLimit.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Identity Specific Secrets */}
+                {vItemT === 'identity' && (
+                  <>
+                    {viewingEntry.payload.idNumber &&
+                      renderSecretRow(
+                        `${viewingEntry.id}-view-id`,
+                        `${viewingEntry.payload.idType || 'ID'} Number`,
+                        viewingEntry.payload.idNumber,
+                      )}
+                  </>
+                )}
+
+                {/* Extra Secrets */}
+                {(viewingEntry.payload.secrets ?? []).map((sec) =>
+                  renderSecretRow(`${viewingEntry.id}-extra-${sec.id}`, sec.label, sec.value, sec.kind),
+                )}
+
+                {/* Notes */}
+                {viewingEntry.payload.notes && (
+                  <div className="rounded-xl bg-[#FAF8F5] border border-[#E6E1D6] p-3 text-xs text-[#111318] whitespace-pre-wrap">
+                    <span className="text-[10px] font-semibold text-[#686E78] uppercase tracking-wider block mb-1">
+                      Notes / Confidential Information:
+                    </span>
+                    {viewingEntry.payload.notes}
+                  </div>
+                )}
+
+                {/* Legacy Password History */}
+                {(viewingEntry.payload.legacyHistory ?? []).length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-[11px] font-semibold text-[#686E78] flex items-center gap-1">
+                      <History className="h-3 w-3" /> Legacy Secret History ({viewingEntry.payload.legacyHistory?.length})
+                    </span>
+                    {viewingEntry.payload.legacyHistory?.map((leg) =>
+                      renderSecretRow(`${viewingEntry.id}-view-leg-${leg.id}`, leg.label, leg.value, `Archived ${leg.archivedAt}`),
+                    )}
+                  </div>
+                )}
+
+                {/* Linked Treasury Account */}
+                {vLinked && (
+                  <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-2.5 flex items-center justify-between text-xs text-emerald-900">
+                    <div className="flex items-center gap-2">
+                      <Link2 className="h-4 w-4 text-emerald-700" />
+                      <span>Linked Account: <strong>{vLinked.name}</strong> ({vLinked.type} · {vLinked.scope})</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Metadata Timestamps */}
+                <div className="pt-2 border-t border-[#E6E1D6] flex items-center justify-between text-[11px] text-[#686E78]">
+                  <span>Last rotated {vRotated} days ago</span>
+                  <span>Updated {new Date(viewingEntry.updatedAt).toLocaleDateString()}</span>
+                </div>
+              </div>
+
+              {/* Action Buttons in Viewing Pop-up */}
+              <div className="pt-3 border-t border-[#E6E1D6] flex items-center justify-between gap-2">
+                <div>
+                  {viewingEntry.payload.archived ? (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => void handleRestoreEntry(viewingEntry)}
+                        className="text-emerald-800 border-emerald-300 hover:bg-emerald-50 text-xs"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5 mr-1" /> Restore to Active
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => {
+                          const target = viewingEntry;
+                          setViewingEntry(null);
+                          setDeletePermanentTarget(target);
+                        }}
+                        className="text-xs"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-1" /> Permanently Delete
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => void handleArchiveEntry(viewingEntry)}
+                      className="text-amber-800 border-amber-300 hover:bg-amber-50 text-xs"
+                    >
+                      <Archive className="h-3.5 w-3.5 mr-1" /> Move to Archive
+                    </Button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => setViewingEntry(null)}>
+                    {dict.common.close}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="bg-[#111318] text-[#E5C158] hover:bg-[#2A2E39]"
+                    onClick={() => {
+                      const toEdit = viewingEntry;
+                      setViewingEntry(null);
+                      openEntryModal(toEdit);
+                    }}
+                  >
+                    <Edit3 className="h-3.5 w-3.5 mr-1.5" /> Edit Entry
+                  </Button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </Dialog>
 
       {/* 4. Add/Edit Vault Entry Modal with Specialized Templates (Pillar 3 & 4) */}
       <Dialog
@@ -2139,14 +2539,52 @@ export function VaultView({
               />
             </div>
             <div>
-              <FieldLabel htmlFor="vault-cat">Category</FieldLabel>
+              <FieldLabel htmlFor="vault-cat">Category *</FieldLabel>
               <Input
                 id="vault-cat"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                placeholder="Banking, Credit Card, etc."
+                list="vault-cat-suggestions"
+                placeholder="Logins, Banking, Identity, etc."
                 required
               />
+              <datalist id="vault-cat-suggestions">
+                {allKnownCategories.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+            </div>
+          </div>
+
+          {/* Card Accent Color Picker */}
+          <div className="rounded-xl border border-[#E6E1D6] bg-[#FAF8F5] p-2.5">
+            <div className="flex items-center justify-between mb-1.5">
+              <FieldLabel className="!mb-0 flex items-center gap-1.5">
+                <Palette className="h-3.5 w-3.5 text-[#8C6D1F]" />
+                <span>Card Accent Color:</span>
+              </FieldLabel>
+              <span className="text-xs font-semibold text-[#111318]">
+                {CARD_COLORS.find((c) => c.id === cardColor)?.label ?? 'Gold'}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {CARD_COLORS.map((col) => (
+                <button
+                  key={col.id}
+                  type="button"
+                  onClick={() => setCardColor(col.id)}
+                  className={cn(
+                    'h-7 w-7 rounded-full transition-all flex items-center justify-center cursor-pointer border',
+                    cardColor === col.id
+                      ? 'ring-2 ring-offset-2 ring-[#111318] scale-110 border-black shadow-xs'
+                      : 'hover:scale-105 border-transparent opacity-80 hover:opacity-100',
+                  )}
+                  style={{ backgroundColor: col.dot }}
+                  title={col.label}
+                >
+                  {cardColor === col.id && <Check className="h-3.5 w-3.5 text-white drop-shadow" />}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -2711,21 +3149,31 @@ export function VaultView({
         </form>
       </Dialog>
 
-      {/* 9. Delete Confirm Dialog */}
+      {/* 9. Move to Archive Confirm Dialog */}
       <ConfirmDialog
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
-        title={dict.common.confirmDeleteTitle}
-        message={`${dict.common.confirmDeleteMsg} (${deleteTarget?.label ?? ''})`}
-        confirmLabel={dict.common.delete}
+        title="Move to Vault Archive"
+        message={`Move "${deleteTarget?.label ?? ''}" to Archive? The credential will be safely stored and can be restored anytime.`}
+        confirmLabel="Move to Archive"
         cancelLabel={dict.common.cancel}
         onConfirm={async () => {
           if (!deleteTarget) return;
-          await api.deleteVaultEntry(deleteTarget.id);
-          const raw = await api.getVaultEntries();
-          if (vaultKey) await decryptAllEntries(vaultKey, raw);
-          setDeleteTarget(null);
-          onNotify?.(`${dict.common.delete} ✓`);
+          await handleArchiveEntry(deleteTarget);
+        }}
+      />
+
+      {/* 10. Permanent Delete Confirm Dialog (Only from Archive) */}
+      <ConfirmDialog
+        open={!!deletePermanentTarget}
+        onClose={() => setDeletePermanentTarget(null)}
+        title="Permanently Delete Vault Record"
+        message={`Are you sure you want to PERMANENTLY destroy "${deletePermanentTarget?.label ?? ''}"? This action cannot be undone and the zero-knowledge secret will be permanently removed.`}
+        confirmLabel="Permanently Delete"
+        cancelLabel={dict.common.cancel}
+        onConfirm={async () => {
+          if (!deletePermanentTarget) return;
+          await handlePermanentDelete(deletePermanentTarget);
         }}
       />
     </div>

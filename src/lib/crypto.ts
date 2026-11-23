@@ -50,6 +50,12 @@ export interface VaultSecretPayload {
   // Identity / Tax fields
   idType?: string; // 'PAN' | 'Aadhaar' | 'Passport' | 'Driving License' | 'Voter ID'
   idNumber?: string;
+
+  // Customization & Archive & Order
+  color?: string; // 'gold' | 'emerald' | 'blue' | 'purple' | 'rose' | 'amber' | 'obsidian'
+  archived?: boolean;
+  archivedAt?: string;
+  orderIndex?: number;
 }
 
 function bytesToBase64(bytes: Uint8Array): string {

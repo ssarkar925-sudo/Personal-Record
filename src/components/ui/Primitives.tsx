@@ -84,12 +84,14 @@ export function Badge({
 export function FieldLabel({
   htmlFor,
   children,
+  className,
 }: {
   htmlFor?: string;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <label htmlFor={htmlFor} className="block text-xs font-medium text-[#52504C] mb-1">
+    <label htmlFor={htmlFor} className={cn("block text-xs font-medium text-[#52504C] mb-1", className)}>
       {children}
     </label>
   );
