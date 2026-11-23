@@ -1,7 +1,7 @@
 {
-  "version": "1.0.8",
-  "build": 108,
+  "version": "1.0.9",
+  "build": 109,
   "releaseDate": "2026-11-23",
   "apkUrl": "https://raw.githubusercontent.com/ssarkar925-sudo/Personal-Record/main/public/PersonalLedger-latest.apk",
-  "changelog": "Sheet Cards Hub & Privacy Barrier: Sheets now open as executive cards in a Cards Hub without exposing data upfront; optional SHA-256 PIN protection barrier to seal confidential sheets; bold & bigger sheet title with quick rename; consolidated single-row toolbar with unified Sheet Options dropdown."
+  "changelog": "Per-Sheet Custom Status Isolation, Dropdown & Status Unification, Auto-Save Keystroke Loss Fix with Stale Response Guard, Dynamic Content-Based Column Auto-Fit & Drag Resizing."
 }

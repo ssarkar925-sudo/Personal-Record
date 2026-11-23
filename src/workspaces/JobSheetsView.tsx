@@ -57,8 +57,10 @@ import {
   cn,
 } from '../components/ui/Primitives.tsx';
 import {
+  autoFitAllColumns,
   buildJobSheetTemplate,
   buildSheetFromImportedMatrix,
+  computeAutoFitColumnWidth,
   computeSheetSummary,
   computeWorkbookTelemetry,
   evaluateCellFormula,
@@ -639,18 +641,35 @@ export function JobSheetsView({
           orderIndex: stamped.orderIndex,
         });
         setSheets((prev) => {
-          const next = prev.map((s) => (s.id === saved.id ? saved : s));
+          const next = prev.map((s) => {
+            if (s.id !== saved.id) return s;
+            // Stale response guard: If local sheet was edited after stamped.updatedAt, KEEP newer local edits!
+            if (s.updatedAt > stamped.updatedAt) {
+              return s;
+            }
+            return saved;
+          });
           writeCachedSheets(next);
           return next;
         });
-        if (pendingSheetRef.current?.id === saved.id) {
+
+        // If newer user keystrokes occurred while the network save was in flight, re-schedule save for the latest version!
+        if (pendingSheetRef.current && pendingSheetRef.current.updatedAt > stamped.updatedAt) {
+          if (autoSaveTimerRef.current) window.clearTimeout(autoSaveTimerRef.current);
+          autoSaveTimerRef.current = window.setTimeout(() => {
+            if (pendingSheetRef.current) {
+              void persistSheet(pendingSheetRef.current, false);
+            }
+          }, 1000);
+        } else {
           pendingSheetRef.current = null;
+          setDirtySheetIds((prev) => {
+            const next = new Set(prev);
+            next.delete(saved.id);
+            return next;
+          });
         }
-        setDirtySheetIds((prev) => {
-          const next = new Set(prev);
-          next.delete(saved.id);
-          return next;
-        });
+
         const timeStr = new Date().toLocaleTimeString([], {
           hour: '2-digit',
           minute: '2-digit',
@@ -706,7 +725,7 @@ export function JobSheetsView({
     setRowMenuOpen(false);
   }, [activeSheetId]);
 
-  // Instant background auto-save on every edit (450ms debounce)
+  // Background auto-save on every edit with a 1000ms comfortable typing buffer
   const updateActiveSheetLocal = useCallback(
     (updater: (current: JobSheetRecord) => JobSheetRecord) => {
       if (!activeSheet) return;
@@ -732,9 +751,44 @@ export function JobSheetsView({
       }
       autoSaveTimerRef.current = window.setTimeout(() => {
         void persistSheet(nextSheet, false);
-      }, 450);
+      }, 1000);
     },
     [activeSheet, persistSheet],
+  );
+
+  // Immediately flush save on input blur or cell completion without waiting for the timer
+  const handleCellBlur = useCallback(() => {
+    if (pendingSheetRef.current) {
+      if (autoSaveTimerRef.current) {
+        window.clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+      void persistSheet(pendingSheetRef.current, false);
+    }
+  }, [persistSheet]);
+
+  // Auto-adjust all columns to content dynamically
+  const handleAutoFitAllColumns = useCallback(() => {
+    if (!activeSheet) return;
+    const autoFitted = autoFitAllColumns(activeSheet);
+    updateActiveSheetLocal(() => autoFitted);
+    onNotify?.(`Auto-fitted all ${activeSheet.columns.length} columns to content ✓`);
+  }, [activeSheet, updateActiveSheetLocal, onNotify]);
+
+  // Auto-adjust a single column to its content dynamically
+  const handleAutoFitSingleColumn = useCallback(
+    (colId: string) => {
+      if (!activeSheet) return;
+      const targetCol = activeSheet.columns.find((c) => c.id === colId);
+      if (!targetCol) return;
+      const optimalWidth = computeAutoFitColumnWidth(targetCol, activeSheet.rows);
+      updateActiveSheetLocal((curr) => ({
+        ...curr,
+        columns: curr.columns.map((c) => (c.id === colId ? { ...c, width: optimalWidth } : c)),
+      }));
+      onNotify?.(`Auto-fitted Column ${targetCol.key} (${targetCol.label}) to ${optimalWidth}px ✓`);
+    },
+    [activeSheet, updateActiveSheetLocal, onNotify],
   );
 
   const updateAnySheet = useCallback(
@@ -2922,6 +2976,19 @@ export function JobSheetsView({
                         <Columns className="h-3.5 w-3.5 text-[#8C6D1F]" /> + Column
                       </Button>
 
+                      {/* ↔ Auto-Fit All Columns */}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleAutoFitAllColumns}
+                        title="Auto-adjust all column widths dynamically based on content length"
+                        className="border-[#E6E1D6] hover:border-[#111318]"
+                      >
+                        <Sparkles className="h-3.5 w-3.5 text-[#C59B27]" />
+                        <span className="hidden sm:inline">Auto-Fit</span>
+                        <span className="sm:hidden">Fit</span>
+                      </Button>
+
                       {/* Mobile View Mode Switcher */}
                       <div className="flex md:hidden items-center rounded-lg border border-[#E6E1D6] bg-white p-0.5 shrink-0">
                         <button
@@ -3072,6 +3139,27 @@ export function JobSheetsView({
                                   </button>
                                 </div>
 
+                                 {/* Auto-Fit All Columns Button */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSheetMenuOpen(false);
+                                    handleAutoFitAllColumns();
+                                  }}
+                                  className="flex w-full items-center justify-between rounded-xl bg-[#FAF8F5] border border-[#E6E1D6] p-2.5 font-semibold text-[#111318] hover:bg-white hover:border-[#111318] cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <Sparkles className="h-4 w-4 text-[#C59B27]" />
+                                    <div className="text-left">
+                                      <div className="font-semibold text-[#111318]">Auto-Fit All Columns</div>
+                                      <div className="text-[10px] text-[#686E78]">Adjust widths dynamically to fit cell content</div>
+                                    </div>
+                                  </div>
+                                  <span className="rounded bg-white border border-[#E6E1D6] px-1.5 py-0.5 text-[10px] font-mono">
+                                    ↔ Fit
+                                  </span>
+                                </button>
+
                                 {/* Custom Statuses Button */}
                                 <button
                                   type="button"
@@ -3084,7 +3172,10 @@ export function JobSheetsView({
                                 >
                                   <div className="flex items-center gap-2">
                                     <Tag className="h-4 w-4 text-[#C59B27]" />
-                                    <span>Manage Custom Statuses</span>
+                                    <div className="text-left">
+                                      <div className="font-semibold text-[#111318]">Sheet Status Palette</div>
+                                      <div className="text-[10px] text-[#686E78]">Isolated to "{activeSheet.name}"</div>
+                                    </div>
                                   </div>
                                   <span className="rounded bg-white border border-[#E6E1D6] px-1.5 py-0.5 text-[10px] font-mono">
                                     {activeStatusOptions.length}
@@ -3236,6 +3327,7 @@ export function JobSheetsView({
                 type="text"
                 aria-label="Formula or cell value"
                 value={activeCellMeta ? activeCellMeta.rawValue : ''}
+                onBlur={handleCellBlur}
                 onChange={(e) => {
                   if (!activeCellMeta) return;
                   handleCellChange(activeCellMeta.rowIndex, activeCellMeta.col.id, e.target.value);
@@ -3445,7 +3537,7 @@ export function JobSheetsView({
             >
               <div
                 style={{
-                  width: `${Math.max(1600, (activeSheet.columns.length + 3) * 160)}px`,
+                  width: `${Math.max(1200, activeSheet.columns.reduce((sum, c) => sum + (c.width || 145), 140))}px`,
                   height: '1px',
                 }}
               />
@@ -3606,6 +3698,10 @@ export function JobSheetsView({
                       <th
                         key={col.id}
                         draggable={true}
+                        style={{
+                          width: col.width ? `${col.width}px` : undefined,
+                          minWidth: col.width ? `${col.width}px` : '120px',
+                        }}
                         onDragStart={(e) => {
                           e.dataTransfer.setData('text/plain', String(colIdx));
                           setDraggedColIndex(colIdx);
@@ -3619,10 +3715,40 @@ export function JobSheetsView({
                           setDraggedColIndex(null);
                         }}
                         className={cn(
-                          'border-r border-[#E6E1D6] px-2.5 py-1.5 min-w-[145px] group select-none transition-colors',
+                          'relative border-r border-[#E6E1D6] px-2.5 py-1.5 group select-none transition-colors',
                           draggedColIndex === colIdx && 'opacity-40 bg-[#FAF8F5]',
                         )}
                       >
+                        {/* Interactive Column Edge Resizer Handle */}
+                        <div
+                          className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-[#C59B27] active:bg-[#111318] z-20 transition-colors"
+                          title="Drag to resize column width, or double-click to auto-fit to content"
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            handleAutoFitSingleColumn(col.id);
+                          }}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            const startX = e.clientX;
+                            const startWidth = col.width || 145;
+                            const onMouseMove = (moveEvent: MouseEvent) => {
+                              const delta = moveEvent.clientX - startX;
+                              const newWidth = Math.max(75, Math.min(600, startWidth + delta));
+                              updateActiveSheetLocal((curr) => ({
+                                ...curr,
+                                columns: curr.columns.map((c) => (c.id === col.id ? { ...c, width: newWidth } : c)),
+                              }));
+                            };
+                            const onMouseUp = () => {
+                              window.removeEventListener('mousemove', onMouseMove);
+                              window.removeEventListener('mouseup', onMouseUp);
+                              handleCellBlur();
+                            };
+                            window.addEventListener('mousemove', onMouseMove);
+                            window.addEventListener('mouseup', onMouseUp);
+                          }}
+                        />
                         <div className="flex items-center justify-between gap-1">
                           <div className="flex items-center gap-1.5 min-w-0 flex-1">
                             <span
@@ -3753,6 +3879,19 @@ export function JobSheetsView({
 
                                   <div className="my-1 border-t border-[#E6E1D6]" />
 
+                                  {/* Auto-Fit Column Width */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveColMenuId(null);
+                                      handleAutoFitSingleColumn(col.id);
+                                    }}
+                                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                                  >
+                                    <Sparkles className="h-3.5 w-3.5 text-[#C59B27]" />
+                                    <span>Auto-Fit Width to Content</span>
+                                  </button>
+
                                   {/* Format Column */}
                                   <button
                                     type="button"
@@ -3763,7 +3902,7 @@ export function JobSheetsView({
                                     className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
                                   >
                                     <SlidersHorizontal className="h-3.5 w-3.5 text-[#C59B27]" />
-                                    <span>Format Column ({col.type})...</span>
+                                    <span>Format Column / Dropdown ({col.type})...</span>
                                   </button>
 
                                   <div className="my-1 border-t border-[#E6E1D6]" />
@@ -3964,8 +4103,12 @@ export function JobSheetsView({
                             <td
                               key={col.id}
                               onClick={() => setSelectedCell({ rowIndex: originalIndex, colId: col.id })}
+                              style={{
+                                width: col.width ? `${col.width}px` : undefined,
+                                minWidth: col.width ? `${col.width}px` : '120px',
+                              }}
                               className={cn(
-                                'border-r border-[#E6E1D6] px-2.5 py-1.5 align-middle transition-colors',
+                                'border-r border-[#E6E1D6] px-2.5 py-1.5 align-middle transition-colors min-h-[36px]',
                                 isSelected && 'bg-[#FDFBF4] ring-2 ring-inset ring-[#C59B27]',
                                 col.type === 'currency' || col.type === 'number'
                                   ? 'text-right font-mono'
@@ -4005,6 +4148,10 @@ export function JobSheetsView({
                                       }
                                       return;
                                     }
+                                    if (selected === '__FORMAT_COL__') {
+                                      setFormatColTarget(col);
+                                      return;
+                                    }
                                     if (selected === '__ADD_CUSTOM_STATUS__') {
                                       setPendingStatusCellTarget({
                                         rowIndex: originalIndex,
@@ -4014,6 +4161,7 @@ export function JobSheetsView({
                                       return;
                                     }
                                     handleCellChange(originalIndex, col.id, selected);
+                                    handleCellBlur();
                                   }}
                                   className={cn(
                                     'w-full rounded-md px-2 py-1 text-[11px] font-semibold border cursor-pointer focus:outline-none transition-colors',
@@ -4033,6 +4181,7 @@ export function JobSheetsView({
                                         </option>
                                       ))}
                                       <option value="__ADD_COL_CUSTOM_OPTION__">+ Add New Option...</option>
+                                      <option value="__FORMAT_COL__">⚙ Manage Options...</option>
                                     </>
                                   ) : (
                                     <>
@@ -4044,7 +4193,8 @@ export function JobSheetsView({
                                           {st.label}
                                         </option>
                                       ))}
-                                      <option value="__ADD_CUSTOM_STATUS__">+ Add Custom Status...</option>
+                                      <option value="__ADD_CUSTOM_STATUS__">+ Add Sheet Status...</option>
+                                      <option value="__FORMAT_COL__">⚙ Convert to Column Dropdown...</option>
                                     </>
                                   )}
                                 </select>
@@ -4073,6 +4223,7 @@ export function JobSheetsView({
                                   data-cell={`${originalIndex}-${col.id}`}
                                   value={rawVal}
                                   onFocus={() => setSelectedCell({ rowIndex: originalIndex, colId: col.id })}
+                                  onBlur={handleCellBlur}
                                   onChange={(e) => handleCellChange(originalIndex, col.id, e.target.value)}
                                   onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
@@ -4919,14 +5070,23 @@ export function JobSheetsView({
                               return;
                             }
                             handleCellChange(mobileDrawerRowIndex!, col.id, e.target.value);
+                            handleCellBlur();
                           }}
                           className="w-full min-h-[44px] rounded-lg border border-[#E6E1D6] bg-white px-3 text-xs font-semibold text-[#111318] focus:border-[#111318] focus:outline-none"
                         >
-                          {activeStatusOptions.map((opt) => (
-                            <option key={opt.label} value={opt.label}>
-                              {opt.label}
-                            </option>
-                          ))}
+                          {col.options && col.options.length > 0 ? (
+                            col.options.map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))
+                          ) : (
+                            activeStatusOptions.map((opt) => (
+                              <option key={opt.label} value={opt.label}>
+                                {opt.label}
+                              </option>
+                            ))
+                          )}
                           <option value="__ADD_CUSTOM_STATUS__">➕ Add Custom Status Option...</option>
                         </select>
                       </div>
@@ -4935,6 +5095,7 @@ export function JobSheetsView({
                         id={`mob-col-${col.id}`}
                         type="date"
                         value={cellVal}
+                        onBlur={handleCellBlur}
                         onChange={(e) => handleCellChange(mobileDrawerRowIndex!, col.id, e.target.value)}
                         className="w-full min-h-[44px] rounded-lg border border-[#E6E1D6] bg-white px-3 text-xs text-[#111318] focus:border-[#111318] focus:outline-none font-mono"
                       />
@@ -4951,6 +5112,7 @@ export function JobSheetsView({
                             type="text"
                             inputMode={col.type === 'currency' || col.type === 'number' ? 'decimal' : 'text'}
                             value={cellVal}
+                            onBlur={handleCellBlur}
                             onChange={(e) => handleCellChange(mobileDrawerRowIndex!, col.id, e.target.value)}
                             className={cn(
                               'w-full min-h-[44px] rounded-lg border border-[#E6E1D6] bg-white text-xs text-[#111318] focus:border-[#111318] focus:outline-none',
@@ -5108,6 +5270,7 @@ export function JobSheetsView({
               <FieldLabel>Change Column Format Type (Zero Data Loss)</FieldLabel>
               <div className="grid grid-cols-2 gap-2">
                 {[
+                  { type: 'status', label: '▾ Dropdown / Status' },
                   { type: 'text', label: 'Text / General' },
                   { type: 'number', label: 'Number (Qty / Int)' },
                   { type: 'currency', label: 'Currency (₹ Amount)' },
@@ -5119,11 +5282,39 @@ export function JobSheetsView({
                     onClick={() => {
                       updateActiveSheetLocal((curr) => ({
                         ...curr,
-                        columns: curr.columns.map((c) =>
-                          c.id === formatColTarget.id ? { ...c, type: fmt.type as SheetColumnType } : c,
-                        ),
+                        columns: curr.columns.map((c) => {
+                          if (c.id !== formatColTarget.id) return c;
+                          if (fmt.type === 'status') {
+                            const detected = Array.from(
+                              new Set(
+                                curr.rows
+                                  .map((r) => (r.cells[c.id] ?? '').trim())
+                                  .filter((v) => v.length > 0),
+                              ),
+                            );
+                            const finalOpts =
+                              c.options && c.options.length > 0
+                                ? c.options
+                                : detected.length > 0
+                                  ? detected
+                                  : ['Option 1', 'Option 2'];
+                            return { ...c, type: 'status', options: finalOpts };
+                          }
+                          return { ...c, type: fmt.type as SheetColumnType };
+                        }),
                       }));
-                      setFormatColTarget(null);
+                      setFormatColTarget((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              type: fmt.type as SheetColumnType,
+                              options:
+                                fmt.type === 'status'
+                                  ? prev.options || ['Option 1', 'Option 2']
+                                  : prev.options,
+                            }
+                          : null,
+                      );
                       onNotify?.(`Changed Column ${formatColTarget.key} format to ${fmt.label} (Data preserved) ✓`);
                     }}
                     className={cn(
@@ -5140,49 +5331,69 @@ export function JobSheetsView({
             </div>
 
             {/* 3. If currently a dropdown column, allow managing custom options */}
-            {formatColTarget.type === 'status' && formatColTarget.options && (
+            {formatColTarget.type === 'status' && (
               <div className="space-y-2 border-t border-[#E6E1D6] pt-3">
-                <FieldLabel>Current Dropdown Options ({formatColTarget.options.length})</FieldLabel>
-                <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
-                  {formatColTarget.options.map((opt) => (
-                    <span
-                      key={opt}
-                      className="inline-flex items-center gap-1 rounded bg-[#FAF8F5] border border-[#E6E1D6] px-2 py-0.5 text-xs text-[#111318]"
-                    >
-                      <span>{opt}</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const nextOpts = formatColTarget.options?.filter((o) => o !== opt) || [];
-                          updateActiveSheetLocal((curr) => ({
-                            ...curr,
-                            columns: curr.columns.map((c) =>
-                              c.id === formatColTarget.id ? { ...c, options: nextOpts } : c,
-                            ),
-                          }));
-                          setFormatColTarget((prev) => (prev ? { ...prev, options: nextOpts } : null));
-                        }}
-                        className="text-[#686E78] hover:text-rose-600 font-bold ml-0.5 cursor-pointer"
-                        title="Remove option"
+                <div className="flex items-center justify-between">
+                  <FieldLabel>
+                    Dropdown Options for Column {formatColTarget.key} (
+                    {(formatColTarget.options || activeStatusOptions.map((s) => s.label)).length})
+                  </FieldLabel>
+                  <span className="text-[10px] text-[#686E78] font-mono">Column-specific</span>
+                </div>
+                <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto p-1 bg-white rounded border border-[#E6E1D6]">
+                  {(formatColTarget.options || activeStatusOptions.map((s) => s.label)).map((opt) => {
+                    const clr = inferStatusColor(opt, activeStatusOptions);
+                    const theme = TAB_COLOR_META[clr] ?? TAB_COLOR_META.gold;
+                    return (
+                      <span
+                        key={opt}
+                        className={cn(
+                          'inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs font-semibold',
+                          theme.badgeBg,
+                          theme.badgeText,
+                          theme.badgeBorder,
+                        )}
                       >
-                        ×
-                      </button>
-                    </span>
-                  ))}
+                        <span className={cn('h-1.5 w-1.5 rounded-full', theme.dot)} />
+                        <span>{opt}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentList =
+                              formatColTarget.options || activeStatusOptions.map((s) => s.label);
+                            const nextOpts = currentList.filter((o) => o !== opt);
+                            updateActiveSheetLocal((curr) => ({
+                              ...curr,
+                              columns: curr.columns.map((c) =>
+                                c.id === formatColTarget.id ? { ...c, options: nextOpts } : c,
+                              ),
+                            }));
+                            setFormatColTarget((prev) => (prev ? { ...prev, options: nextOpts } : null));
+                          }}
+                          className="text-[#686E78] hover:text-rose-600 font-bold ml-1 cursor-pointer"
+                          title="Remove option"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    );
+                  })}
                 </div>
                 {/* Add new option input */}
                 <div className="flex items-center gap-1 pt-1">
                   <Input
                     value={customDropdownInput}
                     onChange={(e) => setCustomDropdownInput(e.target.value)}
-                    placeholder="New dropdown option..."
+                    placeholder="Type new option for this column..."
                     className="h-8 text-xs"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
                         if (customDropdownInput.trim()) {
                           const val = customDropdownInput.trim();
-                          const nextOpts = Array.from(new Set([...(formatColTarget.options || []), val]));
+                          const currentList =
+                            formatColTarget.options || activeStatusOptions.map((s) => s.label);
+                          const nextOpts = Array.from(new Set([...currentList, val]));
                           updateActiveSheetLocal((curr) => ({
                             ...curr,
                             columns: curr.columns.map((c) =>
@@ -5202,7 +5413,9 @@ export function JobSheetsView({
                     onClick={() => {
                       if (customDropdownInput.trim()) {
                         const val = customDropdownInput.trim();
-                        const nextOpts = Array.from(new Set([...(formatColTarget.options || []), val]));
+                        const currentList =
+                          formatColTarget.options || activeStatusOptions.map((s) => s.label);
+                        const nextOpts = Array.from(new Set([...currentList, val]));
                         updateActiveSheetLocal((curr) => ({
                           ...curr,
                           columns: curr.columns.map((c) =>
@@ -5219,6 +5432,26 @@ export function JobSheetsView({
                 </div>
               </div>
             )}
+
+            {/* 4. Column Width Controls */}
+            <div className="space-y-2 border-t border-[#E6E1D6] pt-3">
+              <FieldLabel>Column Width Sizing</FieldLabel>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="flex-1 text-xs"
+                  onClick={() => {
+                    handleAutoFitSingleColumn(formatColTarget.id);
+                    setFormatColTarget(null);
+                  }}
+                >
+                  <Sparkles className="h-3.5 w-3.5 mr-1 text-[#C59B27]" />
+                  Auto-Fit Width to Content
+                </Button>
+              </div>
+            </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t border-[#E6E1D6]">
               <Button variant="secondary" onClick={() => setFormatColTarget(null)}>

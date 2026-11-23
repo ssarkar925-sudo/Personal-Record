@@ -1,11 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  autoFitAllColumns,
   buildJobSheetTemplate,
   buildSheetFromImportedMatrix,
+  computeAutoFitColumnWidth,
   computeSheetSummary,
   computeWorkbookTelemetry,
   evaluateCellFormula,
+  getSheetStatusOptions,
   indexToColumnLetter,
   type JobSheetRecord,
 } from './jobSheetsAnalytics.ts';
@@ -118,5 +121,49 @@ describe('jobSheetsAnalytics', () => {
     const singleRowMatrix = [['2026-11-18', 'Solo Task Entry', 'In Progress']];
     const importedSingle = buildSheetFromImportedMatrix('Single Row', singleRowMatrix, 'business', 'gold');
     assert.equal(importedSingle.rows.length, 1);
+  });
+
+  it('guarantees custom statuses are strictly isolated per sheet and do not share references', () => {
+    const s1 = buildJobSheetTemplate('blank', 'Sheet 1', 'business');
+    const s2 = buildJobSheetTemplate('blank', 'Sheet 2', 'personal');
+
+    const opts1 = getSheetStatusOptions(s1 as any);
+    const opts2 = getSheetStatusOptions(s2 as any);
+    assert.equal(opts2.length, 5);
+
+    // Modify s1 statuses
+    opts1.push({ label: 'New Custom Status X', color: 'rose' });
+
+    // s2 should not be affected
+    const freshOpts2 = getSheetStatusOptions(s2 as any);
+    assert.equal(freshOpts2.some((s) => s.label === 'New Custom Status X'), false);
+    assert.notEqual(opts1.length, freshOpts2.length);
+  });
+
+  it('computes content-based auto-fit width and applies autoFitAllColumns correctly', () => {
+    const sheet = buildJobSheetTemplate('freelance', 'Freelance AutoFit', 'business');
+    const clientCol = sheet.columns.find((c) => c.label.includes('Client'))!;
+    
+    // Initial width computed on content
+    const width = computeAutoFitColumnWidth(clientCol, sheet.rows);
+    assert.ok(width >= 85 && width <= 420);
+
+    // Add a wide customer email / name row
+    const wideRows = [
+      ...sheet.rows,
+      {
+        id: 'r_wide',
+        cells: {
+          [clientCol.id]: 'SARKAR COMMUNICATION ULTRA ENTERPRISE SERVICES WEST BENGAL',
+        },
+      },
+    ];
+
+    const wideWidth = computeAutoFitColumnWidth(clientCol, wideRows);
+    assert.ok(wideWidth > width, 'Wider content should yield a wider column width');
+
+    const autoFitted = autoFitAllColumns({ ...sheet, id: 's_test', orderIndex: 0, updatedAt: '', createdAt: '', rows: wideRows });
+    const autoFittedClientCol = autoFitted.columns.find((c) => c.id === clientCol.id);
+    assert.equal(autoFittedClientCol?.width, wideWidth);
   });
 });

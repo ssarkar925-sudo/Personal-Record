@@ -105,9 +105,52 @@ export const DEFAULT_STATUS_OPTIONS: CustomStatusOption[] = [
 export function getSheetStatusOptions(sheet: JobSheetRecord | null | undefined): CustomStatusOption[] {
   const custom = sheet?.settings?.customStatuses;
   if (Array.isArray(custom) && custom.length > 0) {
-    return custom;
+    return custom.map((s) => ({ ...s }));
   }
-  return DEFAULT_STATUS_OPTIONS;
+  return DEFAULT_STATUS_OPTIONS.map((s) => ({ ...s }));
+}
+
+/**
+ * Automatically computes optimal column width based on content (header label + cell values).
+ * Clamped within a clean readability window (85px to 420px).
+ */
+export function computeAutoFitColumnWidth(
+  column: SheetColumn,
+  rows: SheetRow[],
+): number {
+  let maxChars = (column.label || '').length;
+  // Sample up to 150 rows for fast content-length analysis
+  const sample = rows.slice(0, 150);
+  for (const r of sample) {
+    const raw = (r.cells[column.id] ?? '').trim();
+    if (raw.length > maxChars) {
+      maxChars = Math.min(raw.length, 55);
+    }
+  }
+  // Base padding + font metrics
+  const isChoiceCol = column.type === 'status' || (column.options && column.options.length > 0);
+  const extraPadding = isChoiceCol ? 52 : column.type === 'date' ? 36 : 32;
+  const charWidth = column.type === 'currency' || column.type === 'number' ? 8.2 : 8.0;
+  const calculated = Math.round(maxChars * charWidth + extraPadding);
+
+  // Reasonable min & max boundaries per column type
+  const minWidth = column.type === 'currency' ? 120 : isChoiceCol ? 115 : 85;
+  const maxWidth = 420;
+
+  return Math.max(minWidth, Math.min(maxWidth, calculated));
+}
+
+/**
+ * Auto-fits all columns in a JobSheetRecord to their content.
+ */
+export function autoFitAllColumns(sheet: JobSheetRecord): JobSheetRecord {
+  return {
+    ...sheet,
+    columns: sheet.columns.map((col) => ({
+      ...col,
+      width: computeAutoFitColumnWidth(col, sheet.rows),
+    })),
+  };
 }
 
 export function inferStatusColor(label: string, customList?: CustomStatusOption[]): SheetTabColor {
@@ -116,16 +159,16 @@ export function inferStatusColor(label: string, customList?: CustomStatusOption[
     (s) => s.label.trim().toLowerCase() === normalized,
   );
   if (found) return found.color;
-  if (/complete|done|paid|credit|settled|approved|selected|hired|offer|active/.test(normalized)) {
+  if (/complete|done|paid|credit|settled|approved|selected|hired|offer|active|new|fresh|verified|pass|ok/.test(normalized)) {
     return 'emerald';
   }
-  if (/progress|ongoing|interview|applied|invoiced|review|working/.test(normalized)) {
+  if (/progress|ongoing|interview|applied|invoiced|review|working|correction|edit|modify|update|pending\s*review/.test(normalized)) {
     return 'gold';
   }
-  if (/pending|due|urgent|rejected|failed|blocked|overdue|cancel/.test(normalized)) {
+  if (/pending|due|urgent|rejected|failed|blocked|overdue|cancel|fail/.test(normalized)) {
     return 'rose';
   }
-  if (/hold|archive|draft|later/.test(normalized)) {
+  if (/hold|archive|draft|later|inactive|skip/.test(normalized)) {
     return 'slate';
   }
   return 'obsidian';
@@ -615,13 +658,18 @@ export function buildSheetFromImportedMatrix(
   const customStatuses: CustomStatusOption[] =
     detectedStatuses.size > 0
       ? Array.from(detectedStatuses.entries()).map(([label, clr]) => ({ label, color: clr }))
-      : DEFAULT_STATUS_OPTIONS;
+      : DEFAULT_STATUS_OPTIONS.map((s) => ({ ...s }));
+
+  const columnsWithAutoFit = columns.map((col) => ({
+    ...col,
+    width: computeAutoFitColumnWidth(col, rows),
+  }));
 
   return {
     name: sheetName.trim() || 'Imported Sheet',
     scope,
     color,
-    columns,
+    columns: columnsWithAutoFit,
     rows,
     settings: {
       showTotals: false, // Totals only shown when user enables them
@@ -752,7 +800,7 @@ export function buildJobSheetTemplate(
       columns,
       settings: {
         showTotals: false,
-        customStatuses: DEFAULT_STATUS_OPTIONS,
+        customStatuses: DEFAULT_STATUS_OPTIONS.map((s) => ({ ...s })),
       },
       rows: [
         {
@@ -787,7 +835,7 @@ export function buildJobSheetTemplate(
       columns,
       settings: {
         showTotals: false,
-        customStatuses: DEFAULT_STATUS_OPTIONS,
+        customStatuses: DEFAULT_STATUS_OPTIONS.map((s) => ({ ...s })),
       },
       rows: [
         {
@@ -824,7 +872,7 @@ export function buildJobSheetTemplate(
     columns,
     settings: {
       showTotals: false,
-      customStatuses: DEFAULT_STATUS_OPTIONS,
+      customStatuses: DEFAULT_STATUS_OPTIONS.map((s) => ({ ...s })),
     },
     rows: [
       {
