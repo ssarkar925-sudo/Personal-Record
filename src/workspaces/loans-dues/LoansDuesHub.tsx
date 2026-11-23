@@ -400,10 +400,11 @@ export function LoansDuesHub({
                     <button
                       type="button"
                       onClick={() => onOpenDeleteConfirm('loan', loan.id, loan.name)}
-                      className="p-1 text-[#52504C] hover:text-[#E11D48] rounded hover:bg-rose-50 transition-colors cursor-pointer"
+                      className="px-1.5 py-0.5 text-rose-700 hover:text-rose-800 rounded-md hover:bg-rose-50 border border-rose-200/60 transition-colors cursor-pointer flex items-center gap-0.5 text-[10px] font-semibold"
                       title="Delete Loan"
                     >
                       <Trash2 className="w-3 h-3" />
+                      <span>Delete</span>
                     </button>
                   </div>
                 </div>
@@ -513,10 +514,11 @@ export function LoansDuesHub({
                           `${due.personName} (${formatINR(due.amountMinor)})`,
                         )
                       }
-                      className="p-1 text-[#52504C] hover:text-[#E11D48] rounded hover:bg-rose-50 transition-colors cursor-pointer"
+                      className="px-1.5 py-0.5 text-rose-700 hover:text-rose-800 rounded-md hover:bg-rose-50 border border-rose-200/60 transition-colors cursor-pointer flex items-center gap-0.5 text-[10px] font-semibold"
                       title="Delete Due"
                     >
                       <Trash2 className="w-3 h-3" />
+                      <span>Delete</span>
                     </button>
                   </div>
                 </div>
@@ -577,6 +579,22 @@ export function LoansDuesHub({
                     className="h-full bg-[#059669] transition-all duration-300"
                     style={{ width: `${pct}%` }}
                   />
+                </div>
+
+                <div className="mt-2 pt-2 border-t border-[#E6E1D6]/70 flex items-center justify-between text-xs">
+                  <span className="text-[10px] text-[#52504C] uppercase font-mono">{g.scope}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenDeleteConfirm('goal', g.id, g.title);
+                    }}
+                    className="px-1.5 py-0.5 text-rose-700 hover:text-rose-800 rounded-md hover:bg-rose-50 border border-rose-200/60 transition-colors cursor-pointer flex items-center gap-0.5 text-[10px] font-semibold"
+                    title="Delete Goal"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Delete</span>
+                  </button>
                 </div>
               </div>
             );

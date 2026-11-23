@@ -1,7 +1,7 @@
 {
-  "version": "1.0.9",
-  "build": 109,
+  "version": "1.0.10",
+  "build": 110,
   "releaseDate": "2026-11-23",
   "apkUrl": "https://raw.githubusercontent.com/ssarkar925-sudo/Personal-Record/main/public/PersonalLedger-latest.apk",
-  "changelog": "Per-Sheet Custom Status Isolation, Dropdown & Status Unification, Auto-Save Keystroke Loss Fix with Stale Response Guard, Dynamic Content-Based Column Auto-Fit & Drag Resizing."
+  "changelog": "High-Contrast Daylight Cards in Loans & Khatabook Ledger, Prominent Card Delete & Settle Options, and Unified Grid View & List View Table toggle."
 }
