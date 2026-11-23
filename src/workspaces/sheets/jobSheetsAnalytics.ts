@@ -20,6 +20,7 @@ export interface SheetColumn {
   label: string;
   type: SheetColumnType;
   width?: number;
+  options?: string[]; // Custom dropdown options for this column
 }
 
 export interface SheetRow {
@@ -36,6 +37,8 @@ export interface JobSheetRecord {
   rows: SheetRow[];
   settings?: SheetSettings;
   orderIndex: number;
+  archived?: boolean;
+  archivedAt?: string;
   updatedAt: string;
   createdAt: string;
 }

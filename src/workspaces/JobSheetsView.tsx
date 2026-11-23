@@ -2,8 +2,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import readXlsxFile from 'read-excel-file/browser';
 import writeXlsxFile from 'write-excel-file/browser';
 import {
+  Archive,
+  ArchiveRestore,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Calculator,
   Check,
+  CheckCircle2,
   ChevronDown,
   Columns,
   Copy,
@@ -11,8 +17,11 @@ import {
   Edit3,
   FileSpreadsheet,
   FunctionSquare,
+  GripVertical,
   Plus,
+  Repeat,
   Search,
+  SlidersHorizontal,
   Sparkles,
   Tag,
   Trash2,
@@ -231,6 +240,49 @@ export function JobSheetsView({
   const [mobileViewMode, setMobileViewMode] = useState<'table' | 'cards'>('table');
   const [mobileDrawerRowIndex, setMobileDrawerRowIndex] = useState<number | null>(null);
 
+  // Sheet Archive Filter ('active' | 'archived' | 'all')
+  const [sheetScopeFilter, setSheetScopeFilter] = useState<'active' | 'archived' | 'all'>('active');
+
+  // Fast Entry & Sorting Mode
+  const [sortOrder, setSortOrder] = useState<'normal' | 'latest_first' | 'col_asc' | 'col_desc'>(() => {
+    try {
+      return (localStorage.getItem('sc_sheets_sort_order') as any) || 'normal';
+    } catch {
+      return 'normal';
+    }
+  });
+  const [sortColId, setSortColId] = useState<string | null>(null);
+
+  // Auto-Default Same (Sticky Defaults across new rows)
+  const [autoDefaultSame, setAutoDefaultSame] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('sc_sheets_auto_default') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [stickyDefaults, setStickyDefaults] = useState<Record<string, string>>(() => {
+    try {
+      const raw = localStorage.getItem('sc_sheets_sticky_values');
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Top Horizontal Scrollbar Refs
+  const topScrollRef = useRef<HTMLDivElement | null>(null);
+  const tableContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Drag and Move (Rows and Columns)
+  const [draggedRowIndex, setDraggedRowIndex] = useState<number | null>(null);
+  const [dragOverRowIndex, setDragOverRowIndex] = useState<number | null>(null);
+  const [draggedColIndex, setDraggedColIndex] = useState<number | null>(null);
+
+  // Column Format & Auto-Detect Dropdown Modal
+  const [formatColTarget, setFormatColTarget] = useState<SheetColumn | null>(null);
+  const [customDropdownInput, setCustomDropdownInput] = useState('');
+
   const autoSaveTimerRef = useRef<number | null>(null);
   const pendingSheetRef = useRef<JobSheetRecord | null>(null);
 
@@ -340,12 +392,16 @@ export function JobSheetsView({
   }, [loadSheets]);
 
   const visibleSheets = useMemo(() => {
-    if (globalScopeFilter === 'all') return sheets;
-    const scoped = sheets.filter(
-      (s) => s.scope === globalScopeFilter || s.id === activeSheetId,
-    );
-    return scoped.length > 0 ? scoped : sheets;
-  }, [sheets, globalScopeFilter, activeSheetId]);
+    const list = sheets.filter((s) => {
+      if (globalScopeFilter !== 'all' && s.scope !== globalScopeFilter && s.id !== activeSheetId) {
+        return false;
+      }
+      if (sheetScopeFilter === 'active' && s.archived) return false;
+      if (sheetScopeFilter === 'archived' && !s.archived) return false;
+      return true;
+    });
+    return list.length > 0 ? list : sheets;
+  }, [sheets, globalScopeFilter, activeSheetId, sheetScopeFilter]);
 
   const activeSheet = useMemo(() => {
     return (
@@ -712,6 +768,17 @@ export function JobSheetsView({
   };
 
   const handleCellChange = (rowIndex: number, colId: string, nextVal: string) => {
+    if (autoDefaultSame && nextVal.trim()) {
+      setStickyDefaults((prev) => {
+        const next = { ...prev, [colId]: nextVal };
+        try {
+          localStorage.setItem('sc_sheets_sticky_values', JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+    }
     updateActiveSheetLocal((curr) => {
       const nextRows = curr.rows.map((r, idx) =>
         idx === rowIndex ? { ...r, cells: { ...r.cells, [colId]: nextVal } } : r,
@@ -729,12 +796,23 @@ export function JobSheetsView({
     const receivedCol = currencyCols[1];
     const pendingCol = currencyCols[2];
     const statusOpts = getSheetStatusOptions(activeSheet);
+    const prevRow = activeSheet.rows[activeSheet.rows.length - 1];
 
-    for (const col of activeSheet.columns) {
-      if (col.type === 'date') {
+    for (let idx = 0; idx < activeSheet.columns.length; idx++) {
+      const col = activeSheet.columns[idx];
+      if (autoDefaultSame && stickyDefaults[col.id] !== undefined) {
+        cells[col.id] = stickyDefaults[col.id];
+      } else if (autoDefaultSame && prevRow && prevRow.cells[col.id] !== undefined) {
+        const pVal = prevRow.cells[col.id];
+        if (idx === 0 && /^\d+$/.test(pVal.trim())) {
+          cells[col.id] = String(Number(pVal.trim()) + 1);
+        } else {
+          cells[col.id] = pVal;
+        }
+      } else if (col.type === 'date') {
         cells[col.id] = todayISO();
       } else if (col.type === 'status') {
-        cells[col.id] = statusOpts[0]?.label ?? 'In Progress';
+        cells[col.id] = col.options?.[0] ?? statusOpts[0]?.label ?? 'In Progress';
       } else if (col.id === pendingCol?.id && billedCol && receivedCol) {
         cells[col.id] = `=${billedCol.key}${newRowIndex}-${receivedCol.key}${newRowIndex}`;
       } else if (col.type === 'currency' || col.type === 'number') {
@@ -749,17 +827,82 @@ export function JobSheetsView({
       cells,
     };
 
-    const nextRowCount = activeSheet.rows.length + 1;
+    const isLatestFirst = sortOrder === 'latest_first';
     updateActiveSheetLocal((curr) => ({
       ...curr,
-      rows: [...curr.rows, newRow],
+      rows: isLatestFirst ? [newRow, ...curr.rows] : [...curr.rows, newRow],
     }));
+
     const targetCol = targetColId || activeSheet.columns[0]?.id || '';
-    setSelectedCell({ rowIndex: activeSheet.rows.length, colId: targetCol });
-    if (pageSize !== 'all') {
-      const targetPage = Math.ceil(nextRowCount / pageSize);
-      setCurrentPage(targetPage);
+    if (isLatestFirst) {
+      setSelectedCell({ rowIndex: 0, colId: targetCol });
+      setCurrentPage(1);
+    } else {
+      setSelectedCell({ rowIndex: activeSheet.rows.length, colId: targetCol });
+      if (pageSize !== 'all') {
+        const targetPage = Math.ceil((activeSheet.rows.length + 1) / pageSize);
+        setCurrentPage(targetPage);
+      }
     }
+  };
+
+  const handleMoveRow = (fromIndex: number, toIndex: number) => {
+    if (!activeSheet || fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+    if (toIndex >= activeSheet.rows.length) return;
+    updateActiveSheetLocal((curr) => {
+      const nextRows = [...curr.rows];
+      const [moved] = nextRows.splice(fromIndex, 1);
+      if (!moved) return curr;
+      nextRows.splice(toIndex, 0, moved);
+      return { ...curr, rows: nextRows };
+    });
+    onNotify?.(`Moved Row #${fromIndex + 1} to Row #${toIndex + 1}`);
+  };
+
+  const handleMoveColumn = (fromIndex: number, toIndex: number) => {
+    if (!activeSheet || fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+    if (toIndex >= activeSheet.columns.length) return;
+    updateActiveSheetLocal((curr) => {
+      const nextCols = [...curr.columns];
+      const [moved] = nextCols.splice(fromIndex, 1);
+      if (!moved) return curr;
+      nextCols.splice(toIndex, 0, moved);
+      const reindexed = nextCols.map((c, idx) => ({
+        ...c,
+        key: indexToColumnLetter(idx),
+      }));
+      return { ...curr, columns: reindexed };
+    });
+    onNotify?.(`Reordered column to position ${indexToColumnLetter(toIndex)}`);
+  };
+
+  const handleArchiveSheet = (sheet: JobSheetRecord) => {
+    const isArchived = Boolean(sheet.archived);
+    const updated: JobSheetRecord = {
+      ...sheet,
+      archived: !isArchived,
+      archivedAt: !isArchived ? new Date().toISOString() : undefined,
+    };
+    setSheets((prev) => prev.map((s) => (s.id === sheet.id ? updated : s)));
+    void persistSheet(updated, true);
+    onNotify?.(!isArchived ? `Archived sheet "${sheet.name}" ✓` : `Restored sheet "${sheet.name}" to Active ✓`);
+  };
+
+  const handleTopScroll = () => {
+    if (topScrollRef.current && tableContainerRef.current) {
+      tableContainerRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+    }
+  };
+
+  const handleTableScroll = () => {
+    if (topScrollRef.current && tableContainerRef.current) {
+      topScrollRef.current.scrollLeft = tableContainerRef.current.scrollLeft;
+    }
+  };
+
+  const scrollTableHorizontally = (dir: 'left' | 'right') => {
+    const delta = dir === 'left' ? -350 : 350;
+    tableContainerRef.current?.scrollBy({ left: delta, behavior: 'smooth' });
   };
 
   const handleDuplicateRow = (rowIndex: number) => {
@@ -1161,7 +1304,7 @@ export function JobSheetsView({
   const displayedRows = useMemo(() => {
     if (!activeSheet) return [];
     const statusCol = activeSheet.columns.find((c) => c.type === 'status');
-    return activeSheet.rows
+    let list = activeSheet.rows
       .map((row, originalIndex) => ({ row, originalIndex }))
       .filter(({ row }) => {
         if (statusFilter !== 'all' && statusCol) {
@@ -1174,7 +1317,25 @@ export function JobSheetsView({
         }
         return true;
       });
-  }, [activeSheet, statusFilter, searchQuery]);
+
+    if (sortOrder === 'latest_first') {
+      list = [...list].reverse();
+    } else if (sortColId && (sortOrder === 'col_asc' || sortOrder === 'col_desc')) {
+      const targetCol = activeSheet.columns.find((c) => c.id === sortColId);
+      list = [...list].sort((a, b) => {
+        const valA = a.row.cells[sortColId] ?? '';
+        const valB = b.row.cells[sortColId] ?? '';
+        if (targetCol?.type === 'number' || targetCol?.type === 'currency') {
+          const numA = parseNumericCell(valA);
+          const numB = parseNumericCell(valB);
+          return sortOrder === 'col_asc' ? numA - numB : numB - numA;
+        }
+        return sortOrder === 'col_asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      });
+    }
+
+    return list;
+  }, [activeSheet, statusFilter, searchQuery, sortOrder, sortColId]);
 
   // Pagination Telemetry & Slices
   const totalRowsCount = displayedRows.length;
@@ -1397,6 +1558,19 @@ export function JobSheetsView({
                       >
                         <Copy className="h-3 w-3" />
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => handleArchiveSheet(sheet)}
+                        className="rounded p-0.5 text-[#686E78] hover:bg-amber-50 hover:text-[#C59B27] cursor-pointer"
+                        title={sheet.archived ? "Restore Tab from Archive" : "Archive Tab"}
+                        aria-label={sheet.archived ? `Restore ${sheet.name}` : `Archive ${sheet.name}`}
+                      >
+                        {sheet.archived ? (
+                          <ArchiveRestore className="h-3 w-3 text-emerald-600" />
+                        ) : (
+                          <Archive className="h-3 w-3" />
+                        )}
+                      </button>
                       {sheets.length > 1 && (
                         <button
                           type="button"
@@ -1424,6 +1598,49 @@ export function JobSheetsView({
               <Plus className="h-3.5 w-3.5 text-[#E5C158]" />
               <span>+ New Tab</span>
             </button>
+
+            {/* Sheet Archive Filter (Active vs Archived Tabs) */}
+            <div className="inline-flex rounded-lg border border-[#E6E1D6] bg-white p-0.5 text-[11px] font-semibold shrink-0 mb-1 ml-1">
+              <button
+                type="button"
+                onClick={() => setSheetScopeFilter('active')}
+                className={cn(
+                  'px-2 py-0.5 rounded cursor-pointer transition-colors',
+                  sheetScopeFilter === 'active'
+                    ? 'bg-[#111318] text-[#E5C158]'
+                    : 'text-[#686E78] hover:text-[#111318]',
+                )}
+                title="Show active working sheets"
+              >
+                Active ({sheets.filter((s) => !s.archived).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setSheetScopeFilter('archived')}
+                className={cn(
+                  'px-2 py-0.5 rounded cursor-pointer transition-colors',
+                  sheetScopeFilter === 'archived'
+                    ? 'bg-[#111318] text-[#E5C158]'
+                    : 'text-[#686E78] hover:text-[#111318]',
+                )}
+                title="Show archived sheets"
+              >
+                Archived ({sheets.filter((s) => Boolean(s.archived)).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setSheetScopeFilter('all')}
+                className={cn(
+                  'px-2 py-0.5 rounded cursor-pointer transition-colors',
+                  sheetScopeFilter === 'all'
+                    ? 'bg-[#111318] text-[#E5C158]'
+                    : 'text-[#686E78] hover:text-[#111318]',
+                )}
+                title="Show all sheets"
+              >
+                All
+              </button>
+            </div>
           </div>
 
           {/* Right Quick Template Launchers */}
@@ -1526,6 +1743,68 @@ export function JobSheetsView({
                 >
                   <Calculator className="h-3.5 w-3.5" />
                   <span>Σ Totals: {showTotals ? 'On' : 'Off'}</span>
+                </button>
+
+                {/* Auto-Default Same Toggle (Sticky Defaults for New Rows) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAutoDefaultSame((prev) => {
+                      const next = !prev;
+                      try {
+                        localStorage.setItem('sc_sheets_auto_default', String(next));
+                      } catch {
+                        // ignore
+                      }
+                      onNotify?.(
+                        next
+                          ? 'Auto-Default Same: ON (New rows will keep previous row values)'
+                          : 'Auto-Default Same: OFF',
+                      );
+                      return next;
+                    });
+                  }}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold cursor-pointer transition-colors',
+                    autoDefaultSame
+                      ? 'bg-[#111318] text-[#E5C158] border-[#111318]'
+                      : 'bg-[#FAF8F5] text-[#686E78] border-[#E6E1D6] hover:text-[#111318]',
+                  )}
+                  title="When ON, new rows automatically inherit the previous row's cell values until you change them"
+                >
+                  <Repeat className="h-3.5 w-3.5" />
+                  <span>Auto-Default: {autoDefaultSame ? 'On' : 'Off'}</span>
+                </button>
+
+                {/* Fast Entry (Newest First) Toggle */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSortOrder((prev) => {
+                      const next = prev === 'latest_first' ? 'normal' : 'latest_first';
+                      try {
+                        localStorage.setItem('sc_sheets_sort_order', next);
+                      } catch {
+                        // ignore
+                      }
+                      onNotify?.(
+                        next === 'latest_first'
+                          ? 'Fast Entry: Latest rows shown first at Row 1 (Page 1)'
+                          : 'Normal row order (Row 1..N)',
+                      );
+                      return next;
+                    });
+                  }}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold cursor-pointer transition-colors',
+                    sortOrder === 'latest_first'
+                      ? 'bg-[#111318] text-[#E5C158] border-[#111318]'
+                      : 'bg-[#FAF8F5] text-[#686E78] border-[#E6E1D6] hover:text-[#111318]',
+                  )}
+                  title="Fast Entry: Latest added rows appear at the top on Page 1 for rapid entry"
+                >
+                  <ArrowUpDown className="h-3.5 w-3.5" />
+                  <span>Fast Entry: {sortOrder === 'latest_first' ? 'Newest First' : 'Normal'}</span>
                 </button>
               </div>
 
@@ -1739,6 +2018,15 @@ export function JobSheetsView({
                   <button
                     type="button"
                     disabled={safeCurrentPage <= 1}
+                    onClick={() => setCurrentPage(1)}
+                    className="rounded-lg border border-[#E6E1D6] bg-white px-2 py-1 text-xs font-semibold text-[#111318] hover:bg-[#F3EFEA] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    title="Jump to First Page (Page 1)"
+                  >
+                    « First
+                  </button>
+                  <button
+                    type="button"
+                    disabled={safeCurrentPage <= 1}
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                     className="rounded-lg border border-[#E6E1D6] bg-white px-2 py-1 text-xs font-semibold text-[#111318] hover:bg-[#F3EFEA] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
                   >
@@ -1755,9 +2043,56 @@ export function JobSheetsView({
                   >
                     Next ›
                   </button>
+                  <button
+                    type="button"
+                    disabled={safeCurrentPage >= totalPages}
+                    onClick={() => setCurrentPage(totalPages)}
+                    className="rounded-lg border border-[#E6E1D6] bg-white px-2 py-1 text-xs font-semibold text-[#111318] hover:bg-[#F3EFEA] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    title={`Jump to Last Page (Page ${totalPages})`}
+                  >
+                    » Last
+                  </button>
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Top Horizontal Scrollbar Runner (Easy Access Without Scrolling Down to Bottom) */}
+        {activeSheet && (
+          <div className="flex items-center bg-[#FAF8F5] border-b border-[#E6E1D6] px-3 py-1 gap-2">
+            <span className="text-[10px] font-mono font-bold uppercase text-[#8C6D1F] shrink-0">
+              Scroll Cols:
+            </span>
+            <button
+              type="button"
+              onClick={() => scrollTableHorizontally('left')}
+              className="inline-flex items-center justify-center rounded border border-[#E6E1D6] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#111318] hover:bg-[#F3EFEA] cursor-pointer shadow-2xs shrink-0"
+              title="Scroll columns left"
+            >
+              ◀ Left
+            </button>
+            <div
+              ref={topScrollRef}
+              onScroll={handleTopScroll}
+              className="flex-1 overflow-x-auto overflow-y-hidden h-3.5 rounded bg-[#EFECE6] border border-[#E6E1D6]"
+              title="Top Horizontal Scrollbar: Click or drag to scroll table horizontally"
+            >
+              <div
+                style={{
+                  width: `${Math.max(1600, (activeSheet.columns.length + 3) * 160)}px`,
+                  height: '1px',
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => scrollTableHorizontally('right')}
+              className="inline-flex items-center justify-center rounded border border-[#E6E1D6] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#111318] hover:bg-[#F3EFEA] cursor-pointer shadow-2xs shrink-0"
+              title="Scroll columns right"
+            >
+              Right ▶
+            </button>
           </div>
         )}
 
@@ -1886,23 +2221,49 @@ export function JobSheetsView({
 
         {/* 3. Interactive Google Sheets Grid Table */}
         {activeSheet && (
-          <div className={cn('overflow-x-auto', mobileViewMode === 'cards' ? 'hidden md:block' : 'block')}>
+          <div
+            ref={tableContainerRef}
+            onScroll={handleTableScroll}
+            className={cn('overflow-x-auto', mobileViewMode === 'cards' ? 'hidden md:block' : 'block')}
+          >
             <table className="w-full border-collapse text-left text-xs">
               <thead>
                 <tr className="bg-[#F3EFEA] border-b border-[#E6E1D6] text-[#52504C]">
-                  <th className="w-10 border-r border-[#E6E1D6] px-2 py-2 text-center font-mono text-[10px] font-bold uppercase">
+                  <th className="w-12 border-r border-[#E6E1D6] px-1.5 py-2 text-center font-mono text-[10px] font-bold uppercase select-none">
                     #
                   </th>
                   {activeSheet.columns.map((col, colIdx) => {
                     const letter = indexToColumnLetter(colIdx);
+                    const isSorted = sortColId === col.id;
+                    const isDropdownCol = col.type === 'status' && col.options && col.options.length > 0;
+
                     return (
                       <th
                         key={col.id}
-                        className="border-r border-[#E6E1D6] px-3 py-2 min-w-[140px] group"
+                        draggable={true}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/plain', String(colIdx));
+                          setDraggedColIndex(colIdx);
+                        }}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (draggedColIndex !== null && draggedColIndex !== colIdx) {
+                            handleMoveColumn(draggedColIndex, colIdx);
+                          }
+                          setDraggedColIndex(null);
+                        }}
+                        className={cn(
+                          'border-r border-[#E6E1D6] px-2.5 py-1.5 min-w-[145px] group select-none transition-colors',
+                          draggedColIndex === colIdx && 'opacity-40 bg-[#FAF8F5]',
+                        )}
                       >
                         <div className="flex items-center justify-between gap-1">
                           <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                            <span className="inline-flex h-4 w-5 items-center justify-center rounded bg-[#111318] text-[#E5C158] font-mono text-[10px] font-bold shrink-0">
+                            <span
+                              className="inline-flex h-4 items-center justify-center rounded bg-[#111318] text-[#E5C158] font-mono text-[10px] font-bold px-1 shrink-0 cursor-grab active:cursor-grabbing"
+                              title="Drag column header to reorder columns"
+                            >
                               {letter}
                             </span>
                             <input
@@ -1921,22 +2282,90 @@ export function JobSheetsView({
                               title="Click to rename column header"
                             />
                           </div>
-                          {activeSheet.columns.length > 2 && (
+
+                          <div className="flex items-center gap-0.5">
+                            {/* Sort by this column */}
                             <button
                               type="button"
-                              onClick={() =>
-                                setDeleteColTarget({
-                                  colId: col.id,
-                                  letter,
-                                  label: col.label,
-                                })
-                              }
-                              className="opacity-0 group-hover:opacity-100 rounded p-0.5 text-[#686E78] hover:text-rose-600 cursor-pointer transition-opacity"
-                              title={`Delete column ${letter} (asks confirmation)`}
-                              aria-label={`Delete column ${letter}`}
+                              onClick={() => {
+                                if (sortColId === col.id) {
+                                  if (sortOrder === 'col_asc') {
+                                    setSortOrder('col_desc');
+                                  } else {
+                                    setSortColId(null);
+                                    setSortOrder('normal');
+                                  }
+                                } else {
+                                  setSortColId(col.id);
+                                  setSortOrder('col_asc');
+                                }
+                              }}
+                              className={cn(
+                                'rounded p-0.5 cursor-pointer transition-colors',
+                                isSorted
+                                  ? 'text-[#C59B27] font-bold bg-[#FAF8F5]'
+                                  : 'text-[#686E78] hover:text-[#111318]',
+                              )}
+                              title={`Sort column ${col.label} (${isSorted ? sortOrder : 'click to sort'})`}
                             >
-                              <Trash2 className="h-3 w-3" />
+                              <ArrowUpDown className="h-3 w-3" />
                             </button>
+
+                            {/* Format Column & Auto-Detect Dropdown */}
+                            <button
+                              type="button"
+                              onClick={() => setFormatColTarget(col)}
+                              className={cn(
+                                'rounded p-0.5 cursor-pointer transition-colors',
+                                isDropdownCol
+                                  ? 'text-emerald-700 font-bold bg-emerald-50'
+                                  : 'text-[#686E78] hover:text-[#111318]',
+                              )}
+                              title={`Format column ${col.label} (convert to dropdown, currency, number, etc.)`}
+                            >
+                              <SlidersHorizontal className="h-3 w-3" />
+                            </button>
+
+                            {activeSheet.columns.length > 2 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setDeleteColTarget({
+                                    colId: col.id,
+                                    letter,
+                                    label: col.label,
+                                  })
+                                }
+                                className="opacity-0 group-hover:opacity-100 rounded p-0.5 text-[#686E78] hover:text-rose-600 cursor-pointer transition-opacity"
+                                title={`Delete column ${letter} (asks confirmation)`}
+                                aria-label={`Delete column ${letter}`}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Column Format Indicator Badge */}
+                        <div className="mt-1 flex items-center justify-between text-[10px]">
+                          {isDropdownCol ? (
+                            <span className="rounded bg-emerald-50 border border-emerald-200 px-1 font-semibold text-emerald-800">
+                              ▾ Dropdown ({col.options?.length})
+                            </span>
+                          ) : col.type === 'currency' ? (
+                            <span className="rounded bg-amber-50 border border-amber-200 px-1 font-semibold text-amber-800">
+                              ₹ Currency
+                            </span>
+                          ) : col.type === 'date' ? (
+                            <span className="rounded bg-blue-50 border border-blue-200 px-1 font-semibold text-blue-800">
+                              Date
+                            </span>
+                          ) : col.type === 'number' ? (
+                            <span className="rounded bg-purple-50 border border-purple-200 px-1 font-semibold text-purple-800">
+                              123 Number
+                            </span>
+                          ) : (
+                            <span className="text-[#686E78]">{col.type}</span>
                           )}
                         </div>
                       </th>
@@ -1985,11 +2414,46 @@ export function JobSheetsView({
                         className="hover:bg-[#FAF8F5]/75 transition-colors group"
                       >
                         <td
-                          onClick={() => setMobileDrawerRowIndex(originalIndex)}
-                          className="border-r border-[#E6E1D6] bg-[#FAF8F5] px-2 py-1.5 text-center font-mono text-[11px] font-semibold text-[#686E78] cursor-pointer hover:bg-[#F3EFEA] hover:text-[#111318]"
-                          title="Tap to open mobile edit drawer"
+                          className={cn(
+                            'border-r border-[#E6E1D6] bg-[#FAF8F5] px-1 py-1.5 text-center font-mono text-[11px] font-semibold text-[#686E78] select-none',
+                            dragOverRowIndex === originalIndex && 'border-t-2 border-t-[#C59B27] bg-[#FFF9E6]',
+                          )}
                         >
-                          {originalIndex + 1}
+                          <div className="flex items-center justify-center gap-0.5">
+                            <span
+                              draggable={true}
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData('text/plain', String(originalIndex));
+                                setDraggedRowIndex(originalIndex);
+                              }}
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                setDragOverRowIndex(originalIndex);
+                              }}
+                              onDragLeave={() => {
+                                if (dragOverRowIndex === originalIndex) setDragOverRowIndex(null);
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                if (draggedRowIndex !== null) {
+                                  handleMoveRow(draggedRowIndex, originalIndex);
+                                }
+                                setDraggedRowIndex(null);
+                                setDragOverRowIndex(null);
+                              }}
+                              className="cursor-grab active:cursor-grabbing text-[#686E78] hover:text-[#111318] p-0.5"
+                              title="Drag to reorder row"
+                            >
+                              <GripVertical className="h-3 w-3" />
+                            </span>
+                            <span
+                              onClick={() => setMobileDrawerRowIndex(originalIndex)}
+                              className="cursor-pointer hover:underline"
+                              title="Tap to open mobile edit drawer"
+                            >
+                              {originalIndex + 1}
+                            </span>
+                          </div>
                         </td>
 
                         {activeSheet.columns.map((col, colIdx) => {
@@ -2026,9 +2490,38 @@ export function JobSheetsView({
                             >
                               {col.type === 'status' ? (
                                 <select
-                                  value={rawVal || activeStatusOptions[0]?.label || 'In Progress'}
+                                  value={rawVal || (col.options?.[0] ?? activeStatusOptions[0]?.label ?? 'In Progress')}
                                   onChange={(e) => {
-                                    if (e.target.value === '__ADD_CUSTOM_STATUS__') {
+                                    const selected = e.target.value;
+                                    if (selected === '__ADD_COL_CUSTOM_OPTION__') {
+                                      const customOpt = window.prompt(
+                                        `Enter new dropdown option for Column ${col.label}:`,
+                                      );
+                                      if (customOpt && customOpt.trim()) {
+                                        const trimmed = customOpt.trim();
+                                        updateActiveSheetLocal((curr) => ({
+                                          ...curr,
+                                          columns: curr.columns.map((c) =>
+                                            c.id === col.id
+                                              ? {
+                                                  ...c,
+                                                  options: Array.from(
+                                                    new Set([...(c.options || []), trimmed]),
+                                                  ),
+                                                }
+                                              : c,
+                                          ),
+                                          rows: curr.rows.map((r, idx) =>
+                                            idx === originalIndex
+                                              ? { ...r, cells: { ...r.cells, [col.id]: trimmed } }
+                                              : r,
+                                          ),
+                                        }));
+                                        onNotify?.(`Added option "${trimmed}" to Column ${col.label} ✓`);
+                                      }
+                                      return;
+                                    }
+                                    if (selected === '__ADD_CUSTOM_STATUS__') {
                                       setPendingStatusCellTarget({
                                         rowIndex: originalIndex,
                                         colId: col.id,
@@ -2036,24 +2529,40 @@ export function JobSheetsView({
                                       setStatusModalOpen(true);
                                       return;
                                     }
-                                    handleCellChange(originalIndex, col.id, e.target.value);
+                                    handleCellChange(originalIndex, col.id, selected);
                                   }}
                                   className={cn(
-                                    'w-full rounded-md px-2 py-1 text-[11px] font-semibold border cursor-pointer focus:outline-none',
+                                    'w-full rounded-md px-2 py-1 text-[11px] font-semibold border cursor-pointer focus:outline-none transition-colors',
                                     statusTheme.badgeBg,
                                     statusTheme.badgeText,
                                     statusTheme.badgeBorder,
                                   )}
                                 >
-                                  {!hasCurrentInOptions && rawVal.trim() !== '' && (
-                                    <option value={rawVal}>{rawVal}</option>
+                                  {col.options && col.options.length > 0 ? (
+                                    <>
+                                      {!col.options.includes(rawVal) && rawVal.trim() !== '' && (
+                                        <option value={rawVal}>{rawVal} (current)</option>
+                                      )}
+                                      {col.options.map((opt) => (
+                                        <option key={opt} value={opt}>
+                                          {opt}
+                                        </option>
+                                      ))}
+                                      <option value="__ADD_COL_CUSTOM_OPTION__">+ Add New Option...</option>
+                                    </>
+                                  ) : (
+                                    <>
+                                      {!hasCurrentInOptions && rawVal.trim() !== '' && (
+                                        <option value={rawVal}>{rawVal}</option>
+                                      )}
+                                      {activeStatusOptions.map((st) => (
+                                        <option key={st.label} value={st.label}>
+                                          {st.label}
+                                        </option>
+                                      ))}
+                                      <option value="__ADD_CUSTOM_STATUS__">+ Add Custom Status...</option>
+                                    </>
                                   )}
-                                  {activeStatusOptions.map((st) => (
-                                    <option key={st.label} value={st.label}>
-                                      {st.label}
-                                    </option>
-                                  ))}
-                                  <option value="__ADD_CUSTOM_STATUS__">+ Add Custom Status...</option>
                                 </select>
                               ) : isFormula && !isSelected ? (
                                 <div
@@ -2171,13 +2680,31 @@ export function JobSheetsView({
                         {/* Spacer for + Column */}
                         <td className="border-r border-[#E6E1D6] bg-[#FAF8F5]/30 text-center" />
 
-                        {/* Row Actions (Drawer Edit / Duplicate / Confirmed Delete) */}
-                        <td className="px-2 py-1.5 text-center">
-                          <div className="flex items-center justify-center gap-1">
+                        {/* Row Actions (Move Up / Down, Drawer Edit / Duplicate / Confirmed Delete) */}
+                        <td className="px-1.5 py-1 text-center">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <button
+                              type="button"
+                              disabled={originalIndex === 0}
+                              onClick={() => handleMoveRow(originalIndex, originalIndex - 1)}
+                              className="rounded p-0.5 text-[#686E78] hover:bg-[#FAF8F5] hover:text-[#111318] disabled:opacity-20 cursor-pointer"
+                              title="Move row up"
+                            >
+                              <ArrowUp className="h-3 w-3" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={originalIndex === activeSheet.rows.length - 1}
+                              onClick={() => handleMoveRow(originalIndex, originalIndex + 1)}
+                              className="rounded p-0.5 text-[#686E78] hover:bg-[#FAF8F5] hover:text-[#111318] disabled:opacity-20 cursor-pointer"
+                              title="Move row down"
+                            >
+                              <ArrowDown className="h-3 w-3" />
+                            </button>
                             <button
                               type="button"
                               onClick={() => setMobileDrawerRowIndex(originalIndex)}
-                              className="rounded p-1 text-[#686E78] hover:bg-[#FAF8F5] hover:text-[#111318] cursor-pointer"
+                              className="rounded p-0.5 text-[#686E78] hover:bg-[#FAF8F5] hover:text-[#111318] cursor-pointer"
                               title="Edit row in mobile drawer"
                               aria-label="Edit row in drawer"
                             >
@@ -2186,7 +2713,7 @@ export function JobSheetsView({
                             <button
                               type="button"
                               onClick={() => handleDuplicateRow(originalIndex)}
-                              className="rounded p-1 text-[#686E78] hover:bg-[#FAF8F5] hover:text-[#111318] cursor-pointer"
+                              className="rounded p-0.5 text-[#686E78] hover:bg-[#FAF8F5] hover:text-[#111318] cursor-pointer"
                               title="Duplicate row"
                             >
                               <Copy className="h-3 w-3" />
@@ -2199,7 +2726,7 @@ export function JobSheetsView({
                                   previewLabel: rowPreviewText,
                                 })
                               }
-                              className="rounded p-1 text-[#686E78] hover:bg-rose-50 hover:text-rose-600 cursor-pointer"
+                              className="rounded p-0.5 text-[#686E78] hover:bg-rose-50 hover:text-rose-600 cursor-pointer"
                               title="Delete row (asks confirmation)"
                             >
                               <Trash2 className="h-3 w-3" />
@@ -2293,6 +2820,15 @@ export function JobSheetsView({
                   <button
                     type="button"
                     disabled={safeCurrentPage <= 1}
+                    onClick={() => setCurrentPage(1)}
+                    className="rounded-lg border border-[#E6E1D6] bg-white px-2 py-1 text-xs font-semibold text-[#111318] hover:bg-[#F3EFEA] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    title="Jump to First Page (Page 1)"
+                  >
+                    « First
+                  </button>
+                  <button
+                    type="button"
+                    disabled={safeCurrentPage <= 1}
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                     className="rounded-lg border border-[#E6E1D6] bg-white px-2.5 py-1 text-xs font-semibold text-[#111318] hover:bg-[#F3EFEA] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
                   >
@@ -2308,6 +2844,15 @@ export function JobSheetsView({
                     className="rounded-lg border border-[#E6E1D6] bg-white px-2.5 py-1 text-xs font-semibold text-[#111318] hover:bg-[#F3EFEA] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
                   >
                     Next Page ›
+                  </button>
+                  <button
+                    type="button"
+                    disabled={safeCurrentPage >= totalPages}
+                    onClick={() => setCurrentPage(totalPages)}
+                    className="rounded-lg border border-[#E6E1D6] bg-white px-2 py-1 text-xs font-semibold text-[#111318] hover:bg-[#F3EFEA] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    title={`Jump to Last Page (Page ${totalPages})`}
+                  >
+                    » Last
                   </button>
                 </div>
               )}
@@ -2952,7 +3497,212 @@ export function JobSheetsView({
         )}
       </Dialog>
 
-      {/* Confirmation Dialog 2: Delete Row (Not 1-Click Delete) */}
+      {/* Modal 6: Format Column & Auto-Detect Dropdown Menu */}
+      <Dialog
+        open={Boolean(formatColTarget)}
+        onClose={() => setFormatColTarget(null)}
+        title={
+          formatColTarget
+            ? `Format Column ${formatColTarget.key} · "${formatColTarget.label}"`
+            : 'Format Column'
+        }
+        maxWidth="max-w-md"
+      >
+        {formatColTarget && activeSheet && (
+          <div className="space-y-4">
+            {/* 1. Hero: Auto-Detect Dropdown from Column Data (Zero Data Loss) */}
+            {(() => {
+              const detectedOptions = Array.from(
+                new Set(
+                  activeSheet.rows
+                    .map((r) => (r.cells[formatColTarget.id] ?? '').trim())
+                    .filter((v) => v.length > 0),
+                ),
+              );
+
+              return (
+                <div className="rounded-xl border border-[#C59B27]/40 bg-[#FFFDF5] p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-[#111318] flex items-center gap-1.5">
+                      <Sparkles className="h-4 w-4 text-[#C59B27]" /> ⚡ Auto-Detect Dropdown
+                    </span>
+                    <span className="rounded bg-amber-100/80 px-2 py-0.5 text-[11px] font-mono font-bold text-[#8C6D1F]">
+                      {detectedOptions.length} detected
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#52504C] leading-relaxed">
+                    Convert this entire column to a dropdown menu using <strong>strictly only the detected values</strong> from your data (e.g.{' '}
+                    <em>{detectedOptions.slice(0, 3).join(', ') || 'values'}</em>). <strong>Zero data loss</strong>—all{' '}
+                    {activeSheet.rows.length} existing rows remain intact!
+                  </p>
+                  <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto p-1 bg-white rounded border border-[#E6E1D6]">
+                    {detectedOptions.length === 0 ? (
+                      <span className="text-xs text-[#686E78] italic">No values detected yet in column</span>
+                    ) : (
+                      detectedOptions.map((opt) => (
+                        <span
+                          key={opt}
+                          className="rounded bg-[#FAF8F5] border border-[#E6E1D6] px-2 py-0.5 text-[11px] font-semibold text-[#111318]"
+                        >
+                          {opt}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    className="w-full bg-[#111318] hover:bg-[#1E232D] text-[#E5C158] font-bold"
+                    onClick={() => {
+                      const finalOpts =
+                        detectedOptions.length > 0 ? detectedOptions : ['Option 1', 'Option 2'];
+                      updateActiveSheetLocal((curr) => ({
+                        ...curr,
+                        columns: curr.columns.map((c) =>
+                          c.id === formatColTarget.id
+                            ? { ...c, type: 'status', options: finalOpts }
+                            : c,
+                        ),
+                      }));
+                      setFormatColTarget(null);
+                      onNotify?.(
+                        `Converted Column ${formatColTarget.key} to Dropdown with ${finalOpts.length} options: ${finalOpts.join(', ')} (${activeSheet.rows.length} rows preserved) ✓`,
+                      );
+                    }}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                    Convert to Dropdown with Detected Data ({detectedOptions.length} values)
+                  </Button>
+                </div>
+              );
+            })()}
+
+            {/* 2. Switch Format Type Without Data Loss */}
+            <div className="space-y-2 border-t border-[#E6E1D6] pt-3">
+              <FieldLabel>Change Column Format Type (Zero Data Loss)</FieldLabel>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { type: 'text', label: 'Text / General' },
+                  { type: 'number', label: 'Number (Qty / Int)' },
+                  { type: 'currency', label: 'Currency (₹ Amount)' },
+                  { type: 'date', label: 'Date (YYYY-MM-DD)' },
+                ].map((fmt) => (
+                  <button
+                    key={fmt.type}
+                    type="button"
+                    onClick={() => {
+                      updateActiveSheetLocal((curr) => ({
+                        ...curr,
+                        columns: curr.columns.map((c) =>
+                          c.id === formatColTarget.id ? { ...c, type: fmt.type as SheetColumnType } : c,
+                        ),
+                      }));
+                      setFormatColTarget(null);
+                      onNotify?.(`Changed Column ${formatColTarget.key} format to ${fmt.label} (Data preserved) ✓`);
+                    }}
+                    className={cn(
+                      'rounded-lg border px-3 py-2 text-xs font-semibold text-left transition-colors cursor-pointer',
+                      formatColTarget.type === fmt.type
+                        ? 'border-[#111318] bg-[#FAF8F5] text-[#111318] font-bold'
+                        : 'border-[#E6E1D6] bg-white text-[#686E78] hover:bg-[#F3EFEA]',
+                    )}
+                  >
+                    {fmt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 3. If currently a dropdown column, allow managing custom options */}
+            {formatColTarget.type === 'status' && formatColTarget.options && (
+              <div className="space-y-2 border-t border-[#E6E1D6] pt-3">
+                <FieldLabel>Current Dropdown Options ({formatColTarget.options.length})</FieldLabel>
+                <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                  {formatColTarget.options.map((opt) => (
+                    <span
+                      key={opt}
+                      className="inline-flex items-center gap-1 rounded bg-[#FAF8F5] border border-[#E6E1D6] px-2 py-0.5 text-xs text-[#111318]"
+                    >
+                      <span>{opt}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextOpts = formatColTarget.options?.filter((o) => o !== opt) || [];
+                          updateActiveSheetLocal((curr) => ({
+                            ...curr,
+                            columns: curr.columns.map((c) =>
+                              c.id === formatColTarget.id ? { ...c, options: nextOpts } : c,
+                            ),
+                          }));
+                          setFormatColTarget((prev) => (prev ? { ...prev, options: nextOpts } : null));
+                        }}
+                        className="text-[#686E78] hover:text-rose-600 font-bold ml-0.5 cursor-pointer"
+                        title="Remove option"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                {/* Add new option input */}
+                <div className="flex items-center gap-1 pt-1">
+                  <Input
+                    value={customDropdownInput}
+                    onChange={(e) => setCustomDropdownInput(e.target.value)}
+                    placeholder="New dropdown option..."
+                    className="h-8 text-xs"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (customDropdownInput.trim()) {
+                          const val = customDropdownInput.trim();
+                          const nextOpts = Array.from(new Set([...(formatColTarget.options || []), val]));
+                          updateActiveSheetLocal((curr) => ({
+                            ...curr,
+                            columns: curr.columns.map((c) =>
+                              c.id === formatColTarget.id ? { ...c, options: nextOpts } : c,
+                            ),
+                          }));
+                          setFormatColTarget((prev) => (prev ? { ...prev, options: nextOpts } : null));
+                          setCustomDropdownInput('');
+                        }
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      if (customDropdownInput.trim()) {
+                        const val = customDropdownInput.trim();
+                        const nextOpts = Array.from(new Set([...(formatColTarget.options || []), val]));
+                        updateActiveSheetLocal((curr) => ({
+                          ...curr,
+                          columns: curr.columns.map((c) =>
+                            c.id === formatColTarget.id ? { ...c, options: nextOpts } : c,
+                          ),
+                        }));
+                        setFormatColTarget((prev) => (prev ? { ...prev, options: nextOpts } : null));
+                        setCustomDropdownInput('');
+                      }
+                    }}
+                  >
+                    + Add
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#E6E1D6]">
+              <Button variant="secondary" onClick={() => setFormatColTarget(null)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
       <ConfirmDialog
         open={!!deleteRowTarget}
         title={`Delete Row #${(deleteRowTarget?.rowIndex ?? 0) + 1}?`}

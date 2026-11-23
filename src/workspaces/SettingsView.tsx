@@ -1,13 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import {
   AlertCircle,
+  Archive,
+  ArchiveRestore,
   Camera,
   CheckCircle2,
   Copy,
+  CreditCard,
   Download,
   Eye,
   EyeOff,
   FileKey,
+  FileSpreadsheet,
+  HandCoins,
   KeyRound,
   Lock,
   LogOut,
@@ -15,11 +20,13 @@ import {
   QrCode,
   Radio,
   RefreshCw,
+  Search,
   Send,
   Server,
   Shield,
   ShieldCheck,
   Smartphone,
+  StickyNote,
   Timer,
   Unplug,
   Upload,
@@ -29,7 +36,8 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { Button, Card, FieldLabel, Input } from '../components/ui/Primitives.tsx';
+import type { JobSheetRecord } from './sheets/jobSheetsAnalytics.ts';
+import { Button, Card, FieldLabel, Input, cn } from '../components/ui/Primitives.tsx';
 import { AppLogo } from '../components/ui/AppLogo.tsx';
 import {
   signOut,
@@ -62,9 +70,13 @@ import {
   api,
   getWhatsAppServerUrl,
   setWhatsAppServerUrl,
+  type AccountRecord,
   type AlertDeliveryRecord,
   type AlertSettings,
   type AppPreferences,
+  type LoanRecord,
+  type NoteRecord,
+  type PersonDueRecord,
   type RenderKeepAliveStatus,
   type WhatsAppBridgeState,
   DEFAULT_ALERT_SETTINGS,
@@ -127,7 +139,7 @@ interface SettingsViewProps {
   onInactivityMinutesChange?: (minutes: number) => void;
 }
 
-export type SettingsTab = 'account' | 'whatsapp' | 'updates' | 'vault_security' | 'cloud' | 'system';
+export type SettingsTab = 'account' | 'archive' | 'whatsapp' | 'updates' | 'vault_security' | 'cloud' | 'system';
 
 export function SettingsView({
   currentUser,
@@ -241,6 +253,136 @@ export function SettingsView({
   const [waTestPhone, setWaTestPhone] = useState('');
   const [waNotice, setWaNotice] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null);
   const [copiedBlueprint, setCopiedBlueprint] = useState(false);
+
+  // Universal Module-Wise Archive Center State
+  const [archivedModule, setArchivedModule] = useState<'all' | 'sheets' | 'notes' | 'loans_dues' | 'accounts'>('all');
+  const [archiveSearch, setArchiveSearch] = useState('');
+  const [archivedSheets, setArchivedSheets] = useState<JobSheetRecord[]>([]);
+  const [archivedNotes, setArchivedNotes] = useState<NoteRecord[]>([]);
+  const [archivedLoans, setArchivedLoans] = useState<LoanRecord[]>([]);
+  const [archivedDues, setArchivedDues] = useState<PersonDueRecord[]>([]);
+  const [archivedAccounts, setArchivedAccounts] = useState<AccountRecord[]>([]);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+
+  const loadArchivedData = async () => {
+    setArchiveLoading(true);
+    try {
+      // 1. Sheets
+      try {
+        const raw = localStorage.getItem('sc_job_sheets_v1');
+        if (raw) {
+          const parsed: JobSheetRecord[] = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            setArchivedSheets(parsed.filter((s) => Boolean(s.archived)));
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      // 2. Notes
+      try {
+        const allNotes = await api.getNotes();
+        setArchivedNotes(allNotes.filter((n) => n.archived));
+      } catch {
+        // ignore
+      }
+
+      // 3. Loans & Dues
+      try {
+        const allLoans = await api.getLoans();
+        setArchivedLoans(allLoans.filter((l) => l.archived || l.status === 'closed'));
+        const allDues = await api.getDues();
+        setArchivedDues(allDues.data.filter((d: PersonDueRecord) => d.archived || d.status === 'settled'));
+      } catch {
+        // ignore
+      }
+
+      // 4. Accounts
+      try {
+        const allAccs = await api.getAccounts();
+        setArchivedAccounts(allAccs.filter((a) => Boolean(a.archived)));
+      } catch {
+        // ignore
+      }
+    } finally {
+      setArchiveLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'archive') {
+      void loadArchivedData();
+    }
+  }, [activeTab]);
+
+  const handleRestoreSheet = (sheetId: string) => {
+    try {
+      const raw = localStorage.getItem('sc_job_sheets_v1');
+      if (raw) {
+        const list: JobSheetRecord[] = JSON.parse(raw);
+        const updated = list.map((s) => (s.id === sheetId ? { ...s, archived: false } : s));
+        localStorage.setItem('sc_job_sheets_v1', JSON.stringify(updated));
+        setArchivedSheets(updated.filter((s) => Boolean(s.archived)));
+        notify?.('Restored Job Sheet to Active ✓', 'ok');
+      }
+    } catch {
+      notify?.('Failed to restore job sheet', 'err');
+    }
+  };
+
+  const handleRestoreNote = async (note: NoteRecord) => {
+    try {
+      await api.updateNote(note.id, {
+        title: note.title,
+        body: note.body,
+        scope: note.scope,
+        color: note.color,
+        tags: note.tags,
+        pinned: note.pinned,
+        archived: false,
+        remindAt: note.remindAt,
+        linkedTxId: note.linkedTxId,
+        linkedDueId: note.linkedDueId,
+        linkedLoanId: note.linkedLoanId,
+        checklist: note.checklist,
+      });
+      setArchivedNotes((prev) => prev.filter((n) => n.id !== note.id));
+      notify?.(`Restored Note "${note.title}" to Active ✓`, 'ok');
+    } catch {
+      notify?.('Failed to restore note', 'err');
+    }
+  };
+
+  const handleRestoreLoan = async (loan: LoanRecord) => {
+    try {
+      await api.updateLoan(loan.id, { status: 'active' });
+      setArchivedLoans((prev) => prev.filter((l) => l.id !== loan.id));
+      notify?.(`Restored Loan "${loan.name}" to Active ✓`, 'ok');
+    } catch {
+      notify?.('Failed to restore loan', 'err');
+    }
+  };
+
+  const handleRestoreDue = async (due: PersonDueRecord) => {
+    try {
+      await api.updateDue(due.id, { note: due.note ? due.note.replace('[Settled]', '').trim() : '' });
+      setArchivedDues((prev) => prev.filter((d) => d.id !== due.id));
+      notify?.(`Restored Due for "${due.personName}" to Active ✓`, 'ok');
+    } catch {
+      notify?.('Failed to restore due', 'err');
+    }
+  };
+
+  const handleRestoreAccount = async (acc: AccountRecord) => {
+    try {
+      await api.updateAccount(acc.id, { name: acc.name });
+      setArchivedAccounts((prev) => prev.filter((a) => a.id !== acc.id));
+      notify?.(`Restored Account "${acc.name}" to Active ✓`, 'ok');
+    } catch {
+      notify?.('Failed to restore account', 'err');
+    }
+  };
 
   // Sync waState with parent prop if provided
   useEffect(() => {
@@ -704,6 +846,23 @@ export function SettingsView({
         {[
           { id: 'account', label: 'Account & Password', icon: <UserCheck className="h-3.5 w-3.5" /> },
           {
+            id: 'archive',
+            label: 'Archive Center',
+            icon: (
+              <span className="relative flex items-center">
+                <Archive className="h-3.5 w-3.5 text-[#C59B27]" />
+                {archivedSheets.length +
+                  archivedNotes.length +
+                  archivedLoans.length +
+                  archivedDues.length +
+                  archivedAccounts.length >
+                  0 && (
+                  <span className="absolute -top-1 -right-1 h-1.5 w-1.5 rounded-full bg-amber-500 ring-1 ring-white" />
+                )}
+              </span>
+            ),
+          },
+          {
             id: 'whatsapp',
             label: 'WhatsApp & 5-Min Wake-Up',
             icon: (
@@ -1057,6 +1216,327 @@ export function SettingsView({
                 </button>
               </div>
             </form>
+          </Card>
+        </div>
+      )}
+
+      {/* TAB 2: UNIVERSAL MODULE-WISE ARCHIVE CENTER */}
+      {activeTab === 'archive' && (
+        <div className="space-y-5">
+          <Card className="p-5 sm:p-6 border-[#EAE5DC] bg-white space-y-5 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 font-display flex items-center gap-2">
+                  <Archive className="h-4 w-4 text-[#C59B27]" />
+                  Universal Archive Center (Module-Wise)
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Browse and instantly restore archived items across Job Sheets, Notes, Loans &amp; Dues, and Accounts
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void loadArchivedData()}
+                  disabled={archiveLoading}
+                  className="h-8 text-xs"
+                >
+                  <RefreshCw className={cn('h-3.5 w-3.5 mr-1', archiveLoading && 'animate-spin')} />
+                  Refresh
+                </Button>
+                <span className="rounded-lg bg-[#FAF8F5] border border-[#E6E1D6] px-2.5 py-1 text-xs font-mono font-bold text-[#111318]">
+                  {archivedSheets.length +
+                    archivedNotes.length +
+                    archivedLoans.length +
+                    archivedDues.length +
+                    archivedAccounts.length}{' '}
+                  Archived
+                </span>
+              </div>
+            </div>
+
+            {/* Module Filter Pills */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              {[
+                {
+                  id: 'all',
+                  label: 'All Modules',
+                  count:
+                    archivedSheets.length +
+                    archivedNotes.length +
+                    archivedLoans.length +
+                    archivedDues.length +
+                    archivedAccounts.length,
+                },
+                { id: 'sheets', label: 'Job Sheets', count: archivedSheets.length, icon: FileSpreadsheet },
+                { id: 'notes', label: 'Notes', count: archivedNotes.length, icon: StickyNote },
+                {
+                  id: 'loans_dues',
+                  label: 'Loans & Dues',
+                  count: archivedLoans.length + archivedDues.length,
+                  icon: HandCoins,
+                },
+                { id: 'accounts', label: 'Cards & Banks', count: archivedAccounts.length, icon: CreditCard },
+              ].map((m) => {
+                const active = archivedModule === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setArchivedModule(m.id as any)}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors',
+                      active
+                        ? 'bg-[#111318] text-[#E5C158]'
+                        : 'bg-[#FAF8F5] text-[#686E78] border border-[#E6E1D6] hover:text-[#111318]',
+                    )}
+                  >
+                    {m.icon && <m.icon className="h-3.5 w-3.5" />}
+                    <span>{m.label}</span>
+                    <span
+                      className={cn(
+                        'rounded-full px-1.5 py-0.2 text-[10px] font-mono',
+                        active ? 'bg-[#2A2E39] text-[#E5C158]' : 'bg-[#E6E1D6] text-[#52504C]',
+                      )}
+                    >
+                      {m.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Search Bar */}
+            <div className="relative">
+              <Search className="h-4 w-4 text-[#686E78] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={archiveSearch}
+                onChange={(e) => setArchiveSearch(e.target.value)}
+                placeholder="Search archived records by title, counterparty, description..."
+                className="h-9 w-full rounded-lg border border-[#E6E1D6] bg-[#FAF8F5] pl-9 pr-3 text-xs text-[#111318] focus:bg-white focus:border-[#111318] focus:outline-none"
+              />
+            </div>
+
+            {/* Archived Items List */}
+            <div className="space-y-3 pt-1">
+              {/* 1. Job Sheets */}
+              {(archivedModule === 'all' || archivedModule === 'sheets') &&
+                archivedSheets
+                  .filter((s) => !archiveSearch || s.name.toLowerCase().includes(archiveSearch.toLowerCase()))
+                  .map((sheet) => (
+                    <div
+                      key={sheet.id}
+                      className="flex items-center justify-between p-3.5 rounded-xl border border-[#E6E1D6] bg-[#FAF8F5]/60 hover:bg-white transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-9 w-9 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0">
+                          <FileSpreadsheet className="h-4 w-4 text-emerald-700" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-xs text-[#111318] truncate">{sheet.name}</span>
+                            <span className="rounded bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.5 font-bold uppercase">
+                              Job Sheet
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[#686E78] font-mono mt-0.5">
+                            {sheet.rows.length} rows • {sheet.columns.length} columns • Archived:{' '}
+                            {sheet.archivedAt ? new Date(sheet.archivedAt).toLocaleDateString() : 'Yes'}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => handleRestoreSheet(sheet.id)}
+                        className="h-8 text-xs shrink-0 bg-white hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300"
+                      >
+                        <ArchiveRestore className="h-3.5 w-3.5 mr-1" />
+                        Restore to Active
+                      </Button>
+                    </div>
+                  ))}
+
+              {/* 2. Notes */}
+              {(archivedModule === 'all' || archivedModule === 'notes') &&
+                archivedNotes
+                  .filter(
+                    (n) =>
+                      !archiveSearch ||
+                      n.title.toLowerCase().includes(archiveSearch.toLowerCase()) ||
+                      n.body.toLowerCase().includes(archiveSearch.toLowerCase()),
+                  )
+                  .map((note) => (
+                    <div
+                      key={note.id}
+                      className="flex items-center justify-between p-3.5 rounded-xl border border-[#E6E1D6] bg-[#FAF8F5]/60 hover:bg-white transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-9 w-9 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
+                          <StickyNote className="h-4 w-4 text-amber-700" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-xs text-[#111318] truncate">{note.title}</span>
+                            <span className="rounded bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 font-bold uppercase">
+                              Note
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[#686E78] truncate max-w-md mt-0.5">
+                            {note.body.slice(0, 90) || 'No note text preview'}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => void handleRestoreNote(note)}
+                        className="h-8 text-xs shrink-0 bg-white hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300"
+                      >
+                        <ArchiveRestore className="h-3.5 w-3.5 mr-1" />
+                        Restore to Active
+                      </Button>
+                    </div>
+                  ))}
+
+              {/* 3. Loans */}
+              {(archivedModule === 'all' || archivedModule === 'loans_dues') &&
+                archivedLoans
+                  .filter(
+                    (l) =>
+                      !archiveSearch ||
+                      l.name.toLowerCase().includes(archiveSearch.toLowerCase()) ||
+                      l.counterparty.toLowerCase().includes(archiveSearch.toLowerCase()),
+                  )
+                  .map((loan) => (
+                    <div
+                      key={loan.id}
+                      className="flex items-center justify-between p-3.5 rounded-xl border border-[#E6E1D6] bg-[#FAF8F5]/60 hover:bg-white transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-9 w-9 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center shrink-0">
+                          <HandCoins className="h-4 w-4 text-blue-700" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-xs text-[#111318] truncate">{loan.name}</span>
+                            <span className="rounded bg-blue-100 text-blue-800 text-[10px] px-1.5 py-0.5 font-bold uppercase">
+                              Loan ({loan.status})
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[#686E78] font-mono mt-0.5">
+                            Counterparty: {loan.counterparty} • Principal: ₹{(loan.principalMinor / 100).toLocaleString('en-IN')}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => void handleRestoreLoan(loan)}
+                        className="h-8 text-xs shrink-0 bg-white hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300"
+                      >
+                        <ArchiveRestore className="h-3.5 w-3.5 mr-1" />
+                        Restore to Active
+                      </Button>
+                    </div>
+                  ))}
+
+              {/* 4. Dues */}
+              {(archivedModule === 'all' || archivedModule === 'loans_dues') &&
+                archivedDues
+                  .filter(
+                    (d) =>
+                      !archiveSearch ||
+                      d.personName.toLowerCase().includes(archiveSearch.toLowerCase()) ||
+                      d.phone.includes(archiveSearch),
+                  )
+                  .map((due) => (
+                    <div
+                      key={due.id}
+                      className="flex items-center justify-between p-3.5 rounded-xl border border-[#E6E1D6] bg-[#FAF8F5]/60 hover:bg-white transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-9 w-9 rounded-lg bg-purple-50 border border-purple-200 flex items-center justify-center shrink-0">
+                          <HandCoins className="h-4 w-4 text-purple-700" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-xs text-[#111318] truncate">{due.personName}</span>
+                            <span className="rounded bg-purple-100 text-purple-800 text-[10px] px-1.5 py-0.5 font-bold uppercase">
+                              Due ({due.status})
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[#686E78] font-mono mt-0.5">
+                            {due.direction === 'give' ? 'You Owe' : 'Owed to You'}: ₹{(due.amountMinor / 100).toLocaleString('en-IN')} • Phone: {due.phone || '—'}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => void handleRestoreDue(due)}
+                        className="h-8 text-xs shrink-0 bg-white hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300"
+                      >
+                        <ArchiveRestore className="h-3.5 w-3.5 mr-1" />
+                        Restore to Active
+                      </Button>
+                    </div>
+                  ))}
+
+              {/* 5. Accounts */}
+              {(archivedModule === 'all' || archivedModule === 'accounts') &&
+                archivedAccounts
+                  .filter((a) => !archiveSearch || a.name.toLowerCase().includes(archiveSearch.toLowerCase()))
+                  .map((acc) => (
+                    <div
+                      key={acc.id}
+                      className="flex items-center justify-between p-3.5 rounded-xl border border-[#E6E1D6] bg-[#FAF8F5]/60 hover:bg-white transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-9 w-9 rounded-lg bg-slate-100 border border-slate-300 flex items-center justify-center shrink-0">
+                          <CreditCard className="h-4 w-4 text-slate-700" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-xs text-[#111318] truncate">{acc.name}</span>
+                            <span className="rounded bg-slate-200 text-slate-800 text-[10px] px-1.5 py-0.5 font-bold uppercase">
+                              {acc.type}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[#686E78] font-mono mt-0.5">
+                            Institution: {acc.institution} • Ending: {acc.last4 || '—'}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => void handleRestoreAccount(acc)}
+                        className="h-8 text-xs shrink-0 bg-white hover:bg-slate-100"
+                      >
+                        <ArchiveRestore className="h-3.5 w-3.5 mr-1" />
+                        Restore to Active
+                      </Button>
+                    </div>
+                  ))}
+
+              {/* Empty State */}
+              {archivedSheets.length === 0 &&
+                archivedNotes.length === 0 &&
+                archivedLoans.length === 0 &&
+                archivedDues.length === 0 &&
+                archivedAccounts.length === 0 && (
+                  <div className="py-12 text-center text-xs text-[#686E78] bg-[#FAF8F5] rounded-xl border border-[#E6E1D6]">
+                    <Archive className="h-8 w-8 mx-auto text-[#C59B27]/60 mb-2" />
+                    <p className="font-semibold text-[#111318]">No archived records found.</p>
+                    <p className="mt-1 text-[11px]">
+                      When you archive sheets, notes, or accounts, they will be preserved safely here for 1-click restore.
+                    </p>
+                  </div>
+                )}
+            </div>
           </Card>
         </div>
       )}

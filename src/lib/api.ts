@@ -137,6 +137,8 @@ export interface AccountRecord {
   dueDay: number;
   currentBalanceMinor: number;
   cardCycle: CardCycleSummary | null;
+  archived?: boolean;
+  archivedAt?: string;
   createdAt: string;
 }
 
@@ -374,6 +376,8 @@ export interface LoanRecord {
   status: 'active' | 'closed';
   totalInterestPaidMinor: number;
   totalPrincipalPaidMinor: number;
+  archived?: boolean;
+  archivedAt?: string;
   createdAt: string;
 }
 
@@ -389,6 +393,8 @@ export interface PersonDueRecord {
   dueDate: string | null;
   note: string;
   status: 'open' | 'partial' | 'settled';
+  archived?: boolean;
+  archivedAt?: string;
   createdAt: string;
 }
 
