@@ -6,10 +6,10 @@ import {
   ArchiveRestore,
   ArrowDown,
   ArrowDownAZ,
+  ArrowLeft,
   ArrowUp,
   ArrowUpDown,
   ArrowUpZA,
-  Calculator,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -17,21 +17,29 @@ import {
   Copy,
   Download,
   Edit3,
+  Eye,
+  EyeOff,
   FileSpreadsheet,
   Filter,
   FunctionSquare,
   GripVertical,
+  KeyRound,
+  LayoutGrid,
+  Lock,
   MoreVertical,
   Pin,
   Plus,
   Redo2,
-  Repeat,
   Search,
+  Settings,
+  Shield,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Tag,
   Trash2,
   Undo2,
+  Unlock,
   Upload,
   X,
 } from 'lucide-react';
@@ -63,6 +71,7 @@ import {
   type SheetColumn,
   type SheetColumnType,
   type SheetRow,
+  type SheetSettings,
   type SheetTabColor,
 } from './sheets/jobSheetsAnalytics.ts';
 import { SheetsHeroWorkstation } from './sheets/SheetsHeroWorkstation.tsx';
@@ -254,6 +263,18 @@ function compareSheetCells(
   return sortDirection === 'asc' ? result : -result;
 }
 
+/**
+ * Standard WebCrypto SHA-256 client-side hashing for optional sheet PIN protection.
+ * Plaintext PIN is never stored or transmitted anywhere.
+ */
+async function hashPin(pin: string): Promise<string> {
+  const enc = new TextEncoder();
+  const digest = await window.crypto.subtle.digest('SHA-256', enc.encode(pin.trim()));
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 export function JobSheetsView({
   globalScopeFilter = 'all',
   onNotify,
@@ -394,6 +415,38 @@ export function JobSheetsView({
   const [formatColTarget, setFormatColTarget] = useState<SheetColumn | null>(null);
   const [customDropdownInput, setCustomDropdownInput] = useState('');
 
+  // Sheet Cards Hub View vs Spreadsheet Table View Mode
+  const [sheetViewMode, setSheetViewMode] = useState<'hub' | 'table'>(() => {
+    try {
+      const saved = localStorage.getItem('sc_sheets_view_mode');
+      if (saved === 'table' || saved === 'hub') return saved;
+    } catch {
+      // ignore
+    }
+    return 'hub'; // Defaults to Cards Hub to act as privacy barrier
+  });
+
+  // Consolidated Sheet Options Dropdown Menu
+  const [sheetMenuOpen, setSheetMenuOpen] = useState(false);
+  const [hubSearchQuery, setHubSearchQuery] = useState('');
+  const [hubScopeFilter, setHubScopeFilter] = useState<Scope | 'all'>('all');
+  const [cardMenuOpenId, setCardMenuOpenId] = useState<string | null>(null);
+
+  // Optional Sheet PIN Protection & Session Unlocks
+  const [unlockedSheetIds, setUnlockedSheetIds] = useState<Set<string>>(() => new Set());
+  const [pinUnlockModalOpen, setPinUnlockModalOpen] = useState(false);
+  const [pinUnlockTarget, setPinUnlockTarget] = useState<JobSheetRecord | null>(null);
+  const [enteredPin, setEnteredPin] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [showPin, setShowPin] = useState(false);
+
+  const [pinSetupModalOpen, setPinSetupModalOpen] = useState(false);
+  const [pinSetupTarget, setPinSetupTarget] = useState<JobSheetRecord | null>(null);
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [pinHintInput, setPinHintInput] = useState('');
+  const [pinSetupError, setPinSetupError] = useState('');
+
   const autoSaveTimerRef = useRef<number | null>(null);
   const pendingSheetRef = useRef<JobSheetRecord | null>(null);
 
@@ -513,6 +566,21 @@ export function JobSheetsView({
     });
     return list.length > 0 ? list : sheets;
   }, [sheets, globalScopeFilter, activeSheetId, sheetScopeFilter]);
+
+  const filteredHubSheets = useMemo(() => {
+    return sheets.filter((s) => {
+      if (hubScopeFilter !== 'all' && s.scope !== hubScopeFilter) return false;
+      if (sheetScopeFilter === 'active' && s.archived) return false;
+      if (sheetScopeFilter === 'archived' && !s.archived) return false;
+      if (hubSearchQuery.trim()) {
+        const q = hubSearchQuery.toLowerCase();
+        const matchName = s.name.toLowerCase().includes(q);
+        const matchCols = s.columns.some((c) => c.label.toLowerCase().includes(q));
+        if (!matchName && !matchCols) return false;
+      }
+      return true;
+    });
+  }, [sheets, hubScopeFilter, sheetScopeFilter, hubSearchQuery]);
 
   const activeSheet = useMemo(() => {
     return (
@@ -668,6 +736,136 @@ export function JobSheetsView({
     },
     [activeSheet, persistSheet],
   );
+
+  const updateAnySheet = useCallback(
+    (sheetId: string, updater: (current: JobSheetRecord) => JobSheetRecord) => {
+      setSheets((prev) => {
+        const target = prev.find((s) => s.id === sheetId);
+        if (!target) return prev;
+        const updated: JobSheetRecord = {
+          ...updater(target),
+          updatedAt: new Date().toISOString(),
+        };
+        const nextList = prev.map((s) => (s.id === sheetId ? updated : s));
+        writeCachedSheets(nextList);
+        void persistSheet(updated, false);
+        return nextList;
+      });
+    },
+    [persistSheet],
+  );
+
+  const handleOpenSheet = useCallback(
+    (sheet: JobSheetRecord) => {
+      if (sheet.settings?.pinHash && !unlockedSheetIds.has(sheet.id)) {
+        setPinUnlockTarget(sheet);
+        setEnteredPin('');
+        setPinError('');
+        setPinUnlockModalOpen(true);
+        return;
+      }
+      setActiveSheetId(sheet.id);
+      setSheetViewMode('table');
+      try {
+        localStorage.setItem('sc_sheets_view_mode', 'table');
+      } catch {
+        // ignore
+      }
+    },
+    [unlockedSheetIds],
+  );
+
+  const handleLockActiveSheet = useCallback(() => {
+    if (!activeSheet) return;
+    setUnlockedSheetIds((prev) => {
+      const next = new Set(prev);
+      next.delete(activeSheet.id);
+      return next;
+    });
+    setSheetViewMode('hub');
+    try {
+      localStorage.setItem('sc_sheets_view_mode', 'hub');
+    } catch {
+      // ignore
+    }
+    onNotify?.(`Sheet "${activeSheet.name}" locked 🔒`);
+  }, [activeSheet, onNotify]);
+
+  const handleUnlockSubmit = useCallback(async () => {
+    if (!pinUnlockTarget || !pinUnlockTarget.settings?.pinHash) return;
+    const hash = await hashPin(enteredPin);
+    if (hash === pinUnlockTarget.settings.pinHash) {
+      setUnlockedSheetIds((prev) => new Set(prev).add(pinUnlockTarget.id));
+      setActiveSheetId(pinUnlockTarget.id);
+      setSheetViewMode('table');
+      try {
+        localStorage.setItem('sc_sheets_view_mode', 'table');
+      } catch {
+        // ignore
+      }
+      setPinUnlockModalOpen(false);
+      setEnteredPin('');
+      setPinError('');
+      onNotify?.(`Sheet "${pinUnlockTarget.name}" Unlocked ✓`, 'ok');
+    } else {
+      setPinError('Incorrect PIN. Please try again.');
+    }
+  }, [enteredPin, pinUnlockTarget, onNotify]);
+
+  const handleSavePinProtection = useCallback(async () => {
+    if (!pinSetupTarget) return;
+    if (!/^\d{4,6}$/.test(newPin)) {
+      setPinSetupError('PIN must be 4 to 6 numeric digits.');
+      return;
+    }
+    if (newPin !== confirmPin) {
+      setPinSetupError('PINs do not match.');
+      return;
+    }
+    const pinHash = await hashPin(newPin);
+    const updatedSettings: SheetSettings = {
+      ...pinSetupTarget.settings,
+      pinHash,
+      pinHint: pinHintInput.trim() || undefined,
+    };
+
+    updateAnySheet(pinSetupTarget.id, (curr) => ({
+      ...curr,
+      settings: updatedSettings,
+    }));
+
+    setUnlockedSheetIds((prev) => new Set(prev).add(pinSetupTarget.id));
+    setPinSetupModalOpen(false);
+    setNewPin('');
+    setConfirmPin('');
+    setPinHintInput('');
+    setPinSetupError('');
+    onNotify?.(`PIN protection set for "${pinSetupTarget.name}" 🔒`, 'ok');
+  }, [pinSetupTarget, newPin, confirmPin, pinHintInput, updateAnySheet, onNotify]);
+
+  const handleRemovePinProtection = useCallback(() => {
+    if (!pinSetupTarget) return;
+    const updatedSettings: SheetSettings = {
+      ...pinSetupTarget.settings,
+      pinHash: undefined,
+      pinHint: undefined,
+    };
+    updateAnySheet(pinSetupTarget.id, (curr) => ({
+      ...curr,
+      settings: updatedSettings,
+    }));
+    setUnlockedSheetIds((prev) => {
+      const next = new Set(prev);
+      next.delete(pinSetupTarget.id);
+      return next;
+    });
+    setPinSetupModalOpen(false);
+    setNewPin('');
+    setConfirmPin('');
+    setPinHintInput('');
+    setPinSetupError('');
+    onNotify?.(`PIN protection removed from "${pinSetupTarget.name}"`, 'ok');
+  }, [pinSetupTarget, updateAnySheet, onNotify]);
 
   // Undo and Redo Handlers
   const handleUndo = useCallback(() => {
@@ -1743,701 +1941,1287 @@ export function JobSheetsView({
         />
       </div>
 
-      {/* Google Sheets Multi-Tab Workbook Container */}
-      <div className="rounded-2xl border border-[#E6E1D6] bg-white shadow-[0_14px_36px_-18px_rgba(17,19,24,0.12)] overflow-hidden">
-        {/* 1. Top Google Sheets Tab Bar (Shows Clean Tab Name + Row Count, Never Forces ₹0.00) */}
-        <div className="flex flex-wrap items-center justify-between gap-2 bg-[#FAF8F5] border-b border-[#E6E1D6] px-3 pt-2.5 pb-0">
-          <div
-            role="tablist"
-            aria-label="Job Workbook Sheet Tabs"
-            className="flex items-center gap-1 overflow-x-auto max-w-full pb-0"
-          >
-            {visibleSheets.map((sheet) => {
-              const isActive = activeSheet?.id === sheet.id;
-              const isDirty = dirtySheetIds.has(sheet.id);
+      {/* 1. Sheet Cards Hub View OR Google Sheets Multi-Tab Workbook */}
+      {sheetViewMode === 'hub' ? (
+        <div className="space-y-4">
+          {/* Hub Navigation and Search Header */}
+          <div className="rounded-2xl border border-[#E6E1D6] bg-white p-4 shadow-sm space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl sm:text-2xl font-black text-[#111318] flex items-center gap-2">
+                  <LayoutGrid className="h-6 w-6 text-[#C59B27]" />
+                  <span>Sheet Cards Hub</span>
+                </h2>
+                <p className="text-xs text-[#686E78] mt-0.5">
+                  Select a sheet card to open. PIN-protected sheets remain securely sealed until unlocked.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {activeSheet && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleOpenSheet(activeSheet)}
+                    className="bg-[#FAF8F5] text-[#111318] hover:bg-[#111318] hover:text-[#E5C158] font-bold"
+                  >
+                    <span>Continue: {activeSheet.name}</span>
+                    <FileSpreadsheet className="h-3.5 w-3.5 ml-1 text-[#C59B27]" />
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={() => openNewTabModal('job_tracker')}
+                  className="bg-[#111318] text-[#E5C158] hover:bg-[#1E232D]"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" /> + New Sheet
+                </Button>
+              </div>
+            </div>
+
+            {/* Scope, Status & Search Filter */}
+            <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-[#E6E1D6]">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Scope filter pills */}
+                <div className="inline-flex rounded-lg border border-[#E6E1D6] bg-[#FAF8F5] p-0.5 text-xs font-semibold">
+                  {(['all', 'business', 'personal', 'family'] as const).map((sc) => (
+                    <button
+                      key={sc}
+                      type="button"
+                      onClick={() => setHubScopeFilter(sc)}
+                      className={cn(
+                        'px-2.5 py-1 rounded capitalize cursor-pointer transition-colors',
+                        hubScopeFilter === sc ? 'bg-[#111318] text-[#E5C158]' : 'text-[#686E78] hover:text-[#111318]'
+                      )}
+                    >
+                      {sc === 'all' ? 'All Scopes' : sc}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Active vs Archived filter */}
+                <div className="inline-flex rounded-lg border border-[#E6E1D6] bg-[#FAF8F5] p-0.5 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setSheetScopeFilter('active')}
+                    className={cn(
+                      'px-2.5 py-1 rounded cursor-pointer transition-colors',
+                      sheetScopeFilter === 'active' ? 'bg-[#111318] text-[#E5C158]' : 'text-[#686E78] hover:text-[#111318]'
+                    )}
+                  >
+                    Active ({sheets.filter((s) => !s.archived).length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSheetScopeFilter('archived')}
+                    className={cn(
+                      'px-2.5 py-1 rounded cursor-pointer transition-colors',
+                      sheetScopeFilter === 'archived' ? 'bg-[#111318] text-[#E5C158]' : 'text-[#686E78] hover:text-[#111318]'
+                    )}
+                  >
+                    Archived ({sheets.filter((s) => Boolean(s.archived)).length})
+                  </button>
+                </div>
+              </div>
+
+              {/* Search */}
+              <div className="relative">
+                <Search className="h-3.5 w-3.5 text-[#686E78] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={hubSearchQuery}
+                  onChange={(e) => setHubSearchQuery(e.target.value)}
+                  placeholder="Search sheets or columns..."
+                  className="h-8 w-48 sm:w-64 rounded-lg border border-[#E6E1D6] bg-[#FAF8F5] pl-8 pr-2.5 text-xs text-[#111318] focus:bg-white focus:border-[#111318] focus:outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Cards Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filteredHubSheets.map((sheet) => {
+              const isLocked = Boolean(sheet.settings?.pinHash && !unlockedSheetIds.has(sheet.id));
               const colorMeta = TAB_COLOR_META[sheet.color] ?? TAB_COLOR_META.gold;
 
               return (
                 <div
                   key={sheet.id}
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={() => setActiveSheetId(sheet.id)}
-                  onDoubleClick={() => {
-                    setRenamingTabId(sheet.id);
-                    setRenameTabDraft(sheet.name);
-                  }}
-                  className={cn(
-                    'group relative flex items-center gap-2 rounded-t-xl border border-b-0 px-3.5 py-2 text-xs font-semibold transition-all cursor-pointer select-none shrink-0',
-                    isActive
-                      ? `bg-white text-[#111318] border-[#E6E1D6] shadow-[0_-2px_8px_rgba(17,19,24,0.04)] ${colorMeta.activeBorder}`
-                      : 'bg-[#F3EFEA]/80 text-[#52504C] border-transparent hover:bg-white/70 hover:text-[#111318]',
-                  )}
+                  onClick={() => handleOpenSheet(sheet)}
+                  className="group relative rounded-2xl border border-[#E6E1D6] bg-white p-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer hover:border-[#111318] min-h-[220px]"
                 >
-                  <span className={cn('h-2 w-2 rounded-full shrink-0', colorMeta.dot)} />
+                  {/* Top Color Accent */}
+                  <div className={cn('absolute top-0 left-0 right-0 h-1.5', colorMeta.dot)} />
 
-                  {renamingTabId === sheet.id ? (
-                    <input
-                      type="text"
-                      value={renameTabDraft}
-                      onChange={(e) => setRenameTabDraft(e.target.value)}
-                      onBlur={() => commitTabRename(sheet.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitTabRename(sheet.id);
-                        if (e.key === 'Escape') setRenamingTabId(null);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      autoFocus
-                      className="w-36 rounded border border-[#C59B27] bg-white px-1.5 py-0.5 text-xs font-semibold text-[#111318] focus:outline-none"
-                    />
-                  ) : (
-                    <span className="truncate max-w-[180px]" title="Double-click to rename tab">
-                      {sheet.name}
-                    </span>
-                  )}
-
-                  {/* Row count badge (universal for any kind of data sheet) */}
-                  <span className="rounded bg-[#FAF8F5] border border-[#E6E1D6] px-1.5 py-0.2 text-[10px] font-mono text-[#686E78]">
-                    {sheet.rows.length}r
-                  </span>
-
-                  {isDirty && (
-                    <span
-                      className="h-1.5 w-1.5 rounded-full bg-amber-500"
-                      title="Auto-saving..."
-                    />
-                  )}
-
-                  {isActive && renamingTabId !== sheet.id && (
-                    <div
-                      className="flex items-center gap-0.5 ml-0.5"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRenamingTabId(sheet.id);
-                          setRenameTabDraft(sheet.name);
-                        }}
-                        className="rounded p-0.5 text-[#686E78] hover:bg-[#FAF8F5] hover:text-[#111318] cursor-pointer"
-                        title="Rename Tab"
-                        aria-label={`Rename ${sheet.name}`}
-                      >
-                        <Edit3 className="h-3 w-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDuplicateTab(sheet)}
-                        className="rounded p-0.5 text-[#686E78] hover:bg-[#FAF8F5] hover:text-[#111318] cursor-pointer"
-                        title="Duplicate Tab"
-                        aria-label={`Duplicate ${sheet.name}`}
-                      >
-                        <Copy className="h-3 w-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleArchiveSheet(sheet)}
-                        className="rounded p-0.5 text-[#686E78] hover:bg-amber-50 hover:text-[#C59B27] cursor-pointer"
-                        title={sheet.archived ? "Restore Tab from Archive" : "Archive Tab"}
-                        aria-label={sheet.archived ? `Restore ${sheet.name}` : `Archive ${sheet.name}`}
-                      >
-                        {sheet.archived ? (
-                          <ArchiveRestore className="h-3 w-3 text-emerald-600" />
-                        ) : (
-                          <Archive className="h-3 w-3" />
+                  <div>
+                    {/* Card Header: Scope + Lock + Menu */}
+                    <div className="flex items-center justify-between gap-1.5 pt-1">
+                      <span
+                        className={cn(
+                          'rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider',
+                          sheet.scope === 'business' && 'bg-amber-100 text-amber-900 border border-amber-200',
+                          sheet.scope === 'personal' && 'bg-emerald-100 text-emerald-900 border border-emerald-200',
+                          sheet.scope === 'family' && 'bg-blue-100 text-blue-900 border border-blue-200',
                         )}
-                      </button>
-                      {sheets.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => setDeleteTabTarget(sheet)}
-                          className="rounded p-0.5 text-[#686E78] hover:bg-rose-50 hover:text-rose-600 cursor-pointer"
-                          title="Delete Tab (asks confirmation)"
-                          aria-label={`Delete ${sheet.name}`}
+                      >
+                        {sheet.scope}
+                      </span>
+
+                      <div className="flex items-center gap-1">
+                        {sheet.settings?.pinHash ? (
+                          <span
+                            className={cn(
+                              'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold',
+                              isLocked
+                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            )}
+                            title={isLocked ? 'Protected: PIN Required to open' : 'Unlocked for this session'}
+                          >
+                            {isLocked ? <Lock className="h-2.5 w-2.5" /> : <Unlock className="h-2.5 w-2.5" />}
+                            <span>{isLocked ? 'Protected' : 'Unlocked'}</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-[#FAF8F5] border border-[#E6E1D6] px-2 py-0.5 text-[10px] text-[#686E78]">
+                            <Unlock className="h-2.5 w-2.5 text-slate-400" />
+                            <span>Open</span>
+                          </span>
+                        )}
+
+                        {/* 3-dot menu */}
+                        <div className="relative" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => setCardMenuOpenId(cardMenuOpenId === sheet.id ? null : sheet.id)}
+                            className="p-1 rounded-lg text-[#686E78] hover:text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </button>
+
+                          {cardMenuOpenId === sheet.id && (
+                            <>
+                              <div className="fixed inset-0 z-40" onClick={() => setCardMenuOpenId(null)} />
+                              <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-xl border border-[#E6E1D6] bg-white p-1 shadow-lg text-xs space-y-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCardMenuOpenId(null);
+                                    handleOpenSheet(sheet);
+                                  }}
+                                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                                >
+                                  <FileSpreadsheet className="h-3.5 w-3.5 text-[#059669]" /> Open Sheet
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCardMenuOpenId(null);
+                                    setPinSetupTarget(sheet);
+                                    setNewPin('');
+                                    setConfirmPin('');
+                                    setPinHintInput(sheet.settings?.pinHint || '');
+                                    setPinSetupError('');
+                                    setPinSetupModalOpen(true);
+                                  }}
+                                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                                >
+                                  <Shield className="h-3.5 w-3.5 text-[#C59B27]" />
+                                  <span>{sheet.settings?.pinHash ? 'Change / Remove PIN' : 'Set Protection PIN'}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCardMenuOpenId(null);
+                                    void handleDuplicateTab(sheet);
+                                  }}
+                                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                                >
+                                  <Copy className="h-3.5 w-3.5 text-[#686E78]" /> Duplicate
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCardMenuOpenId(null);
+                                    handleArchiveSheet(sheet);
+                                  }}
+                                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                                >
+                                  <Archive className="h-3.5 w-3.5 text-amber-600" />
+                                  <span>{sheet.archived ? 'Restore Tab' : 'Archive Sheet'}</span>
+                                </button>
+                                {sheets.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setCardMenuOpenId(null);
+                                      setDeleteTabTarget(sheet);
+                                    }}
+                                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-rose-600 hover:bg-rose-50 cursor-pointer"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" /> Delete Sheet
+                                  </button>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bold Title */}
+                    <h3 className="text-lg font-black text-[#111318] group-hover:text-[#C59B27] transition-colors mt-2.5 truncate" title={sheet.name}>
+                      {sheet.name}
+                    </h3>
+
+                    {/* Metrics */}
+                    <div className="mt-1 flex items-center gap-2 text-xs text-[#686E78]">
+                      <span className="font-mono font-semibold text-[#111318]">{sheet.rows.length} rows</span>
+                      <span>•</span>
+                      <span>{sheet.columns.length} columns</span>
+                    </div>
+
+                    {/* Column Chips */}
+                    <div className="mt-3 flex flex-wrap gap-1">
+                      {sheet.columns.slice(0, 4).map((col) => (
+                        <span
+                          key={col.id}
+                          className="rounded bg-[#FAF8F5] border border-[#E6E1D6] px-1.5 py-0.5 text-[10px] text-[#52504C] truncate max-w-[100px]"
                         >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
+                          {col.label}
+                        </span>
+                      ))}
+                      {sheet.columns.length > 4 && (
+                        <span className="rounded bg-[#FAF8F5] border border-[#E6E1D6] px-1.5 py-0.5 text-[10px] text-[#686E78]">
+                          +{sheet.columns.length - 4} more
+                        </span>
                       )}
                     </div>
-                  )}
+                  </div>
+
+                  {/* Card Footer */}
+                  <div className="mt-4 pt-3 border-t border-[#E6E1D6] flex items-center justify-between">
+                    <span className="text-[10px] text-[#686E78]">
+                      {sheet.updatedAt ? new Date(sheet.updatedAt).toLocaleDateString() : 'Active'}
+                    </span>
+
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className={cn(
+                        'font-bold transition-all',
+                        isLocked
+                          ? 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100'
+                          : 'bg-[#FAF8F5] text-[#111318] hover:bg-[#111318] hover:text-[#E5C158]'
+                      )}
+                    >
+                      {isLocked ? (
+                        <>
+                          <Lock className="h-3 w-3 mr-1 text-rose-600" /> Unlock & Open
+                        </>
+                      ) : (
+                        <>Open Sheet →</>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               );
             })}
 
-            {/* + New Job Tab Button */}
-            <button
-              type="button"
+            {/* + Create New Sheet Card */}
+            <div
               onClick={() => openNewTabModal('job_tracker')}
-              className="mb-1 ml-1 inline-flex items-center gap-1 rounded-lg bg-[#111318] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1E232D] cursor-pointer shrink-0 shadow-2xs"
-              title="Add a new sheet tab"
+              className="rounded-2xl border-2 border-dashed border-[#D5CFBE] bg-[#FAF8F5]/60 hover:bg-white p-6 flex flex-col items-center justify-center text-center hover:border-[#111318] cursor-pointer transition-all min-h-[220px] group shadow-2xs"
             >
-              <Plus className="h-3.5 w-3.5 text-[#E5C158]" />
-              <span>+ New Tab</span>
-            </button>
+              <div className="h-12 w-12 rounded-full bg-white border border-[#E6E1D6] flex items-center justify-center text-[#111318] group-hover:bg-[#111318] group-hover:text-[#E5C158] transition-all shadow-2xs">
+                <Plus className="h-6 w-6" />
+              </div>
+              <div className="mt-3 font-bold text-sm text-[#111318]">Create New Sheet</div>
+              <div className="text-[11px] text-[#686E78] mt-1 max-w-[180px]">
+                Job tracker, client billing, or blank custom spreadsheet
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Google Sheets Multi-Tab Workbook Container */
+        <div className="rounded-2xl border border-[#E6E1D6] bg-white shadow-[0_14px_36px_-18px_rgba(17,19,24,0.12)] overflow-hidden">
+          {/* Bold and Bigger Sheet Header */}
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-white border-b border-[#E6E1D6]">
+            {/* Left: Back to Cards Hub + Bold Title + Badges */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setSheetViewMode('hub');
+                  try { localStorage.setItem('sc_sheets_view_mode', 'hub'); } catch {}
+                }}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-[#E6E1D6] bg-[#FAF8F5] px-3 py-1.5 text-xs font-bold text-[#111318] hover:bg-white hover:border-[#111318] cursor-pointer shadow-2xs transition-all shrink-0"
+                title="Back to All Sheets (Cards Hub)"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                <LayoutGrid className="h-3.5 w-3.5 text-[#C59B27]" />
+                <span className="hidden sm:inline">Cards Hub</span>
+              </button>
 
-            {/* Sheet Archive Filter (Active vs Archived Tabs) */}
-            <div className="inline-flex rounded-lg border border-[#E6E1D6] bg-white p-0.5 text-[11px] font-semibold shrink-0 mb-1 ml-1">
-              <button
-                type="button"
-                onClick={() => setSheetScopeFilter('active')}
-                className={cn(
-                  'px-2 py-0.5 rounded cursor-pointer transition-colors',
-                  sheetScopeFilter === 'active'
-                    ? 'bg-[#111318] text-[#E5C158]'
-                    : 'text-[#686E78] hover:text-[#111318]',
-                )}
-                title="Show active working sheets"
-              >
-                Active ({sheets.filter((s) => !s.archived).length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setSheetScopeFilter('archived')}
-                className={cn(
-                  'px-2 py-0.5 rounded cursor-pointer transition-colors',
-                  sheetScopeFilter === 'archived'
-                    ? 'bg-[#111318] text-[#E5C158]'
-                    : 'text-[#686E78] hover:text-[#111318]',
-                )}
-                title="Show archived sheets"
-              >
-                Archived ({sheets.filter((s) => Boolean(s.archived)).length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setSheetScopeFilter('all')}
-                className={cn(
-                  'px-2 py-0.5 rounded cursor-pointer transition-colors',
-                  sheetScopeFilter === 'all'
-                    ? 'bg-[#111318] text-[#E5C158]'
-                    : 'text-[#686E78] hover:text-[#111318]',
-                )}
-                title="Show all sheets"
-              >
-                All
-              </button>
+              <div className="h-5 w-px bg-[#E6E1D6] hidden sm:block" />
+
+              {/* Bold and Bigger Title */}
+              {activeSheet && (
+                renamingTabId === activeSheet.id ? (
+                  <input
+                    type="text"
+                    value={renameTabDraft}
+                    onChange={(e) => setRenameTabDraft(e.target.value)}
+                    onBlur={() => commitTabRename(activeSheet.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitTabRename(activeSheet.id);
+                      if (e.key === 'Escape') setRenamingTabId(null);
+                    }}
+                    autoFocus
+                    className="text-xl sm:text-2xl font-black text-[#111318] border-b-2 border-[#C59B27] bg-transparent focus:outline-none px-1"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 group">
+                    <h1
+                      className="text-xl sm:text-2xl font-black text-[#111318] tracking-tight cursor-pointer"
+                      title="Click to rename sheet"
+                      onClick={() => {
+                        setRenamingTabId(activeSheet.id);
+                        setRenameTabDraft(activeSheet.name);
+                      }}
+                    >
+                      {activeSheet.name}
+                    </h1>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRenamingTabId(activeSheet.id);
+                        setRenameTabDraft(activeSheet.name);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-[#686E78] hover:text-[#111318] rounded cursor-pointer transition-opacity"
+                      title="Rename Sheet"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )
+              )}
+
+              {activeSheet && (
+                <>
+                  {/* Scope Tag */}
+                  <span
+                    className={cn(
+                      'rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider',
+                      activeSheet.scope === 'business' && 'bg-amber-100 text-amber-900 border border-amber-200',
+                      activeSheet.scope === 'personal' && 'bg-emerald-100 text-emerald-900 border border-emerald-200',
+                      activeSheet.scope === 'family' && 'bg-blue-100 text-blue-900 border border-blue-200',
+                    )}
+                  >
+                    {activeSheet.scope}
+                  </span>
+
+                  {/* PIN Lock / Set PIN button */}
+                  {activeSheet.settings?.pinHash ? (
+                    <button
+                      type="button"
+                      onClick={handleLockActiveSheet}
+                      className="inline-flex items-center gap-1 rounded-full bg-rose-50 border border-rose-200 px-2.5 py-0.5 text-xs font-bold text-rose-700 hover:bg-rose-100 cursor-pointer transition-colors shadow-2xs"
+                      title="Lock sheet with PIN and return to Cards Hub"
+                    >
+                      <Lock className="h-3 w-3" />
+                      <span>Lock Sheet</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPinSetupTarget(activeSheet);
+                        setNewPin('');
+                        setConfirmPin('');
+                        setPinHintInput(activeSheet.settings?.pinHint || '');
+                        setPinSetupError('');
+                        setPinSetupModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-full bg-[#FAF8F5] border border-[#E6E1D6] px-2.5 py-0.5 text-xs font-semibold text-[#686E78] hover:text-[#111318] hover:bg-[#F3EFEA] cursor-pointer transition-colors"
+                      title="Optional: Add PIN protection to seal this sheet"
+                    >
+                      <Shield className="h-3 w-3 text-slate-500" />
+                      <span>Set PIN</span>
+                    </button>
+                  )}
+
+                  <span className="text-xs text-[#686E78] font-mono hidden md:inline">
+                    ({activeSheet.rows.length} rows · {activeSheet.columns.length} cols)
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* Right: View Mode Toggle */}
+            <div className="flex items-center gap-2">
+              <div className="inline-flex rounded-lg border border-[#E6E1D6] bg-[#FAF8F5] p-0.5 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSheetViewMode('hub');
+                    try { localStorage.setItem('sc_sheets_view_mode', 'hub'); } catch {}
+                  }}
+                  className="px-2.5 py-1 rounded text-[#686E78] hover:text-[#111318] cursor-pointer flex items-center gap-1"
+                >
+                  <LayoutGrid className="h-3 w-3" />
+                  <span>Cards Hub</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSheetViewMode('table');
+                    try { localStorage.setItem('sc_sheets_view_mode', 'table'); } catch {}
+                  }}
+                  className="px-2.5 py-1 rounded bg-[#111318] text-[#E5C158] font-bold cursor-pointer flex items-center gap-1"
+                >
+                  <FileSpreadsheet className="h-3 w-3" />
+                  <span>Table</span>
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Right Quick Template Launchers */}
-          <div className="flex items-center gap-1.5 pb-1.5">
-            <span className="hidden xl:inline text-[11px] text-[#686E78]">Templates:</span>
-            <button
-              type="button"
-              onClick={() => openNewTabModal('job_tracker')}
-              className="rounded-md bg-white border border-[#E6E1D6] px-2 py-1 text-[11px] font-medium text-[#111318] hover:bg-[#F3EFEA] cursor-pointer"
-            >
-              + Job/Role Tracker
-            </button>
-            <button
-              type="button"
-              onClick={() => openNewTabModal('freelance')}
-              className="rounded-md bg-white border border-[#E6E1D6] px-2 py-1 text-[11px] font-medium text-[#111318] hover:bg-[#F3EFEA] cursor-pointer"
-            >
-              + Client Billing
-            </button>
-            <button
-              type="button"
-              onClick={() => openNewTabModal('blank')}
-              className="rounded-md bg-white border border-[#E6E1D6] px-2 py-1 text-[11px] font-medium text-[#111318] hover:bg-[#F3EFEA] cursor-pointer"
-            >
-              + Blank Sheet
-            </button>
-          </div>
-        </div>
+          {/* 1. Tab Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-[#FAF8F5] border-b border-[#E6E1D6] px-3 pt-2 pb-0">
+            <div role="tablist" aria-label="Job Workbook Sheet Tabs" className="flex items-center gap-1 overflow-x-auto max-w-full pb-0">
+              {visibleSheets.map((sheet) => {
+                const isActive = activeSheet?.id === sheet.id;
+                const isDirty = dirtySheetIds.has(sheet.id);
+                const colorMeta = TAB_COLOR_META[sheet.color] ?? TAB_COLOR_META.gold;
+                const isLocked = Boolean(sheet.settings?.pinHash && !unlockedSheetIds.has(sheet.id));
 
-        {/* 2. Sheet Control & Formula Bar (`fx`) */}
-        {activeSheet && (
-          <div className="border-b border-[#E6E1D6] bg-white p-3 space-y-2.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                {/* Scope Selector (Business -> Personal -> Family) */}
-                <Select
-                  aria-label="Job sheet scope"
-                  value={activeSheet.scope}
-                  onChange={(e) =>
-                    updateActiveSheetLocal((curr) => ({
-                      ...curr,
-                      scope: e.target.value as Scope,
-                    }))
-                  }
-                  className="w-32 h-8 text-xs font-semibold"
-                >
-                  <option value="business">Business</option>
-                  <option value="personal">Personal</option>
-                  <option value="family">Family</option>
-                </Select>
-
-                {/* Tab Color Selector */}
-                <div className="flex items-center gap-1 rounded-lg bg-[#FAF8F5] border border-[#E6E1D6] px-2 py-1">
-                  <span className="text-[10px] font-semibold text-[#686E78] mr-1">Tab:</span>
-                  {(['gold', 'emerald', 'obsidian', 'rose', 'slate'] as const).map((colKey) => (
-                    <button
-                      key={colKey}
-                      type="button"
-                      onClick={() =>
-                        updateActiveSheetLocal((curr) => ({
-                          ...curr,
-                          color: colKey,
-                        }))
-                      }
-                      aria-label={`Set tab color ${colKey}`}
-                      className={cn(
-                        'h-3.5 w-3.5 rounded-full cursor-pointer transition-transform',
-                        TAB_COLOR_META[colKey].dot,
-                        activeSheet.color === colKey && 'ring-2 ring-offset-1 ring-[#111318] scale-110',
-                      )}
-                    />
-                  ))}
-                </div>
-
-                {/* Custom Status Options Button ("ADD CUSTOM SET STSTUS OPTION") */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPendingStatusCellTarget(null);
-                    setStatusModalOpen(true);
-                  }}
-                  className="inline-flex items-center gap-1 rounded-lg border border-[#E6E1D6] bg-[#FAF8F5] px-2.5 py-1 text-xs font-semibold text-[#111318] hover:bg-[#F3EFEA] cursor-pointer"
-                  title="Customize status options for this sheet"
-                >
-                  <Tag className="h-3.5 w-3.5 text-[#C59B27]" />
-                  <span>Custom Statuses ({activeStatusOptions.length})</span>
-                </button>
-
-                {/* Optional Totals Toggle ("ADD TOTAL WHEN NEEDED. NOT EVERY TIME.") */}
-                <button
-                  type="button"
-                  onClick={handleToggleTotals}
-                  className={cn(
-                    'inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold cursor-pointer transition-colors',
-                    showTotals
-                      ? 'bg-[#111318] text-[#E5C158] border-[#111318]'
-                      : 'bg-[#FAF8F5] text-[#686E78] border-[#E6E1D6] hover:text-[#111318]',
-                  )}
-                  title="Show or hide the Σ Totals row at the bottom of this sheet"
-                >
-                  <Calculator className="h-3.5 w-3.5" />
-                  <span>Σ Totals: {showTotals ? 'On' : 'Off'}</span>
-                </button>
-
-                {/* Auto-Default Same Toggle (Sticky Defaults for New Rows) */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAutoDefaultSame((prev) => {
-                      const next = !prev;
-                      try {
-                        localStorage.setItem('sc_sheets_auto_default', String(next));
-                      } catch {
-                        // ignore
-                      }
-                      onNotify?.(
-                        next
-                          ? 'Auto-Default Same: ON (New rows will keep previous row values)'
-                          : 'Auto-Default Same: OFF',
-                      );
-                      return next;
-                    });
-                  }}
-                  className={cn(
-                    'inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold cursor-pointer transition-colors',
-                    autoDefaultSame
-                      ? 'bg-[#111318] text-[#E5C158] border-[#111318]'
-                      : 'bg-[#FAF8F5] text-[#686E78] border-[#E6E1D6] hover:text-[#111318]',
-                  )}
-                  title="When ON, new rows automatically inherit the previous row's cell values until you change them"
-                >
-                  <Repeat className="h-3.5 w-3.5" />
-                  <span>Auto-Default: {autoDefaultSame ? 'On' : 'Off'}</span>
-                </button>
-
-                {/* Undo & Redo History Controls */}
-                <div className="flex items-center rounded-lg border border-[#E6E1D6] bg-white p-0.5">
-                  <button
-                    type="button"
-                    onClick={handleUndo}
-                    disabled={undoStack.length === 0}
-                    className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold text-[#111318] hover:bg-[#FAF8F5] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                    title="Undo last change (Ctrl+Z)"
-                  >
-                    <Undo2 className="h-3.5 w-3.5 text-[#686E78]" />
-                    <span className="hidden sm:inline">Undo</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRedo}
-                    disabled={redoStack.length === 0}
-                    className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold text-[#111318] hover:bg-[#FAF8F5] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                    title="Redo last change (Ctrl+Y or Ctrl+Shift+Z)"
-                  >
-                    <Redo2 className="h-3.5 w-3.5 text-[#686E78]" />
-                    <span className="hidden sm:inline">Redo</span>
-                  </button>
-                </div>
-
-                {/* Centralized Sort Center Popover */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setSortCenterOpen(!sortCenterOpen)}
-                    className={cn(
-                      'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold cursor-pointer transition-colors',
-                      sortOrder !== 'normal' || sortColId !== null
-                        ? 'bg-[#111318] text-[#E5C158] border-[#111318] shadow-2xs'
-                        : 'bg-[#FAF8F5] text-[#686E78] border-[#E6E1D6] hover:text-[#111318]',
-                    )}
-                    title="Configure Sorting: Presets, Last Column First, or Column-Specific Sort"
-                  >
-                    <ArrowUpDown className="h-3.5 w-3.5" />
-                    <span>
-                      {sortColId
-                        ? `Sort: Col ${activeSheet.columns.find((c) => c.id === sortColId)?.key || ''} (${sortOrder === 'col_asc' ? '▲ A→Z' : '▼ Z→A'})`
-                        : sortOrder === 'latest_first'
-                          ? 'Sort: Newest First'
-                          : 'Sort Center'}
-                    </span>
-                    <ChevronDown className="h-3 w-3" />
-                  </button>
-
-                  {sortCenterOpen && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setSortCenterOpen(false)} />
-                      <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-xl border border-[#E6E1D6] bg-white p-3 shadow-xl text-xs space-y-3">
-                        <div className="flex items-center justify-between pb-1 border-b border-[#E6E1D6]">
-                          <span className="font-bold text-[#111318]">Sheet Sorting Center</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSortColId(null);
-                              setSortOrder('normal');
-                              setPinnedRowId(null);
-                              try { localStorage.setItem('sc_sheets_sort_order', 'normal'); } catch {}
-                              setSortCenterOpen(false);
-                              onNotify?.('Reset to Original Table Order');
-                            }}
-                            className="text-[10px] text-[#8C6D1F] hover:underline cursor-pointer font-semibold"
-                          >
-                            Clear Sort
-                          </button>
-                        </div>
-
-                        {/* Quick Presets */}
-                        <div className="space-y-1">
-                          <div className="text-[10px] font-bold uppercase text-[#686E78]">Quick Presets</div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSortColId(null);
-                              setSortOrder('normal');
-                              try { localStorage.setItem('sc_sheets_sort_order', 'normal'); } catch {}
-                              setSortCenterOpen(false);
-                              onNotify?.('Reset to Original Table Order (Row 1..N)');
-                            }}
-                            className={cn(
-                              'flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left font-medium cursor-pointer',
-                              sortOrder === 'normal' && !sortColId ? 'bg-[#FAF8F5] text-[#111318] font-bold' : 'hover:bg-[#FAF8F5] text-[#52504C]'
-                            )}
-                          >
-                            <span>Original Order (Row 1..N)</span>
-                            {sortOrder === 'normal' && !sortColId && <Check className="h-3 w-3 text-[#059669]" />}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSortColId(null);
-                              setSortOrder('latest_first');
-                              try { localStorage.setItem('sc_sheets_sort_order', 'latest_first'); } catch {}
-                              setSortCenterOpen(false);
-                              onNotify?.('Fast Entry: Newest Rows First (Row N..1)');
-                            }}
-                            className={cn(
-                              'flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left font-medium cursor-pointer',
-                              sortOrder === 'latest_first' ? 'bg-[#FAF8F5] text-[#111318] font-bold' : 'hover:bg-[#FAF8F5] text-[#52504C]'
-                            )}
-                          >
-                            <span>Fast Entry: Newest Rows First</span>
-                            {sortOrder === 'latest_first' && <Check className="h-3 w-3 text-[#059669]" />}
-                          </button>
-
-                          {/* Preset: Sort by Last Column Descending */}
-                          {activeSheet.columns.length > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const lastCol = activeSheet.columns[activeSheet.columns.length - 1];
-                                setSortColId(lastCol.id);
-                                setSortOrder('col_desc');
-                                setSortCenterOpen(false);
-                                onNotify?.(`Sorted by Last Column (${lastCol.key} · ${lastCol.label}) Descending ✓`);
-                              }}
-                              className={cn(
-                                'flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left font-medium cursor-pointer',
-                                sortColId === activeSheet.columns[activeSheet.columns.length - 1].id && sortOrder === 'col_desc'
-                                  ? 'bg-[#FAF8F5] text-[#111318] font-bold'
-                                  : 'hover:bg-[#FAF8F5] text-[#52504C]'
-                              )}
-                            >
-                              <span>Last Column First ({activeSheet.columns[activeSheet.columns.length - 1].label} ↓)</span>
-                              {sortColId === activeSheet.columns[activeSheet.columns.length - 1].id && sortOrder === 'col_desc' && (
-                                <Check className="h-3 w-3 text-[#059669]" />
-                              )}
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Column Specific Sort */}
-                        <div className="space-y-1.5 pt-2 border-t border-[#E6E1D6]">
-                          <div className="text-[10px] font-bold uppercase text-[#686E78]">Sort by Specific Column</div>
-                          <div className="space-y-1.5">
-                            <select
-                              value={sortColId || activeSheet.columns[0]?.id || ''}
-                              onChange={(e) => setSortColId(e.target.value)}
-                              className="w-full h-7 rounded border border-[#E6E1D6] bg-[#FAF8F5] px-2 text-xs text-[#111318]"
-                            >
-                              {activeSheet.columns.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  Column {c.key} · {c.label} ({c.type})
-                                </option>
-                              ))}
-                            </select>
-
-                            <div className="grid grid-cols-2 gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const targetId = sortColId || activeSheet.columns[0]?.id;
-                                  if (!targetId) return;
-                                  setSortColId(targetId);
-                                  setSortOrder('col_asc');
-                                  setSortCenterOpen(false);
-                                  const c = activeSheet.columns.find((col) => col.id === targetId);
-                                  onNotify?.(`Sorted ${c?.label || ''} (Ascending A→Z / 1→9) ✓`);
-                                }}
-                                className={cn(
-                                  'rounded border py-1 px-1.5 text-center text-xs font-semibold cursor-pointer',
-                                  sortOrder === 'col_asc' ? 'bg-[#111318] text-[#E5C158] border-[#111318]' : 'bg-[#FAF8F5] border-[#E6E1D6] text-[#52504C]'
-                                )}
-                              >
-                                ▲ Ascending (A→Z)
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const targetId = sortColId || activeSheet.columns[0]?.id;
-                                  if (!targetId) return;
-                                  setSortColId(targetId);
-                                  setSortOrder('col_desc');
-                                  setSortCenterOpen(false);
-                                  const c = activeSheet.columns.find((col) => col.id === targetId);
-                                  onNotify?.(`Sorted ${c?.label || ''} (Descending Z→A / 9→1) ✓`);
-                                }}
-                                className={cn(
-                                  'rounded border py-1 px-1.5 text-center text-xs font-semibold cursor-pointer',
-                                  sortOrder === 'col_desc' ? 'bg-[#111318] text-[#E5C158] border-[#111318]' : 'bg-[#FAF8F5] border-[#E6E1D6] text-[#52504C]'
-                                )}
-                              >
-                                ▼ Descending (Z→A)
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Action Buttons: Search, Status Filter, + Row, + Column, Import Excel, Export Excel/CSV */}
-              <div className="flex flex-wrap items-center gap-1.5">
-                <div className="relative">
-                  <Search className="h-3.5 w-3.5 text-[#686E78] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Filter rows..."
-                    className="h-8 w-32 sm:w-40 rounded-lg border border-[#E6E1D6] bg-[#FAF8F5] pl-8 pr-2.5 text-xs text-[#111318] focus:bg-white focus:border-[#111318] focus:outline-none"
-                  />
-                </div>
-
-                <Select
-                  aria-label="Filter by status"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-32 h-8 text-xs"
-                >
-                  <option value="all">All Statuses</option>
-                  {activeStatusOptions.map((st) => (
-                    <option key={st.label} value={st.label}>
-                      {st.label}
-                    </option>
-                  ))}
-                </Select>
-
-                {/* Positional + Row Split Button */}
-                <div className="relative inline-flex items-center">
-                  <Button
-                    variant="secondary"
-                    size="sm"
+                return (
+                  <div
+                    key={sheet.id}
+                    role="tab"
+                    aria-selected={isActive}
                     onClick={() => {
-                      const defPos = (sortOrder === 'latest_first' || sortColId !== null) ? 'top' : 'bottom';
-                      handleAddRow(defPos);
+                      if (isLocked) {
+                        setPinUnlockTarget(sheet);
+                        setEnteredPin('');
+                        setPinError('');
+                        setPinUnlockModalOpen(true);
+                        return;
+                      }
+                      setActiveSheetId(sheet.id);
                     }}
-                    className="rounded-r-none border-r-0"
-                    title={`Add row ${sortOrder === 'latest_first' || sortColId !== null ? 'at top (Fast Entry)' : 'at bottom'}`}
+                    onDoubleClick={() => {
+                      setRenamingTabId(sheet.id);
+                      setRenameTabDraft(sheet.name);
+                    }}
+                    className={cn(
+                      'group relative flex items-center gap-2 rounded-t-xl border border-b-0 px-3.5 py-2 text-xs font-semibold transition-all cursor-pointer select-none shrink-0',
+                      isActive
+                        ? `bg-white text-[#111318] border-[#E6E1D6] shadow-[0_-2px_8px_rgba(17,19,24,0.04)] ${colorMeta.activeBorder}`
+                        : 'bg-[#F3EFEA]/80 text-[#52504C] border-transparent hover:bg-white/70 hover:text-[#111318]',
+                    )}
                   >
-                    <Plus className="h-3.5 w-3.5 text-[#059669]" /> + Row
-                  </Button>
-                  <button
-                    type="button"
-                    onClick={() => setRowMenuOpen(!rowMenuOpen)}
-                    className="inline-flex h-8 items-center justify-center rounded-r-lg border border-[#E6E1D6] bg-white px-1.5 text-[#686E78] hover:bg-[#FAF8F5] hover:text-[#111318] cursor-pointer"
-                    title="Choose where to add row"
-                    aria-label="Row placement options"
-                  >
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </button>
+                    <span className={cn('h-2 w-2 rounded-full shrink-0', colorMeta.dot)} />
 
-                  {rowMenuOpen && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setRowMenuOpen(false)} />
-                      <div className="absolute left-0 top-full z-50 mt-1 w-56 rounded-xl border border-[#E6E1D6] bg-white p-1.5 shadow-lg text-xs space-y-0.5">
+                    {sheet.settings?.pinHash && (
+                      <span title={isLocked ? 'Protected by PIN (Locked)' : 'PIN Unlocked'}>
+                        <Lock
+                          className={cn('h-2.5 w-2.5 shrink-0', isLocked ? 'text-rose-500' : 'text-emerald-600')}
+                        />
+                      </span>
+                    )}
+
+                    {renamingTabId === sheet.id ? (
+                      <input
+                        type="text"
+                        value={renameTabDraft}
+                        onChange={(e) => setRenameTabDraft(e.target.value)}
+                        onBlur={() => commitTabRename(sheet.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') commitTabRename(sheet.id);
+                          if (e.key === 'Escape') setRenamingTabId(null);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        autoFocus
+                        className="w-36 rounded border border-[#C59B27] bg-white px-1.5 py-0.5 text-xs font-semibold text-[#111318] focus:outline-none"
+                      />
+                    ) : (
+                      <span className="truncate max-w-[180px]" title="Double-click to rename tab">
+                        {sheet.name}
+                      </span>
+                    )}
+
+                    <span className="rounded bg-[#FAF8F5] border border-[#E6E1D6] px-1.5 py-0.2 text-[10px] font-mono text-[#686E78]">
+                      {sheet.rows.length}r
+                    </span>
+
+                    {isDirty && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" title="Auto-saving..." />
+                    )}
+
+                    {isActive && renamingTabId !== sheet.id && (
+                      <div className="flex items-center gap-0.5 ml-0.5" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           onClick={() => {
-                            handleAddRow('top');
-                            setRowMenuOpen(false);
+                            setRenamingTabId(sheet.id);
+                            setRenameTabDraft(sheet.name);
                           }}
-                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                          className="rounded p-0.5 text-[#686E78] hover:bg-[#FAF8F5] hover:text-[#111318] cursor-pointer"
+                          title="Rename Tab"
                         >
-                          <ArrowUp className="h-3.5 w-3.5 text-[#059669]" />
-                          <div>
-                            <div>+ Add on Top (Row 1)</div>
-                            <div className="text-[10px] text-[#686E78] font-normal">Fast entry at sheet start</div>
-                          </div>
+                          <Edit3 className="h-3 w-3" />
                         </button>
-
                         <button
                           type="button"
-                          onClick={() => {
-                            handleAddRow('bottom');
-                            setRowMenuOpen(false);
-                          }}
-                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                          onClick={() => void handleDuplicateTab(sheet)}
+                          className="rounded p-0.5 text-[#686E78] hover:bg-[#FAF8F5] hover:text-[#111318] cursor-pointer"
+                          title="Duplicate Tab"
                         >
-                          <ArrowDown className="h-3.5 w-3.5 text-[#8C6D1F]" />
-                          <div>
-                            <div>+ Add at Bottom (End)</div>
-                            <div className="text-[10px] text-[#686E78] font-normal">Append at end of sheet</div>
-                          </div>
+                          <Copy className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleArchiveSheet(sheet)}
+                          className="rounded p-0.5 text-[#686E78] hover:bg-amber-50 hover:text-[#C59B27] cursor-pointer"
+                          title={sheet.archived ? "Restore Tab from Archive" : "Archive Tab"}
+                        >
+                          {sheet.archived ? <ArchiveRestore className="h-3 w-3 text-emerald-600" /> : <Archive className="h-3 w-3" />}
+                        </button>
+                        {sheets.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTabTarget(sheet)}
+                            className="rounded p-0.5 text-[#686E78] hover:bg-rose-50 hover:text-rose-600 cursor-pointer"
+                            title="Delete Tab"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={() => openNewTabModal('job_tracker')}
+                className="mb-1 ml-1 inline-flex items-center gap-1 rounded-lg bg-[#111318] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1E232D] cursor-pointer shrink-0 shadow-2xs"
+                title="Add a new sheet tab"
+              >
+                <Plus className="h-3.5 w-3.5 text-[#E5C158]" />
+                <span>+ New Tab</span>
+              </button>
+
+              <div className="inline-flex rounded-lg border border-[#E6E1D6] bg-white p-0.5 text-[11px] font-semibold shrink-0 mb-1 ml-1">
+                <button
+                  type="button"
+                  onClick={() => setSheetScopeFilter('active')}
+                  className={cn(
+                    'px-2 py-0.5 rounded cursor-pointer transition-colors',
+                    sheetScopeFilter === 'active' ? 'bg-[#111318] text-[#E5C158]' : 'text-[#686E78] hover:text-[#111318]'
+                  )}
+                >
+                  Active ({sheets.filter((s) => !s.archived).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSheetScopeFilter('archived')}
+                  className={cn(
+                    'px-2 py-0.5 rounded cursor-pointer transition-colors',
+                    sheetScopeFilter === 'archived' ? 'bg-[#111318] text-[#E5C158]' : 'text-[#686E78] hover:text-[#111318]'
+                  )}
+                >
+                  Archived ({sheets.filter((s) => Boolean(s.archived)).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSheetScopeFilter('all')}
+                  className={cn(
+                    'px-2 py-0.5 rounded cursor-pointer transition-colors',
+                    sheetScopeFilter === 'all' ? 'bg-[#111318] text-[#E5C158]' : 'text-[#686E78] hover:text-[#111318]'
+                  )}
+                >
+                  All
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* If Active Sheet is Protected and Locked: Display Barrier Screen! */}
+          {activeSheet && activeSheet.settings?.pinHash && !unlockedSheetIds.has(activeSheet.id) ? (
+            <div className="flex flex-col items-center justify-center p-12 text-center bg-white space-y-4 my-8">
+              <div className="h-16 w-16 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shadow-sm">
+                <Lock className="h-8 w-8" />
+              </div>
+              <div className="space-y-1">
+                <h2 className="text-xl font-black text-[#111318]">Sheet Sealed Behind PIN Barrier</h2>
+                <p className="text-sm text-[#686E78] max-w-md">
+                  "{activeSheet.name}" contains protected data. Please enter your PIN to unlock and view spreadsheet records.
+                </p>
+                {activeSheet.settings?.pinHint && (
+                  <p className="text-xs text-[#8C6D1F] italic pt-1">
+                    Hint: {activeSheet.settings.pinHint}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-3 pt-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => setSheetViewMode('hub')}
+                >
+                  <LayoutGrid className="h-4 w-4 mr-1.5" /> Return to Cards Hub
+                </Button>
+                <Button
+                  onClick={() => {
+                    setPinUnlockTarget(activeSheet);
+                    setEnteredPin('');
+                    setPinError('');
+                    setPinUnlockModalOpen(true);
+                  }}
+                  className="bg-[#111318] text-[#E5C158] hover:bg-[#1E232D]"
+                >
+                  <KeyRound className="h-4 w-4 mr-1.5" /> Enter PIN to Unlock
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Streamlined Single-Row Toolbar */}
+              {activeSheet && (
+                <div className="border-b border-[#E6E1D6] bg-white p-2.5 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    {/* Left: Undo, Redo, Sort Center, Search, Status Filter */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {/* Undo / Redo */}
+                      <div className="flex items-center rounded-lg border border-[#E6E1D6] bg-white p-0.5 shadow-2xs">
+                        <button
+                          type="button"
+                          onClick={handleUndo}
+                          disabled={undoStack.length === 0}
+                          className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold text-[#111318] hover:bg-[#FAF8F5] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                          title="Undo last change (Ctrl+Z)"
+                        >
+                          <Undo2 className="h-3.5 w-3.5 text-[#686E78]" />
+                          <span className="hidden sm:inline">Undo</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleRedo}
+                          disabled={redoStack.length === 0}
+                          className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold text-[#111318] hover:bg-[#FAF8F5] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                          title="Redo last change (Ctrl+Y or Ctrl+Shift+Z)"
+                        >
+                          <Redo2 className="h-3.5 w-3.5 text-[#686E78]" />
+                          <span className="hidden sm:inline">Redo</span>
+                        </button>
+                      </div>
+
+                      {/* Centralized Sort Center Popover */}
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setSortCenterOpen(!sortCenterOpen)}
+                          className={cn(
+                            'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold cursor-pointer transition-colors',
+                            sortOrder !== 'normal' || sortColId !== null
+                              ? 'bg-[#111318] text-[#E5C158] border-[#111318] shadow-2xs'
+                              : 'bg-[#FAF8F5] text-[#686E78] border-[#E6E1D6] hover:text-[#111318]',
+                          )}
+                          title="Configure Sorting: Presets, Last Column First, or Column-Specific Sort"
+                        >
+                          <ArrowUpDown className="h-3.5 w-3.5" />
+                          <span>
+                            {sortColId
+                              ? `Sort: Col ${activeSheet.columns.find((c) => c.id === sortColId)?.key || ''} (${sortOrder === 'col_asc' ? '▲ A→Z' : '▼ Z→A'})`
+                              : sortOrder === 'latest_first'
+                                ? 'Sort: Newest First'
+                                : 'Sort Center'}
+                          </span>
+                          <ChevronDown className="h-3 w-3" />
                         </button>
 
-                        {selectedCell && (
+                        {sortCenterOpen && (
                           <>
-                            <div className="my-1 border-t border-[#E6E1D6]" />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handleAddRow('above', selectedCell.rowIndex);
-                                setRowMenuOpen(false);
-                              }}
-                              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
-                            >
-                              <Plus className="h-3.5 w-3.5 text-[#2563EB]" />
-                              <div>
-                                <div>+ Insert Above Row #{selectedCell.rowIndex + 1}</div>
-                                <div className="text-[10px] text-[#686E78] font-normal">Before selected row</div>
+                            <div className="fixed inset-0 z-40" onClick={() => setSortCenterOpen(false)} />
+                            <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-xl border border-[#E6E1D6] bg-white p-3 shadow-xl text-xs space-y-3">
+                              <div className="flex items-center justify-between pb-1 border-b border-[#E6E1D6]">
+                                <span className="font-bold text-[#111318]">Sheet Sorting Center</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSortColId(null);
+                                    setSortOrder('normal');
+                                    setPinnedRowId(null);
+                                    try { localStorage.setItem('sc_sheets_sort_order', 'normal'); } catch {}
+                                    setSortCenterOpen(false);
+                                    onNotify?.('Reset to Original Table Order');
+                                  }}
+                                  className="text-[10px] text-[#8C6D1F] hover:underline cursor-pointer font-semibold"
+                                >
+                                  Clear Sort
+                                </button>
                               </div>
-                            </button>
 
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handleAddRow('below', selectedCell.rowIndex);
-                                setRowMenuOpen(false);
-                              }}
-                              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
-                            >
-                              <Plus className="h-3.5 w-3.5 text-[#2563EB]" />
-                              <div>
-                                <div>+ Insert Below Row #{selectedCell.rowIndex + 1}</div>
-                                <div className="text-[10px] text-[#686E78] font-normal">After selected row</div>
+                              {/* Quick Presets */}
+                              <div className="space-y-1">
+                                <div className="text-[10px] font-bold uppercase text-[#686E78]">Quick Presets</div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSortColId(null);
+                                    setSortOrder('normal');
+                                    try { localStorage.setItem('sc_sheets_sort_order', 'normal'); } catch {}
+                                    setSortCenterOpen(false);
+                                    onNotify?.('Reset to Original Table Order (Row 1..N)');
+                                  }}
+                                  className={cn(
+                                    'flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left font-medium cursor-pointer',
+                                    sortOrder === 'normal' && !sortColId ? 'bg-[#FAF8F5] text-[#111318] font-bold' : 'hover:bg-[#FAF8F5] text-[#52504C]'
+                                  )}
+                                >
+                                  <span>Original Order (Row 1..N)</span>
+                                  {sortOrder === 'normal' && !sortColId && <Check className="h-3 w-3 text-[#059669]" />}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSortColId(null);
+                                    setSortOrder('latest_first');
+                                    try { localStorage.setItem('sc_sheets_sort_order', 'latest_first'); } catch {}
+                                    setSortCenterOpen(false);
+                                    onNotify?.('Fast Entry: Newest Rows First (Row N..1)');
+                                  }}
+                                  className={cn(
+                                    'flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left font-medium cursor-pointer',
+                                    sortOrder === 'latest_first' ? 'bg-[#FAF8F5] text-[#111318] font-bold' : 'hover:bg-[#FAF8F5] text-[#52504C]'
+                                  )}
+                                >
+                                  <span>Fast Entry: Newest Rows First</span>
+                                  {sortOrder === 'latest_first' && <Check className="h-3 w-3 text-[#059669]" />}
+                                </button>
+
+                                {activeSheet.columns.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const lastCol = activeSheet.columns[activeSheet.columns.length - 1];
+                                      setSortColId(lastCol.id);
+                                      setSortOrder('col_desc');
+                                      setSortCenterOpen(false);
+                                      onNotify?.(`Sorted by Last Column (${lastCol.key} · ${lastCol.label}) Descending ✓`);
+                                    }}
+                                    className={cn(
+                                      'flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left font-medium cursor-pointer',
+                                      sortColId === activeSheet.columns[activeSheet.columns.length - 1].id && sortOrder === 'col_desc'
+                                        ? 'bg-[#FAF8F5] text-[#111318] font-bold'
+                                        : 'hover:bg-[#FAF8F5] text-[#52504C]'
+                                    )}
+                                  >
+                                    <span>Last Column First ({activeSheet.columns[activeSheet.columns.length - 1].label} ↓)</span>
+                                    {sortColId === activeSheet.columns[activeSheet.columns.length - 1].id && sortOrder === 'col_desc' && (
+                                      <Check className="h-3 w-3 text-[#059669]" />
+                                    )}
+                                  </button>
+                                )}
                               </div>
-                            </button>
+
+                              {/* Column Specific Sort */}
+                              <div className="space-y-1.5 pt-2 border-t border-[#E6E1D6]">
+                                <div className="text-[10px] font-bold uppercase text-[#686E78]">Sort by Specific Column</div>
+                                <div className="space-y-1.5">
+                                  <select
+                                    value={sortColId || activeSheet.columns[0]?.id || ''}
+                                    onChange={(e) => setSortColId(e.target.value)}
+                                    className="w-full h-7 rounded border border-[#E6E1D6] bg-[#FAF8F5] px-2 text-xs text-[#111318]"
+                                  >
+                                    {activeSheet.columns.map((c) => (
+                                      <option key={c.id} value={c.id}>
+                                        Column {c.key} · {c.label} ({c.type})
+                                      </option>
+                                    ))}
+                                  </select>
+
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const targetId = sortColId || activeSheet.columns[0]?.id;
+                                        if (!targetId) return;
+                                        setSortColId(targetId);
+                                        setSortOrder('col_asc');
+                                        setSortCenterOpen(false);
+                                        const c = activeSheet.columns.find((col) => col.id === targetId);
+                                        onNotify?.(`Sorted ${c?.label || ''} (Ascending A→Z / 1→9) ✓`);
+                                      }}
+                                      className={cn(
+                                        'rounded border py-1 px-1.5 text-center text-xs font-semibold cursor-pointer',
+                                        sortOrder === 'col_asc' ? 'bg-[#111318] text-[#E5C158] border-[#111318]' : 'bg-[#FAF8F5] border-[#E6E1D6] text-[#52504C]'
+                                      )}
+                                    >
+                                      ▲ Ascending (A→Z)
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const targetId = sortColId || activeSheet.columns[0]?.id;
+                                        if (!targetId) return;
+                                        setSortColId(targetId);
+                                        setSortOrder('col_desc');
+                                        setSortCenterOpen(false);
+                                        const c = activeSheet.columns.find((col) => col.id === targetId);
+                                        onNotify?.(`Sorted ${c?.label || ''} (Descending Z→A / 9→1) ✓`);
+                                      }}
+                                      className={cn(
+                                        'rounded border py-1 px-1.5 text-center text-xs font-semibold cursor-pointer',
+                                        sortOrder === 'col_desc' ? 'bg-[#111318] text-[#E5C158] border-[#111318]' : 'bg-[#FAF8F5] border-[#E6E1D6] text-[#52504C]'
+                                      )}
+                                    >
+                                      ▼ Descending (Z→A)
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
                           </>
                         )}
                       </div>
-                    </>
-                  )}
-                </div>
 
-                {/* Mobile View Mode Switcher (< 768px: Table vs Cards) */}
-                <div className="flex md:hidden items-center rounded-lg border border-[#E6E1D6] bg-white p-0.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setMobileViewMode('table')}
-                    className={cn(
-                      'px-2.5 py-1 text-[11px] font-semibold rounded cursor-pointer transition-colors',
-                      mobileViewMode === 'table'
-                        ? 'bg-[#111318] text-[#E5C158]'
-                        : 'text-[#686E78] hover:text-[#111318]',
-                    )}
-                  >
-                    Table
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMobileViewMode('cards')}
-                    className={cn(
-                      'px-2.5 py-1 text-[11px] font-semibold rounded cursor-pointer transition-colors',
-                      mobileViewMode === 'cards'
-                        ? 'bg-[#111318] text-[#E5C158]'
-                        : 'text-[#686E78] hover:text-[#111318]',
-                    )}
-                  >
-                    Cards
-                  </button>
-                </div>
+                      {/* Filter rows search */}
+                      <div className="relative">
+                        <Search className="h-3.5 w-3.5 text-[#686E78] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="Filter rows..."
+                          className="h-8 w-28 sm:w-36 rounded-lg border border-[#E6E1D6] bg-[#FAF8F5] pl-8 pr-2.5 text-xs text-[#111318] focus:bg-white focus:border-[#111318] focus:outline-none"
+                        />
+                      </div>
 
-                <Button variant="secondary" size="sm" onClick={() => openAddColModal('end')}>
-                  <Columns className="h-3.5 w-3.5 text-[#8C6D1F]" /> + Column
-                </Button>
+                      {/* Status select */}
+                      <Select
+                        aria-label="Filter by status"
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        className="w-28 sm:w-32 h-8 text-xs"
+                      >
+                        <option value="all">All Statuses</option>
+                        {activeStatusOptions.map((st) => (
+                          <option key={st.label} value={st.label}>
+                            {st.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
 
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    setExcelPreviews([]);
-                    setImportedFileName('');
-                    setImportSavedMessage('');
-                    setImportScope(
-                      globalScopeFilter !== 'all'
-                        ? globalScopeFilter
-                        : (activeSheet?.scope ?? 'business'),
-                    );
-                    setImportModalOpen(true);
-                  }}
-                  title="Import Excel (.xlsx, .xls) or CSV file"
-                >
-                  <Upload className="h-3.5 w-3.5 text-[#059669]" /> Import Excel
-                </Button>
+                    {/* Right: + Row, + Column, Mobile View Switcher, ⚙ Sheet Options */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {/* Positional + Row Split Button */}
+                      <div className="relative inline-flex items-center">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            const defPos = (sortOrder === 'latest_first' || sortColId !== null) ? 'top' : 'bottom';
+                            handleAddRow(defPos);
+                          }}
+                          className="rounded-r-none border-r-0"
+                          title={`Add row ${sortOrder === 'latest_first' || sortColId !== null ? 'at top (Fast Entry)' : 'at bottom'}`}
+                        >
+                          <Plus className="h-3.5 w-3.5 text-[#059669]" /> + Row
+                        </Button>
+                        <button
+                          type="button"
+                          onClick={() => setRowMenuOpen(!rowMenuOpen)}
+                          className="inline-flex h-8 items-center justify-center rounded-r-lg border border-[#E6E1D6] bg-white px-1.5 text-[#686E78] hover:bg-[#FAF8F5] hover:text-[#111318] cursor-pointer"
+                          title="Choose where to add row"
+                          aria-label="Row placement options"
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
 
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleExportExcel}
-                  title="Export multi-tab Excel workbook (.xlsx)"
-                >
-                  <Download className="h-3.5 w-3.5 text-[#8C6D1F]" /> .XLSX
-                </Button>
+                        {rowMenuOpen && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setRowMenuOpen(false)} />
+                            <div className="absolute left-0 top-full z-50 mt-1 w-56 rounded-xl border border-[#E6E1D6] bg-white p-1.5 shadow-lg text-xs space-y-0.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleAddRow('top');
+                                  setRowMenuOpen(false);
+                                }}
+                                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                              >
+                                <ArrowUp className="h-3.5 w-3.5 text-[#059669]" />
+                                <div>
+                                  <div>+ Add on Top (Row 1)</div>
+                                  <div className="text-[10px] text-[#686E78] font-normal">Fast entry at sheet start</div>
+                                </div>
+                              </button>
 
-                <Button variant="secondary" size="sm" onClick={handleExportCsv} title="Export active tab to CSV">
-                  <Download className="h-3.5 w-3.5" /> .CSV
-                </Button>
-              </div>
-            </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleAddRow('bottom');
+                                  setRowMenuOpen(false);
+                                }}
+                                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                              >
+                                <ArrowDown className="h-3.5 w-3.5 text-[#8C6D1F]" />
+                                <div>
+                                  <div>+ Add at Bottom (End)</div>
+                                  <div className="text-[10px] text-[#686E78] font-normal">Append at end of sheet</div>
+                                </div>
+                              </button>
+
+                              {selectedCell && (
+                                <>
+                                  <div className="my-1 border-t border-[#E6E1D6]" />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleAddRow('above', selectedCell.rowIndex);
+                                      setRowMenuOpen(false);
+                                    }}
+                                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                                  >
+                                    <Plus className="h-3.5 w-3.5 text-[#2563EB]" />
+                                    <div>
+                                      <div>+ Insert Above Row #{selectedCell.rowIndex + 1}</div>
+                                      <div className="text-[10px] text-[#686E78] font-normal">Before selected row</div>
+                                    </div>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleAddRow('below', selectedCell.rowIndex);
+                                      setRowMenuOpen(false);
+                                    }}
+                                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                                  >
+                                    <Plus className="h-3.5 w-3.5 text-[#2563EB]" />
+                                    <div>
+                                      <div>+ Insert Below Row #{selectedCell.rowIndex + 1}</div>
+                                      <div className="text-[10px] text-[#686E78] font-normal">After selected row</div>
+                                    </div>
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      {/* + Column */}
+                      <Button variant="secondary" size="sm" onClick={() => openAddColModal('end')}>
+                        <Columns className="h-3.5 w-3.5 text-[#8C6D1F]" /> + Column
+                      </Button>
+
+                      {/* Mobile View Mode Switcher */}
+                      <div className="flex md:hidden items-center rounded-lg border border-[#E6E1D6] bg-white p-0.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setMobileViewMode('table')}
+                          className={cn(
+                            'px-2.5 py-1 text-[11px] font-semibold rounded cursor-pointer transition-colors',
+                            mobileViewMode === 'table' ? 'bg-[#111318] text-[#E5C158]' : 'text-[#686E78] hover:text-[#111318]'
+                          )}
+                        >
+                          Table
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMobileViewMode('cards')}
+                          className={cn(
+                            'px-2.5 py-1 text-[11px] font-semibold rounded cursor-pointer transition-colors',
+                            mobileViewMode === 'cards' ? 'bg-[#111318] text-[#E5C158]' : 'text-[#686E78] hover:text-[#111318]'
+                          )}
+                        >
+                          Cards
+                        </button>
+                      </div>
+
+                      {/* ⚙ SHEET OPTIONS DROPDOWN MENU */}
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setSheetMenuOpen(!sheetMenuOpen)}
+                          className={cn(
+                            'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold cursor-pointer transition-colors shadow-2xs',
+                            sheetMenuOpen
+                              ? 'bg-[#111318] text-[#E5C158] border-[#111318]'
+                              : 'bg-[#FAF8F5] text-[#111318] border-[#E6E1D6] hover:bg-white hover:border-[#111318]',
+                          )}
+                          title="Configure Scope, Tab Color, Custom Statuses, Totals, Auto-Default, PIN, Import/Export"
+                        >
+                          <Settings className="h-3.5 w-3.5 text-[#C59B27]" />
+                          <span>Sheet Options</span>
+                          <ChevronDown className={cn('h-3 w-3 transition-transform', sheetMenuOpen && 'rotate-180')} />
+                        </button>
+
+                        {sheetMenuOpen && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setSheetMenuOpen(false)} />
+                            <div className="absolute right-0 top-full z-50 mt-1 w-80 rounded-2xl border border-[#E6E1D6] bg-white p-3.5 shadow-2xl text-xs space-y-3 animate-in fade-in zoom-in-95">
+                              {/* Header */}
+                              <div className="flex items-center justify-between pb-2 border-b border-[#E6E1D6]">
+                                <div className="font-bold text-[#111318] flex items-center gap-1.5">
+                                  <Settings className="h-4 w-4 text-[#C59B27]" />
+                                  <span>Sheet Configuration</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setSheetMenuOpen(false)}
+                                  className="p-1 text-[#686E78] hover:text-[#111318] rounded"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+
+                              {/* 1. Scope Selector */}
+                              <div className="space-y-1">
+                                <span className="text-[10px] font-bold uppercase text-[#686E78] tracking-wider">Sheet Scope</span>
+                                <div className="grid grid-cols-3 gap-1.5">
+                                  {(['business', 'personal', 'family'] as const).map((sc) => (
+                                    <button
+                                      key={sc}
+                                      type="button"
+                                      onClick={() => updateActiveSheetLocal((curr) => ({ ...curr, scope: sc }))}
+                                      className={cn(
+                                        'rounded-lg py-1 px-2 text-center text-xs font-semibold capitalize cursor-pointer border transition-colors',
+                                        activeSheet.scope === sc
+                                          ? 'bg-[#111318] text-[#E5C158] border-[#111318]'
+                                          : 'bg-[#FAF8F5] text-[#52504C] border-[#E6E1D6] hover:bg-white'
+                                      )}
+                                    >
+                                      {sc}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* 2. Tab Accent Color */}
+                              <div className="space-y-1">
+                                <span className="text-[10px] font-bold uppercase text-[#686E78] tracking-wider">Tab Accent Color</span>
+                                <div className="flex items-center justify-between rounded-xl bg-[#FAF8F5] border border-[#E6E1D6] p-2">
+                                  {(['gold', 'emerald', 'obsidian', 'rose', 'slate'] as const).map((colKey) => (
+                                    <button
+                                      key={colKey}
+                                      type="button"
+                                      onClick={() => updateActiveSheetLocal((curr) => ({ ...curr, color: colKey }))}
+                                      title={TAB_COLOR_META[colKey].label}
+                                      className={cn(
+                                        'h-5 w-5 rounded-full cursor-pointer transition-transform',
+                                        TAB_COLOR_META[colKey].dot,
+                                        activeSheet.color === colKey && 'ring-2 ring-offset-2 ring-[#111318] scale-125'
+                                      )}
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* 3. Automation & Status Tools */}
+                              <div className="space-y-2 pt-2 border-t border-[#E6E1D6]">
+                                <span className="text-[10px] font-bold uppercase text-[#686E78] tracking-wider">Sheet Automation</span>
+
+                                {/* Auto-Default Same Toggle */}
+                                <div className="flex items-center justify-between rounded-xl bg-[#FAF8F5] border border-[#E6E1D6] p-2.5">
+                                  <div>
+                                    <div className="font-semibold text-[#111318]">Auto-Default Same</div>
+                                    <div className="text-[10px] text-[#686E78]">New rows keep previous row's values</div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAutoDefaultSame((prev) => {
+                                        const next = !prev;
+                                        try { localStorage.setItem('sc_sheets_auto_default', String(next)); } catch {}
+                                        onNotify?.(next ? 'Auto-Default: ON' : 'Auto-Default: OFF');
+                                        return next;
+                                      });
+                                    }}
+                                    className={cn(
+                                      'rounded-full px-2.5 py-1 text-[11px] font-bold cursor-pointer transition-colors',
+                                      autoDefaultSame ? 'bg-[#059669] text-white' : 'bg-slate-200 text-slate-700'
+                                    )}
+                                  >
+                                    {autoDefaultSame ? 'ON' : 'OFF'}
+                                  </button>
+                                </div>
+
+                                {/* Column Totals Toggle */}
+                                <div className="flex items-center justify-between rounded-xl bg-[#FAF8F5] border border-[#E6E1D6] p-2.5">
+                                  <div>
+                                    <div className="font-semibold text-[#111318]">Σ Column Totals Row</div>
+                                    <div className="text-[10px] text-[#686E78]">Show sums at bottom of numbers</div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={handleToggleTotals}
+                                    className={cn(
+                                      'rounded-full px-2.5 py-1 text-[11px] font-bold cursor-pointer transition-colors',
+                                      showTotals ? 'bg-[#059669] text-white' : 'bg-slate-200 text-slate-700'
+                                    )}
+                                  >
+                                    {showTotals ? 'ON' : 'OFF'}
+                                  </button>
+                                </div>
+
+                                {/* Custom Statuses Button */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSheetMenuOpen(false);
+                                    setPendingStatusCellTarget(null);
+                                    setStatusModalOpen(true);
+                                  }}
+                                  className="flex w-full items-center justify-between rounded-xl bg-[#FAF8F5] border border-[#E6E1D6] p-2.5 font-semibold text-[#111318] hover:bg-white hover:border-[#111318] cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <Tag className="h-4 w-4 text-[#C59B27]" />
+                                    <span>Manage Custom Statuses</span>
+                                  </div>
+                                  <span className="rounded bg-white border border-[#E6E1D6] px-1.5 py-0.5 text-[10px] font-mono">
+                                    {activeStatusOptions.length}
+                                  </span>
+                                </button>
+                              </div>
+
+                              {/* 4. PIN Protection Barrier */}
+                              <div className="space-y-1.5 pt-2 border-t border-[#E6E1D6]">
+                                <span className="text-[10px] font-bold uppercase text-[#686E78] tracking-wider">Privacy & Security Barrier</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSheetMenuOpen(false);
+                                    setPinSetupTarget(activeSheet);
+                                    setNewPin('');
+                                    setConfirmPin('');
+                                    setPinHintInput(activeSheet.settings?.pinHint || '');
+                                    setPinSetupError('');
+                                    setPinSetupModalOpen(true);
+                                  }}
+                                  className="flex w-full items-center justify-between rounded-xl bg-[#FAF8F5] border border-[#E6E1D6] p-2.5 text-left hover:bg-white hover:border-[#111318] cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    {activeSheet.settings?.pinHash ? (
+                                      <Lock className="h-4 w-4 text-rose-600" />
+                                    ) : (
+                                      <Shield className="h-4 w-4 text-[#686E78]" />
+                                    )}
+                                    <div>
+                                      <div className="font-semibold text-[#111318]">
+                                        {activeSheet.settings?.pinHash ? 'PIN Protection Active' : 'Set PIN Protection'}
+                                      </div>
+                                      <div className="text-[10px] text-[#686E78]">
+                                        {activeSheet.settings?.pinHash
+                                          ? 'Click to change or remove PIN'
+                                          : 'Seal sheet behind a secure PIN barrier'}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <span className={cn(
+                                    'rounded-full px-2 py-0.5 text-[10px] font-bold',
+                                    activeSheet.settings?.pinHash ? 'bg-rose-100 text-rose-800' : 'bg-slate-200 text-slate-700'
+                                  )}>
+                                    {activeSheet.settings?.pinHash ? 'Protected' : 'Off'}
+                                  </span>
+                                </button>
+                              </div>
+
+                              {/* 5. Import & Export Data */}
+                              <div className="space-y-1.5 pt-2 border-t border-[#E6E1D6]">
+                                <span className="text-[10px] font-bold uppercase text-[#686E78] tracking-wider">Data Import & Export</span>
+                                <div className="grid grid-cols-1 gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSheetMenuOpen(false);
+                                      setExcelPreviews([]);
+                                      setImportedFileName('');
+                                      setImportSavedMessage('');
+                                      setImportScope(globalScopeFilter !== 'all' ? globalScopeFilter : (activeSheet?.scope ?? 'business'));
+                                      setImportModalOpen(true);
+                                    }}
+                                    className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                                  >
+                                    <Upload className="h-3.5 w-3.5 text-[#059669]" />
+                                    <span>Import Excel / CSV (.xlsx, .csv)</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSheetMenuOpen(false);
+                                      handleExportExcel();
+                                    }}
+                                    className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                                  >
+                                    <Download className="h-3.5 w-3.5 text-[#8C6D1F]" />
+                                    <span>Export Workbook (.xlsx)</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSheetMenuOpen(false);
+                                      handleExportCsv();
+                                    }}
+                                    className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                                  >
+                                    <Download className="h-3.5 w-3.5 text-[#686E78]" />
+                                    <span>Export Active Sheet (.csv)</span>
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* 6. Templates */}
+                              <div className="space-y-1.5 pt-2 border-t border-[#E6E1D6]">
+                                <span className="text-[10px] font-bold uppercase text-[#686E78] tracking-wider">Create New Sheet</span>
+                                <div className="grid grid-cols-3 gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSheetMenuOpen(false);
+                                      openNewTabModal('job_tracker');
+                                    }}
+                                    className="rounded-lg bg-[#FAF8F5] border border-[#E6E1D6] p-1.5 text-center text-[10px] font-semibold text-[#111318] hover:bg-white cursor-pointer"
+                                  >
+                                    + Job Tracker
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSheetMenuOpen(false);
+                                      openNewTabModal('freelance');
+                                    }}
+                                    className="rounded-lg bg-[#FAF8F5] border border-[#E6E1D6] p-1.5 text-center text-[10px] font-semibold text-[#111318] hover:bg-white cursor-pointer"
+                                  >
+                                    + Billing
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSheetMenuOpen(false);
+                                      openNewTabModal('blank');
+                                    }}
+                                    className="rounded-lg bg-[#FAF8F5] border border-[#E6E1D6] p-1.5 text-center text-[10px] font-semibold text-[#111318] hover:bg-white cursor-pointer"
+                                  >
+                                    + Blank
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
 
             {/* Google Sheets `fx` Formula & Cell Inspector Bar */}
             <div className="flex items-center gap-2 rounded-xl bg-[#FAF8F5] border border-[#E6E1D6] px-2.5 py-1.5">
@@ -3626,7 +4410,10 @@ export function JobSheetsView({
             </div>
           )}
         </div>
-      </div>
+      </>
+    )}
+  </div>
+)}
 
       {/* Modal 1: Import Excel (.xlsx / .xls / .csv) Workbook */}
       <Dialog
@@ -4459,6 +5246,197 @@ export function JobSheetsView({
         onConfirm={handleConfirmDeleteColumn}
         onClose={() => setDeleteColTarget(null)}
       />
+
+      {/* PIN Unlock Modal */}
+      <Dialog
+        open={pinUnlockModalOpen}
+        onClose={() => {
+          setPinUnlockModalOpen(false);
+          setEnteredPin('');
+          setPinError('');
+        }}
+        title={`Unlock Sheet: ${pinUnlockTarget?.name || 'Protected Sheet'}`}
+      >
+        <div className="space-y-4 pt-1">
+          <div className="flex items-center gap-3 rounded-xl bg-amber-50 border border-amber-200 p-3 text-amber-900 text-xs">
+            <Lock className="h-5 w-5 text-amber-700 shrink-0" />
+            <div>
+              <div className="font-bold">This sheet is PIN Protected</div>
+              <div className="text-[11px] text-amber-800">
+                Enter the security PIN to view and edit confidential customer and financial records.
+              </div>
+            </div>
+          </div>
+
+          {pinUnlockTarget?.settings?.pinHint && (
+            <div className="text-xs text-[#686E78] italic bg-[#FAF8F5] p-2 rounded-lg border border-[#E6E1D6]">
+              💡 <span className="font-semibold">Hint:</span> {pinUnlockTarget.settings.pinHint}
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <FieldLabel>Security PIN (4-6 digits)</FieldLabel>
+            <div className="relative">
+              <Input
+                type={showPin ? 'text' : 'password'}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                autoFocus
+                value={enteredPin}
+                onChange={(e) => {
+                  setEnteredPin(e.target.value.replace(/\D/g, ''));
+                  setPinError('');
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && enteredPin.length >= 4) {
+                    void handleUnlockSubmit();
+                  }
+                }}
+                placeholder="Enter 4-6 digit PIN"
+                className="text-center font-mono text-lg tracking-widest h-11"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPin(!showPin)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#686E78] hover:text-[#111318] cursor-pointer"
+              >
+                {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            {pinError && <p className="text-xs font-semibold text-rose-600 mt-1">{pinError}</p>}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setPinUnlockModalOpen(false);
+                setEnteredPin('');
+                setPinError('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void handleUnlockSubmit()}
+              disabled={enteredPin.length < 4}
+              className="bg-[#111318] text-[#E5C158] hover:bg-[#1E232D]"
+            >
+              <KeyRound className="h-4 w-4 mr-1.5" /> Unlock & Open Sheet
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* PIN Setup / Configuration Modal */}
+      <Dialog
+        open={pinSetupModalOpen}
+        onClose={() => {
+          setPinSetupModalOpen(false);
+          setNewPin('');
+          setConfirmPin('');
+          setPinHintInput('');
+          setPinSetupError('');
+        }}
+        title={`PIN Protection: ${pinSetupTarget?.name || 'Sheet'}`}
+      >
+        <div className="space-y-4 pt-1">
+          <div className="flex items-center gap-3 rounded-xl bg-[#FAF8F5] border border-[#E6E1D6] p-3 text-xs">
+            <ShieldCheck className="h-5 w-5 text-[#C59B27] shrink-0" />
+            <div>
+              <div className="font-bold text-[#111318]">Privacy Barrier Protection</div>
+              <div className="text-[11px] text-[#686E78]">
+                When PIN protection is enabled, the sheet opens only after entering the correct PIN. Hashed client-side.
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <FieldLabel>New PIN (4 to 6 digits)</FieldLabel>
+              <Input
+                type={showPin ? 'text' : 'password'}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={newPin}
+                onChange={(e) => {
+                  setNewPin(e.target.value.replace(/\D/g, ''));
+                  setPinSetupError('');
+                }}
+                placeholder="e.g. 1234"
+                className="font-mono text-center tracking-widest text-base"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <FieldLabel>Confirm PIN</FieldLabel>
+              <Input
+                type={showPin ? 'text' : 'password'}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={confirmPin}
+                onChange={(e) => {
+                  setConfirmPin(e.target.value.replace(/\D/g, ''));
+                  setPinSetupError('');
+                }}
+                placeholder="Repeat PIN"
+                className="font-mono text-center tracking-widest text-base"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <FieldLabel>Optional Reminder Hint</FieldLabel>
+              <Input
+                type="text"
+                value={pinHintInput}
+                onChange={(e) => setPinHintInput(e.target.value)}
+                placeholder="e.g. Last 4 digits of shop phone"
+              />
+            </div>
+
+            {pinSetupError && <p className="text-xs font-semibold text-rose-600">{pinSetupError}</p>}
+          </div>
+
+          <div className="flex items-center justify-between pt-2 border-t border-[#E6E1D6]">
+            {pinSetupTarget?.settings?.pinHash ? (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={handleRemovePinProtection}
+              >
+                Remove Protection
+              </Button>
+            ) : (
+              <div />
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setPinSetupModalOpen(false);
+                  setNewPin('');
+                  setConfirmPin('');
+                  setPinHintInput('');
+                  setPinSetupError('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void handleSavePinProtection()}
+                disabled={newPin.length < 4}
+                className="bg-[#111318] text-[#E5C158] hover:bg-[#1E232D]"
+              >
+                Save PIN Protection
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }

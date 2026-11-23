@@ -12,6 +12,8 @@ export interface CustomStatusOption {
 export interface SheetSettings {
   showTotals?: boolean;
   customStatuses?: CustomStatusOption[];
+  pinHash?: string; // SHA-256 hash of optional protection PIN
+  pinHint?: string; // Optional user reminder hint
 }
 
 export interface SheetColumn {
