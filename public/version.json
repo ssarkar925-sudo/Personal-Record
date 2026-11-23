@@ -1,7 +1,7 @@
 {
-  "version": "1.0.6",
-  "build": 106,
+  "version": "1.0.7",
+  "build": 107,
   "releaseDate": "2026-11-23",
   "apkUrl": "https://raw.githubusercontent.com/ssarkar925-sudo/Personal-Record/main/public/PersonalLedger-latest.apk",
-  "changelog": "Vault enhancements: all categories always visible with item counts, uniform fixed-size cards, view-first popup with 1-click edit, drag and move card ordering, card accent color picker, and soft delete to archive."
+  "changelog": "Sheets overhaul: Smart chronological date sorting, centralized Sort Center with last-column-first preset, full Undo/Redo history (Ctrl+Z / Ctrl+Y), clean column headers with 3-dot menu, positional row addition with pinned row entry, and positional column insertion."
 }

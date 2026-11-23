@@ -5,8 +5,10 @@ import {
   Archive,
   ArchiveRestore,
   ArrowDown,
+  ArrowDownAZ,
   ArrowUp,
   ArrowUpDown,
+  ArrowUpZA,
   Calculator,
   Check,
   CheckCircle2,
@@ -16,16 +18,22 @@ import {
   Download,
   Edit3,
   FileSpreadsheet,
+  Filter,
   FunctionSquare,
   GripVertical,
+  MoreVertical,
+  Pin,
   Plus,
+  Redo2,
   Repeat,
   Search,
   SlidersHorizontal,
   Sparkles,
   Tag,
   Trash2,
+  Undo2,
   Upload,
+  X,
 } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatINR, todayISO } from '../lib/format.ts';
@@ -157,6 +165,95 @@ function addDeletedSheetId(id: string): void {
   }
 }
 
+/**
+ * Robust date parser supporting ISO (YYYY-MM-DD), Indian/UK (DD-MM-YYYY, DD/MM/YYYY),
+ * and standard timestamp strings for accurate chronological sorting.
+ */
+function parseDateForSort(val: string): number | null {
+  if (!val || typeof val !== 'string') return null;
+  const trimmed = val.trim();
+  if (!trimmed) return null;
+
+  // YYYY-MM-DD
+  const isoMatch = trimmed.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (isoMatch) {
+    const y = parseInt(isoMatch[1], 10);
+    const m = parseInt(isoMatch[2], 10) - 1;
+    const d = parseInt(isoMatch[3], 10);
+    const time = new Date(y, m, d).getTime();
+    if (!isNaN(time)) return time;
+  }
+
+  // DD-MM-YYYY or DD/MM/YYYY
+  const dmyMatch = trimmed.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+  if (dmyMatch) {
+    const d = parseInt(dmyMatch[1], 10);
+    const m = parseInt(dmyMatch[2], 10) - 1;
+    const y = parseInt(dmyMatch[3], 10);
+    const time = new Date(y, m, d).getTime();
+    if (!isNaN(time)) return time;
+  }
+
+  const parsed = Date.parse(trimmed);
+  if (!isNaN(parsed)) return parsed;
+  return null;
+}
+
+/**
+ * Smart type-aware cell comparison function:
+ * - Empty/blank cells always sink to the bottom in both directions.
+ * - Dates sort chronologically by timestamp.
+ * - Numbers & Currency sort numerically.
+ * - Text uses natural alphanumeric collation (1 before 10).
+ */
+function compareSheetCells(
+  valA: string,
+  valB: string,
+  colType?: SheetColumnType,
+  sortDirection: 'asc' | 'desc' = 'asc',
+): number {
+  const strA = (valA ?? '').trim();
+  const strB = (valB ?? '').trim();
+
+  // Blank/empty cells always sink to the bottom in both directions
+  if (!strA && !strB) return 0;
+  if (!strA) return 1;
+  if (!strB) return -1;
+
+  // Number or Currency comparison
+  if (
+    colType === 'number' ||
+    colType === 'currency' ||
+    (/^[₹$€£]?\s*[-+]?[\d,]+(\.\d+)?$/.test(strA) && /^[₹$€£]?\s*[-+]?[\d,]+(\.\d+)?$/.test(strB))
+  ) {
+    const numA = parseNumericCell(strA);
+    const numB = parseNumericCell(strB);
+    return sortDirection === 'asc' ? numA - numB : numB - numA;
+  }
+
+  // Date comparison (chronological timestamp comparison)
+  if (colType === 'date') {
+    const timeA = parseDateForSort(strA);
+    const timeB = parseDateForSort(strB);
+    if (timeA !== null && timeB !== null) {
+      return sortDirection === 'asc' ? timeA - timeB : timeB - timeA;
+    }
+    if (timeA !== null) return sortDirection === 'asc' ? -1 : 1;
+    if (timeB !== null) return sortDirection === 'asc' ? 1 : -1;
+  }
+
+  // Fallback date detection even if column type is text
+  const maybeTimeA = parseDateForSort(strA);
+  const maybeTimeB = parseDateForSort(strB);
+  if (maybeTimeA !== null && maybeTimeB !== null) {
+    return sortDirection === 'asc' ? maybeTimeA - maybeTimeB : maybeTimeB - maybeTimeA;
+  }
+
+  // Natural alphanumeric comparison ("1", "2", ... "10", "11")
+  const result = strA.localeCompare(strB, undefined, { numeric: true, sensitivity: 'base' });
+  return sortDirection === 'asc' ? result : -result;
+}
+
 export function JobSheetsView({
   globalScopeFilter = 'all',
   onNotify,
@@ -200,10 +297,24 @@ export function JobSheetsView({
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
   const [renameTabDraft, setRenameTabDraft] = useState('');
 
-  // Add Column Modal
+  // Add Column Modal & Positional Placement
   const [addColOpen, setAddColOpen] = useState(false);
   const [newColLabel, setNewColLabel] = useState('');
   const [newColType, setNewColType] = useState<SheetColumnType>('text');
+  const [newColPlacement, setNewColPlacement] = useState<'end' | 'start' | 'left' | 'right'>('end');
+  const [newColTargetColId, setNewColTargetColId] = useState<string>('');
+
+  // Undo & Redo History Stacks
+  const [undoStack, setUndoStack] = useState<JobSheetRecord[]>([]);
+  const [redoStack, setRedoStack] = useState<JobSheetRecord[]>([]);
+
+  // Pinned Row (Ensures newly added rows remain visible at Row 1 on Page 1 even while sorted)
+  const [pinnedRowId, setPinnedRowId] = useState<string | null>(null);
+
+  // Popover States
+  const [sortCenterOpen, setSortCenterOpen] = useState(false);
+  const [rowMenuOpen, setRowMenuOpen] = useState(false);
+  const [activeColMenuId, setActiveColMenuId] = useState<string | null>(null);
 
   // Custom Status Manager Modal
   const [statusModalOpen, setStatusModalOpen] = useState(false);
@@ -517,10 +628,24 @@ export function JobSheetsView({
     };
   }, []);
 
+  // Reset undo/redo, pinned rows, and popovers on sheet tab switch
+  useEffect(() => {
+    setUndoStack([]);
+    setRedoStack([]);
+    setPinnedRowId(null);
+    setActiveColMenuId(null);
+    setSortCenterOpen(false);
+    setRowMenuOpen(false);
+  }, [activeSheetId]);
+
   // Instant background auto-save on every edit (450ms debounce)
   const updateActiveSheetLocal = useCallback(
     (updater: (current: JobSheetRecord) => JobSheetRecord) => {
       if (!activeSheet) return;
+      // Record snapshot to Undo stack (up to 40 levels of undo)
+      setUndoStack((prev) => [...prev.slice(-39), activeSheet]);
+      setRedoStack([]); // reset redo history on fresh user action
+
       const nextSheet: JobSheetRecord = {
         ...updater(activeSheet),
         updatedAt: new Date().toISOString(),
@@ -543,6 +668,69 @@ export function JobSheetsView({
     },
     [activeSheet, persistSheet],
   );
+
+  // Undo and Redo Handlers
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0 || !activeSheet) return;
+    const prevSnapshot = undoStack[undoStack.length - 1];
+    setUndoStack((prev) => prev.slice(0, prev.length - 1));
+    setRedoStack((prev) => [...prev.slice(-39), activeSheet]);
+
+    pendingSheetRef.current = prevSnapshot;
+    setSheets((prev) => {
+      const next = prev.map((s) => (s.id === prevSnapshot.id ? prevSnapshot : s));
+      writeCachedSheets(next);
+      return next;
+    });
+    if (autoSaveTimerRef.current) {
+      window.clearTimeout(autoSaveTimerRef.current);
+    }
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      void persistSheet(prevSnapshot, false);
+    }, 450);
+    onNotify?.('Undo action ↶');
+  }, [undoStack, activeSheet, persistSheet, onNotify]);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.length === 0 || !activeSheet) return;
+    const nextSnapshot = redoStack[redoStack.length - 1];
+    setRedoStack((prev) => prev.slice(0, prev.length - 1));
+    setUndoStack((prev) => [...prev.slice(-39), activeSheet]);
+
+    pendingSheetRef.current = nextSnapshot;
+    setSheets((prev) => {
+      const next = prev.map((s) => (s.id === nextSnapshot.id ? nextSnapshot : s));
+      writeCachedSheets(next);
+      return next;
+    });
+    if (autoSaveTimerRef.current) {
+      window.clearTimeout(autoSaveTimerRef.current);
+    }
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      void persistSheet(nextSnapshot, false);
+    }, 450);
+    onNotify?.('Redo action ↷');
+  }, [redoStack, activeSheet, persistSheet, onNotify]);
+
+  // Global Keyboard Shortcuts: Ctrl+Z (Undo) and Ctrl+Y / Ctrl+Shift+Z (Redo)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        if (e.shiftKey) {
+          e.preventDefault();
+          handleRedo();
+        } else {
+          e.preventDefault();
+          handleUndo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo]);
 
   // Toggle Σ Totals Row On / Off ("ADD TOTAL WHEN NEEDED. NOT EVERY TIME.")
   const handleToggleTotals = () => {
@@ -787,8 +975,27 @@ export function JobSheetsView({
     });
   };
 
-  const handleAddRow = (targetColId?: string) => {
+  const handleAddRow = (
+    positionOrColId: 'top' | 'bottom' | 'above' | 'below' | string = 'bottom',
+    referenceIndex?: number,
+    targetColId?: string,
+  ) => {
     if (!activeSheet) return;
+    let position: 'top' | 'bottom' | 'above' | 'below' = 'bottom';
+    let resolvedColId = targetColId;
+
+    if (
+      positionOrColId === 'top' ||
+      positionOrColId === 'bottom' ||
+      positionOrColId === 'above' ||
+      positionOrColId === 'below'
+    ) {
+      position = positionOrColId;
+    } else if (typeof positionOrColId === 'string' && positionOrColId) {
+      position = 'bottom';
+      resolvedColId = positionOrColId;
+    }
+
     const newRowIndex = activeSheet.rows.length + 1;
     const cells: Record<string, string> = {};
     const currencyCols = activeSheet.columns.filter((c) => c.type === 'currency');
@@ -827,23 +1034,49 @@ export function JobSheetsView({
       cells,
     };
 
-    const isLatestFirst = sortOrder === 'latest_first';
-    updateActiveSheetLocal((curr) => ({
-      ...curr,
-      rows: isLatestFirst ? [newRow, ...curr.rows] : [...curr.rows, newRow],
-    }));
-
-    const targetCol = targetColId || activeSheet.columns[0]?.id || '';
-    if (isLatestFirst) {
-      setSelectedCell({ rowIndex: 0, colId: targetCol });
-      setCurrentPage(1);
-    } else {
-      setSelectedCell({ rowIndex: activeSheet.rows.length, colId: targetCol });
-      if (pageSize !== 'all') {
-        const targetPage = Math.ceil((activeSheet.rows.length + 1) / pageSize);
-        setCurrentPage(targetPage);
-      }
+    let targetIdx = activeSheet.rows.length;
+    if (position === 'top') {
+      targetIdx = 0;
+    } else if (position === 'above') {
+      targetIdx = referenceIndex !== undefined ? referenceIndex : (selectedCell?.rowIndex ?? 0);
+    } else if (position === 'below') {
+      const ref = referenceIndex !== undefined ? referenceIndex : (selectedCell?.rowIndex ?? activeSheet.rows.length - 1);
+      targetIdx = Math.min(activeSheet.rows.length, ref + 1);
     }
+
+    updateActiveSheetLocal((curr) => {
+      const nextRows = [...curr.rows];
+      nextRows.splice(targetIdx, 0, newRow);
+      return {
+        ...curr,
+        rows: nextRows,
+      };
+    });
+
+    // If the sheet is currently sorted, pin this new row so it stays at Row 1 (Page 1) for editing
+    if (sortOrder !== 'normal' || sortColId !== null) {
+      setPinnedRowId(newRow.id);
+    }
+
+    const targetCol = resolvedColId || activeSheet.columns[0]?.id || '';
+    setSelectedCell({ rowIndex: targetIdx, colId: targetCol });
+
+    if (position === 'top' || sortOrder !== 'normal' || sortColId !== null) {
+      setCurrentPage(1);
+    } else if (pageSize !== 'all') {
+      const targetPage = Math.ceil((targetIdx + 1) / pageSize);
+      setCurrentPage(targetPage);
+    }
+
+    onNotify?.(
+      position === 'top'
+        ? 'Added row at Top (Row 1 / Fast Entry)'
+        : position === 'above'
+          ? `Inserted row above Row #${(referenceIndex ?? 0) + 1}`
+          : position === 'below'
+            ? `Inserted row below Row #${(referenceIndex ?? 0) + 1}`
+            : 'Added row at Bottom',
+    );
   };
 
   const handleMoveRow = (fromIndex: number, toIndex: number) => {
@@ -923,27 +1156,59 @@ export function JobSheetsView({
   const handleAddColumn = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeSheet || !newColLabel.trim()) return;
-    const nextLetter = indexToColumnLetter(activeSheet.columns.length);
     const newCol: SheetColumn = {
-      id: `col_${Date.now().toString(36)}`,
-      key: nextLetter,
+      id: `col_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`,
+      key: 'A',
       label: newColLabel.trim(),
       type: newColType,
     };
-    updateActiveSheetLocal((curr) => ({
-      ...curr,
-      columns: [...curr.columns, newCol],
-      rows: curr.rows.map((r) => ({
-        ...r,
-        cells: {
-          ...r.cells,
-          [newCol.id]: newColType === 'currency' || newColType === 'number' ? '0' : '',
-        },
-      })),
-    }));
+
+    updateActiveSheetLocal((curr) => {
+      let targetIdx = curr.columns.length;
+      if (newColPlacement === 'start') {
+        targetIdx = 0;
+      } else if (newColPlacement === 'left' && newColTargetColId) {
+        const found = curr.columns.findIndex((c) => c.id === newColTargetColId);
+        if (found !== -1) targetIdx = found;
+      } else if (newColPlacement === 'right' && newColTargetColId) {
+        const found = curr.columns.findIndex((c) => c.id === newColTargetColId);
+        if (found !== -1) targetIdx = found + 1;
+      }
+
+      const nextCols = [...curr.columns];
+      nextCols.splice(targetIdx, 0, newCol);
+      const reindexedCols = nextCols.map((c, idx) => ({
+        ...c,
+        key: indexToColumnLetter(idx),
+      }));
+
+      return {
+        ...curr,
+        columns: reindexedCols,
+        rows: curr.rows.map((r) => ({
+          ...r,
+          cells: {
+            ...r.cells,
+            [newCol.id]: newColType === 'currency' || newColType === 'number' ? '0' : '',
+          },
+        })),
+      };
+    });
+
     setNewColLabel('');
     setAddColOpen(false);
-    onNotify?.(`Added column "${newCol.key} · ${newCol.label}" ✓`);
+    onNotify?.(`Added column "${newCol.label}" ✓`);
+  };
+
+  const openAddColModal = (
+    placement: 'end' | 'start' | 'left' | 'right' = 'end',
+    refColId?: string,
+  ) => {
+    setNewColLabel('');
+    setNewColType('text');
+    setNewColPlacement(placement);
+    setNewColTargetColId(refColId || activeSheet?.columns[0]?.id || '');
+    setAddColOpen(true);
   };
 
   // Helper to commit & auto-save parsed Excel/CSV previews to SQLite + localStorage
@@ -1318,24 +1583,35 @@ export function JobSheetsView({
         return true;
       });
 
+    // If a newly added row is pinned for editing, extract it so it remains pinned at Row 1 on Page 1
+    let pinnedEntry: { row: SheetRow; originalIndex: number } | null = null;
+    if (pinnedRowId) {
+      const pIdx = list.findIndex((item) => item.row.id === pinnedRowId);
+      if (pIdx !== -1) {
+        pinnedEntry = list[pIdx];
+        list = list.filter((_, idx) => idx !== pIdx);
+      }
+    }
+
     if (sortOrder === 'latest_first') {
       list = [...list].reverse();
     } else if (sortColId && (sortOrder === 'col_asc' || sortOrder === 'col_desc')) {
       const targetCol = activeSheet.columns.find((c) => c.id === sortColId);
+      const colType = targetCol?.type;
       list = [...list].sort((a, b) => {
         const valA = a.row.cells[sortColId] ?? '';
         const valB = b.row.cells[sortColId] ?? '';
-        if (targetCol?.type === 'number' || targetCol?.type === 'currency') {
-          const numA = parseNumericCell(valA);
-          const numB = parseNumericCell(valB);
-          return sortOrder === 'col_asc' ? numA - numB : numB - numA;
-        }
-        return sortOrder === 'col_asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        return compareSheetCells(valA, valB, colType, sortOrder === 'col_asc' ? 'asc' : 'desc');
       });
     }
 
+    // Place pinned entry right at the top (Row 1, Page 1) for immediate editing
+    if (pinnedEntry) {
+      list = [pinnedEntry, ...list];
+    }
+
     return list;
-  }, [activeSheet, statusFilter, searchQuery, sortOrder, sortColId]);
+  }, [activeSheet, statusFilter, searchQuery, sortOrder, sortColId, pinnedRowId]);
 
   // Pagination Telemetry & Slices
   const totalRowsCount = displayedRows.length;
@@ -1776,36 +2052,201 @@ export function JobSheetsView({
                   <span>Auto-Default: {autoDefaultSame ? 'On' : 'Off'}</span>
                 </button>
 
-                {/* Fast Entry (Newest First) Toggle */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSortOrder((prev) => {
-                      const next = prev === 'latest_first' ? 'normal' : 'latest_first';
-                      try {
-                        localStorage.setItem('sc_sheets_sort_order', next);
-                      } catch {
-                        // ignore
-                      }
-                      onNotify?.(
-                        next === 'latest_first'
-                          ? 'Fast Entry: Latest rows shown first at Row 1 (Page 1)'
-                          : 'Normal row order (Row 1..N)',
-                      );
-                      return next;
-                    });
-                  }}
-                  className={cn(
-                    'inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold cursor-pointer transition-colors',
-                    sortOrder === 'latest_first'
-                      ? 'bg-[#111318] text-[#E5C158] border-[#111318]'
-                      : 'bg-[#FAF8F5] text-[#686E78] border-[#E6E1D6] hover:text-[#111318]',
+                {/* Undo & Redo History Controls */}
+                <div className="flex items-center rounded-lg border border-[#E6E1D6] bg-white p-0.5">
+                  <button
+                    type="button"
+                    onClick={handleUndo}
+                    disabled={undoStack.length === 0}
+                    className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold text-[#111318] hover:bg-[#FAF8F5] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    title="Undo last change (Ctrl+Z)"
+                  >
+                    <Undo2 className="h-3.5 w-3.5 text-[#686E78]" />
+                    <span className="hidden sm:inline">Undo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRedo}
+                    disabled={redoStack.length === 0}
+                    className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold text-[#111318] hover:bg-[#FAF8F5] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    title="Redo last change (Ctrl+Y or Ctrl+Shift+Z)"
+                  >
+                    <Redo2 className="h-3.5 w-3.5 text-[#686E78]" />
+                    <span className="hidden sm:inline">Redo</span>
+                  </button>
+                </div>
+
+                {/* Centralized Sort Center Popover */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setSortCenterOpen(!sortCenterOpen)}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold cursor-pointer transition-colors',
+                      sortOrder !== 'normal' || sortColId !== null
+                        ? 'bg-[#111318] text-[#E5C158] border-[#111318] shadow-2xs'
+                        : 'bg-[#FAF8F5] text-[#686E78] border-[#E6E1D6] hover:text-[#111318]',
+                    )}
+                    title="Configure Sorting: Presets, Last Column First, or Column-Specific Sort"
+                  >
+                    <ArrowUpDown className="h-3.5 w-3.5" />
+                    <span>
+                      {sortColId
+                        ? `Sort: Col ${activeSheet.columns.find((c) => c.id === sortColId)?.key || ''} (${sortOrder === 'col_asc' ? '▲ A→Z' : '▼ Z→A'})`
+                        : sortOrder === 'latest_first'
+                          ? 'Sort: Newest First'
+                          : 'Sort Center'}
+                    </span>
+                    <ChevronDown className="h-3 w-3" />
+                  </button>
+
+                  {sortCenterOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setSortCenterOpen(false)} />
+                      <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-xl border border-[#E6E1D6] bg-white p-3 shadow-xl text-xs space-y-3">
+                        <div className="flex items-center justify-between pb-1 border-b border-[#E6E1D6]">
+                          <span className="font-bold text-[#111318]">Sheet Sorting Center</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSortColId(null);
+                              setSortOrder('normal');
+                              setPinnedRowId(null);
+                              try { localStorage.setItem('sc_sheets_sort_order', 'normal'); } catch {}
+                              setSortCenterOpen(false);
+                              onNotify?.('Reset to Original Table Order');
+                            }}
+                            className="text-[10px] text-[#8C6D1F] hover:underline cursor-pointer font-semibold"
+                          >
+                            Clear Sort
+                          </button>
+                        </div>
+
+                        {/* Quick Presets */}
+                        <div className="space-y-1">
+                          <div className="text-[10px] font-bold uppercase text-[#686E78]">Quick Presets</div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSortColId(null);
+                              setSortOrder('normal');
+                              try { localStorage.setItem('sc_sheets_sort_order', 'normal'); } catch {}
+                              setSortCenterOpen(false);
+                              onNotify?.('Reset to Original Table Order (Row 1..N)');
+                            }}
+                            className={cn(
+                              'flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left font-medium cursor-pointer',
+                              sortOrder === 'normal' && !sortColId ? 'bg-[#FAF8F5] text-[#111318] font-bold' : 'hover:bg-[#FAF8F5] text-[#52504C]'
+                            )}
+                          >
+                            <span>Original Order (Row 1..N)</span>
+                            {sortOrder === 'normal' && !sortColId && <Check className="h-3 w-3 text-[#059669]" />}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSortColId(null);
+                              setSortOrder('latest_first');
+                              try { localStorage.setItem('sc_sheets_sort_order', 'latest_first'); } catch {}
+                              setSortCenterOpen(false);
+                              onNotify?.('Fast Entry: Newest Rows First (Row N..1)');
+                            }}
+                            className={cn(
+                              'flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left font-medium cursor-pointer',
+                              sortOrder === 'latest_first' ? 'bg-[#FAF8F5] text-[#111318] font-bold' : 'hover:bg-[#FAF8F5] text-[#52504C]'
+                            )}
+                          >
+                            <span>Fast Entry: Newest Rows First</span>
+                            {sortOrder === 'latest_first' && <Check className="h-3 w-3 text-[#059669]" />}
+                          </button>
+
+                          {/* Preset: Sort by Last Column Descending */}
+                          {activeSheet.columns.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const lastCol = activeSheet.columns[activeSheet.columns.length - 1];
+                                setSortColId(lastCol.id);
+                                setSortOrder('col_desc');
+                                setSortCenterOpen(false);
+                                onNotify?.(`Sorted by Last Column (${lastCol.key} · ${lastCol.label}) Descending ✓`);
+                              }}
+                              className={cn(
+                                'flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left font-medium cursor-pointer',
+                                sortColId === activeSheet.columns[activeSheet.columns.length - 1].id && sortOrder === 'col_desc'
+                                  ? 'bg-[#FAF8F5] text-[#111318] font-bold'
+                                  : 'hover:bg-[#FAF8F5] text-[#52504C]'
+                              )}
+                            >
+                              <span>Last Column First ({activeSheet.columns[activeSheet.columns.length - 1].label} ↓)</span>
+                              {sortColId === activeSheet.columns[activeSheet.columns.length - 1].id && sortOrder === 'col_desc' && (
+                                <Check className="h-3 w-3 text-[#059669]" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Column Specific Sort */}
+                        <div className="space-y-1.5 pt-2 border-t border-[#E6E1D6]">
+                          <div className="text-[10px] font-bold uppercase text-[#686E78]">Sort by Specific Column</div>
+                          <div className="space-y-1.5">
+                            <select
+                              value={sortColId || activeSheet.columns[0]?.id || ''}
+                              onChange={(e) => setSortColId(e.target.value)}
+                              className="w-full h-7 rounded border border-[#E6E1D6] bg-[#FAF8F5] px-2 text-xs text-[#111318]"
+                            >
+                              {activeSheet.columns.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  Column {c.key} · {c.label} ({c.type})
+                                </option>
+                              ))}
+                            </select>
+
+                            <div className="grid grid-cols-2 gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const targetId = sortColId || activeSheet.columns[0]?.id;
+                                  if (!targetId) return;
+                                  setSortColId(targetId);
+                                  setSortOrder('col_asc');
+                                  setSortCenterOpen(false);
+                                  const c = activeSheet.columns.find((col) => col.id === targetId);
+                                  onNotify?.(`Sorted ${c?.label || ''} (Ascending A→Z / 1→9) ✓`);
+                                }}
+                                className={cn(
+                                  'rounded border py-1 px-1.5 text-center text-xs font-semibold cursor-pointer',
+                                  sortOrder === 'col_asc' ? 'bg-[#111318] text-[#E5C158] border-[#111318]' : 'bg-[#FAF8F5] border-[#E6E1D6] text-[#52504C]'
+                                )}
+                              >
+                                ▲ Ascending (A→Z)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const targetId = sortColId || activeSheet.columns[0]?.id;
+                                  if (!targetId) return;
+                                  setSortColId(targetId);
+                                  setSortOrder('col_desc');
+                                  setSortCenterOpen(false);
+                                  const c = activeSheet.columns.find((col) => col.id === targetId);
+                                  onNotify?.(`Sorted ${c?.label || ''} (Descending Z→A / 9→1) ✓`);
+                                }}
+                                className={cn(
+                                  'rounded border py-1 px-1.5 text-center text-xs font-semibold cursor-pointer',
+                                  sortOrder === 'col_desc' ? 'bg-[#111318] text-[#E5C158] border-[#111318]' : 'bg-[#FAF8F5] border-[#E6E1D6] text-[#52504C]'
+                                )}
+                              >
+                                ▼ Descending (Z→A)
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </>
                   )}
-                  title="Fast Entry: Latest added rows appear at the top on Page 1 for rapid entry"
-                >
-                  <ArrowUpDown className="h-3.5 w-3.5" />
-                  <span>Fast Entry: {sortOrder === 'latest_first' ? 'Newest First' : 'Normal'}</span>
-                </button>
+                </div>
               </div>
 
               {/* Action Buttons: Search, Status Filter, + Row, + Column, Import Excel, Export Excel/CSV */}
@@ -1835,9 +2276,102 @@ export function JobSheetsView({
                   ))}
                 </Select>
 
-                <Button variant="secondary" size="sm" onClick={() => handleAddRow()}>
-                  <Plus className="h-3.5 w-3.5 text-[#059669]" /> + Row
-                </Button>
+                {/* Positional + Row Split Button */}
+                <div className="relative inline-flex items-center">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      const defPos = (sortOrder === 'latest_first' || sortColId !== null) ? 'top' : 'bottom';
+                      handleAddRow(defPos);
+                    }}
+                    className="rounded-r-none border-r-0"
+                    title={`Add row ${sortOrder === 'latest_first' || sortColId !== null ? 'at top (Fast Entry)' : 'at bottom'}`}
+                  >
+                    <Plus className="h-3.5 w-3.5 text-[#059669]" /> + Row
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setRowMenuOpen(!rowMenuOpen)}
+                    className="inline-flex h-8 items-center justify-center rounded-r-lg border border-[#E6E1D6] bg-white px-1.5 text-[#686E78] hover:bg-[#FAF8F5] hover:text-[#111318] cursor-pointer"
+                    title="Choose where to add row"
+                    aria-label="Row placement options"
+                  >
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
+
+                  {rowMenuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setRowMenuOpen(false)} />
+                      <div className="absolute left-0 top-full z-50 mt-1 w-56 rounded-xl border border-[#E6E1D6] bg-white p-1.5 shadow-lg text-xs space-y-0.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleAddRow('top');
+                            setRowMenuOpen(false);
+                          }}
+                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                        >
+                          <ArrowUp className="h-3.5 w-3.5 text-[#059669]" />
+                          <div>
+                            <div>+ Add on Top (Row 1)</div>
+                            <div className="text-[10px] text-[#686E78] font-normal">Fast entry at sheet start</div>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleAddRow('bottom');
+                            setRowMenuOpen(false);
+                          }}
+                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                        >
+                          <ArrowDown className="h-3.5 w-3.5 text-[#8C6D1F]" />
+                          <div>
+                            <div>+ Add at Bottom (End)</div>
+                            <div className="text-[10px] text-[#686E78] font-normal">Append at end of sheet</div>
+                          </div>
+                        </button>
+
+                        {selectedCell && (
+                          <>
+                            <div className="my-1 border-t border-[#E6E1D6]" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleAddRow('above', selectedCell.rowIndex);
+                                setRowMenuOpen(false);
+                              }}
+                              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                            >
+                              <Plus className="h-3.5 w-3.5 text-[#2563EB]" />
+                              <div>
+                                <div>+ Insert Above Row #{selectedCell.rowIndex + 1}</div>
+                                <div className="text-[10px] text-[#686E78] font-normal">Before selected row</div>
+                              </div>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleAddRow('below', selectedCell.rowIndex);
+                                setRowMenuOpen(false);
+                              }}
+                              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-semibold text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                            >
+                              <Plus className="h-3.5 w-3.5 text-[#2563EB]" />
+                              <div>
+                                <div>+ Insert Below Row #{selectedCell.rowIndex + 1}</div>
+                                <div className="text-[10px] text-[#686E78] font-normal">After selected row</div>
+                              </div>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
 
                 {/* Mobile View Mode Switcher (< 768px: Table vs Cards) */}
                 <div className="flex md:hidden items-center rounded-lg border border-[#E6E1D6] bg-white p-0.5 shrink-0">
@@ -1867,7 +2401,7 @@ export function JobSheetsView({
                   </button>
                 </div>
 
-                <Button variant="secondary" size="sm" onClick={() => setAddColOpen(true)}>
+                <Button variant="secondary" size="sm" onClick={() => openAddColModal('end')}>
                   <Columns className="h-3.5 w-3.5 text-[#8C6D1F]" /> + Column
                 </Button>
 
@@ -1962,6 +2496,53 @@ export function JobSheetsView({
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Active Sort Banner (Visible whenever sheet is sorted) */}
+        {activeSheet && (sortOrder !== 'normal' || sortColId !== null) && (
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-[#FFFDF5] border-b border-[#E6D5A7] px-3.5 py-1.5 text-xs">
+            <div className="flex items-center gap-2 text-[#8C6D1F]">
+              <Filter className="h-3.5 w-3.5 text-[#C59B27] shrink-0" />
+              <span className="font-semibold text-[#111318]">
+                {sortColId
+                  ? `Sorted by Column ${activeSheet.columns.find((c) => c.id === sortColId)?.key || ''} (${activeSheet.columns.find((c) => c.id === sortColId)?.label || ''}) · ${sortOrder === 'col_asc' ? 'Ascending (A → Z / 1 → 9)' : 'Descending (Z → A / 9 → 1)'}`
+                  : 'Sorted: Fast Entry (Newest Rows First)'}
+              </span>
+              {pinnedRowId && (
+                <span className="inline-flex items-center gap-1 rounded bg-[#111318] text-[#E5C158] px-2 py-0.5 text-[10px] font-bold shadow-2xs">
+                  <Pin className="h-2.5 w-2.5" /> 1 New Row Pinned at Top (Row 1)
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {pinnedRowId && (
+                <button
+                  type="button"
+                  onClick={() => setPinnedRowId(null)}
+                  className="rounded px-2 py-0.5 text-[11px] font-semibold text-[#8C6D1F] hover:bg-[#FAF8F5] cursor-pointer"
+                  title="Unpin new row to let it join the sort order"
+                >
+                  Unpin Row
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setSortColId(null);
+                  setSortOrder('normal');
+                  setPinnedRowId(null);
+                  try {
+                    localStorage.setItem('sc_sheets_sort_order', 'normal');
+                  } catch {}
+                  onNotify?.('Reset to Original Table Order');
+                }}
+                className="rounded border border-[#E6D5A7] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#8C6D1F] hover:bg-[#FAF8F5] cursor-pointer shadow-2xs"
+              >
+                ✕ Reset to Original Order
+              </button>
+            </div>
           </div>
         )}
 
@@ -2283,65 +2864,173 @@ export function JobSheetsView({
                             />
                           </div>
 
-                          <div className="flex items-center gap-0.5">
-                            {/* Sort by this column */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (sortColId === col.id) {
+                          <div className="flex items-center gap-1 relative">
+                            {/* Active Sort Direction Indicator Pill (Click to toggle Asc / Desc / Clear) */}
+                            {isSorted && (
+                              <button
+                                type="button"
+                                onClick={() => {
                                   if (sortOrder === 'col_asc') {
                                     setSortOrder('col_desc');
+                                    onNotify?.(`Column ${letter} (${col.label}) sorted Descending (Z→A)`);
                                   } else {
                                     setSortColId(null);
                                     setSortOrder('normal');
+                                    onNotify?.(`Cleared sort on Column ${letter}`);
                                   }
-                                } else {
-                                  setSortColId(col.id);
-                                  setSortOrder('col_asc');
-                                }
-                              }}
-                              className={cn(
-                                'rounded p-0.5 cursor-pointer transition-colors',
-                                isSorted
-                                  ? 'text-[#C59B27] font-bold bg-[#FAF8F5]'
-                                  : 'text-[#686E78] hover:text-[#111318]',
-                              )}
-                              title={`Sort column ${col.label} (${isSorted ? sortOrder : 'click to sort'})`}
-                            >
-                              <ArrowUpDown className="h-3 w-3" />
-                            </button>
+                                }}
+                                className="inline-flex items-center gap-0.5 rounded bg-[#FAF8F5] border border-[#C59B27] px-1 py-0.2 text-[10px] font-mono font-bold text-[#8C6D1F] hover:bg-[#FFF9E6] cursor-pointer"
+                                title={`Sorted ${sortOrder === 'col_asc' ? 'Ascending (A→Z)' : 'Descending (Z→A)'}. Click to toggle or clear.`}
+                              >
+                                {sortOrder === 'col_asc' ? '▲' : '▼'}
+                              </button>
+                            )}
 
-                            {/* Format Column & Auto-Detect Dropdown */}
+                            {/* Single Clean 3-Dots Action Menu for Column Options */}
                             <button
                               type="button"
-                              onClick={() => setFormatColTarget(col)}
+                              onClick={() => setActiveColMenuId(activeColMenuId === col.id ? null : col.id)}
                               className={cn(
-                                'rounded p-0.5 cursor-pointer transition-colors',
-                                isDropdownCol
-                                  ? 'text-emerald-700 font-bold bg-emerald-50'
-                                  : 'text-[#686E78] hover:text-[#111318]',
+                                'rounded p-1 cursor-pointer transition-colors',
+                                activeColMenuId === col.id
+                                  ? 'bg-[#111318] text-[#E5C158]'
+                                  : 'text-[#686E78] hover:text-[#111318] hover:bg-[#FAF8F5]',
                               )}
-                              title={`Format column ${col.label} (convert to dropdown, currency, number, etc.)`}
+                              title="Column menu: Sort, Format, Insert, Delete"
+                              aria-label={`Menu for Column ${col.label}`}
                             >
-                              <SlidersHorizontal className="h-3 w-3" />
+                              <MoreVertical className="h-3.5 w-3.5" />
                             </button>
 
-                            {activeSheet.columns.length > 2 && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setDeleteColTarget({
-                                    colId: col.id,
-                                    letter,
-                                    label: col.label,
-                                  })
-                                }
-                                className="opacity-0 group-hover:opacity-100 rounded p-0.5 text-[#686E78] hover:text-rose-600 cursor-pointer transition-opacity"
-                                title={`Delete column ${letter} (asks confirmation)`}
-                                aria-label={`Delete column ${letter}`}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </button>
+                            {activeColMenuId === col.id && (
+                              <>
+                                <div
+                                  className="fixed inset-0 z-40"
+                                  onClick={() => setActiveColMenuId(null)}
+                                />
+                                <div
+                                  className="absolute right-0 top-full z-50 mt-1 w-52 rounded-xl border border-[#E6E1D6] bg-white p-1.5 shadow-xl text-xs space-y-0.5 font-normal normal-case"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#686E78] border-b border-[#E6E1D6]/60">
+                                    Column {letter} · {col.label}
+                                  </div>
+
+                                  {/* Sort Options */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSortColId(col.id);
+                                      setSortOrder('col_asc');
+                                      setActiveColMenuId(null);
+                                      onNotify?.(`Sorted Column ${letter} (${col.label}) Ascending (A→Z / 1→9) ✓`);
+                                    }}
+                                    className={cn(
+                                      'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs cursor-pointer',
+                                      isSorted && sortOrder === 'col_asc' ? 'bg-[#FAF8F5] font-bold text-[#111318]' : 'hover:bg-[#FAF8F5] text-[#52504C]'
+                                    )}
+                                  >
+                                    <ArrowDownAZ className="h-3.5 w-3.5 text-[#059669]" />
+                                    <span>Sort A → Z (Ascending)</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSortColId(col.id);
+                                      setSortOrder('col_desc');
+                                      setActiveColMenuId(null);
+                                      onNotify?.(`Sorted Column ${letter} (${col.label}) Descending (Z→A / 9→1) ✓`);
+                                    }}
+                                    className={cn(
+                                      'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs cursor-pointer',
+                                      isSorted && sortOrder === 'col_desc' ? 'bg-[#FAF8F5] font-bold text-[#111318]' : 'hover:bg-[#FAF8F5] text-[#52504C]'
+                                    )}
+                                  >
+                                    <ArrowUpZA className="h-3.5 w-3.5 text-[#8C6D1F]" />
+                                    <span>Sort Z → A (Descending)</span>
+                                  </button>
+
+                                  {isSorted && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSortColId(null);
+                                        setSortOrder('normal');
+                                        setActiveColMenuId(null);
+                                        onNotify?.(`Cleared sort on Column ${letter}`);
+                                      }}
+                                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-rose-600 hover:bg-rose-50 cursor-pointer"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                      <span>Clear Column Sort</span>
+                                    </button>
+                                  )}
+
+                                  <div className="my-1 border-t border-[#E6E1D6]" />
+
+                                  {/* Format Column */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveColMenuId(null);
+                                      setFormatColTarget(col);
+                                    }}
+                                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                                  >
+                                    <SlidersHorizontal className="h-3.5 w-3.5 text-[#C59B27]" />
+                                    <span>Format Column ({col.type})...</span>
+                                  </button>
+
+                                  <div className="my-1 border-t border-[#E6E1D6]" />
+
+                                  {/* Insert Column Left / Right ("Where Required") */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveColMenuId(null);
+                                      openAddColModal('left', col.id);
+                                    }}
+                                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                                  >
+                                    <Plus className="h-3.5 w-3.5 text-[#2563EB]" />
+                                    <span>Insert Column Left</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveColMenuId(null);
+                                      openAddColModal('right', col.id);
+                                    }}
+                                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-[#111318] hover:bg-[#FAF8F5] cursor-pointer"
+                                  >
+                                    <Plus className="h-3.5 w-3.5 text-[#2563EB]" />
+                                    <span>Insert Column Right</span>
+                                  </button>
+
+                                  {activeSheet.columns.length > 2 && (
+                                    <>
+                                      <div className="my-1 border-t border-[#E6E1D6]" />
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setActiveColMenuId(null);
+                                          setDeleteColTarget({
+                                            colId: col.id,
+                                            letter,
+                                            label: col.label,
+                                          });
+                                        }}
+                                        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-rose-600 hover:bg-rose-50 cursor-pointer"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                        <span>Delete Column...</span>
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </>
                             )}
                           </div>
                         </div>
@@ -2375,12 +3064,9 @@ export function JobSheetsView({
                   <th className="w-12 border-r border-[#E6E1D6] px-2 py-2 text-center bg-[#FAF8F5]">
                     <button
                       type="button"
-                      onClick={() => {
-                        setNewColLabel('');
-                        setAddColOpen(true);
-                      }}
+                      onClick={() => openAddColModal('end')}
                       className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-[#111318] text-[#E5C158] hover:bg-[#1E232D] text-xs font-bold cursor-pointer transition-transform hover:scale-105"
-                      title="Add New Column"
+                      title="Add New Column at End"
                       aria-label="Add New Column"
                     >
                       <Plus className="h-3.5 w-3.5" />
@@ -2407,16 +3093,21 @@ export function JobSheetsView({
                     const firstTextCol = activeSheet.columns.find((c) => c.type === 'text') ?? activeSheet.columns[0];
                     const rowPreviewText =
                       (firstTextCol ? row.cells[firstTextCol.id] : '') || `Row #${originalIndex + 1}`;
+                    const isPinned = pinnedRowId === row.id;
 
                     return (
                       <tr
                         key={row.id}
-                        className="hover:bg-[#FAF8F5]/75 transition-colors group"
+                        className={cn(
+                          'hover:bg-[#FAF8F5]/75 transition-colors group',
+                          isPinned && 'bg-[#FFFDF5] border-l-4 border-l-[#C59B27] ring-1 ring-[#E6D5A7]',
+                        )}
                       >
                         <td
                           className={cn(
                             'border-r border-[#E6E1D6] bg-[#FAF8F5] px-1 py-1.5 text-center font-mono text-[11px] font-semibold text-[#686E78] select-none',
                             dragOverRowIndex === originalIndex && 'border-t-2 border-t-[#C59B27] bg-[#FFF9E6]',
+                            isPinned && 'bg-[#FFFDF5]',
                           )}
                         >
                           <div className="flex items-center justify-center gap-0.5">
@@ -2453,6 +3144,15 @@ export function JobSheetsView({
                             >
                               {originalIndex + 1}
                             </span>
+                            {isPinned && (
+                              <span
+                                className="inline-flex items-center text-[9px] font-bold text-[#8C6D1F] bg-[#FFF9E6] border border-[#E6D5A7] rounded px-1 shrink-0 ml-0.5"
+                                title="Newly added row pinned at top for easy entry"
+                              >
+                                <Pin className="h-2 w-2 mr-0.5" />
+                                New
+                              </span>
+                            )}
                           </div>
                         </td>
 
@@ -2717,6 +3417,15 @@ export function JobSheetsView({
                               title="Duplicate row"
                             >
                               <Copy className="h-3 w-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleAddRow('below', originalIndex)}
+                              className="rounded p-0.5 text-[#686E78] hover:bg-[#FAF8F5] hover:text-[#2563EB] cursor-pointer"
+                              title={`Insert row below Row #${originalIndex + 1}`}
+                              aria-label="Insert row below"
+                            >
+                              <Plus className="h-3 w-3" />
                             </button>
                             <button
                               type="button"
@@ -3288,6 +3997,35 @@ export function JobSheetsView({
               <option value="currency">Currency (₹ Amount)</option>
             </Select>
           </div>
+          <div>
+            <FieldLabel htmlFor="new-col-placement">Where to Place Column</FieldLabel>
+            <Select
+              id="new-col-placement"
+              value={newColPlacement}
+              onChange={(e) => setNewColPlacement(e.target.value as any)}
+            >
+              <option value="end">At the End (Last Column)</option>
+              <option value="start">At the Beginning (Column A / First)</option>
+              <option value="left">To the Left of Selected Column...</option>
+              <option value="right">To the Right of Selected Column...</option>
+            </Select>
+          </div>
+          {(newColPlacement === 'left' || newColPlacement === 'right') && activeSheet && (
+            <div>
+              <FieldLabel htmlFor="new-col-target">Reference Column</FieldLabel>
+              <Select
+                id="new-col-target"
+                value={newColTargetColId}
+                onChange={(e) => setNewColTargetColId(e.target.value)}
+              >
+                {activeSheet.columns.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    Column {c.key} · {c.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" type="button" onClick={() => setAddColOpen(false)}>
               Cancel
