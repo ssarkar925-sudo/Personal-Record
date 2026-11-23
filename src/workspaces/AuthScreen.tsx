@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   AlertCircle,
   ArrowLeft,
+  Camera,
   CheckCircle2,
   Clock,
   Eye,
@@ -13,6 +14,8 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  User as UserIcon,
+  X,
   Zap,
 } from 'lucide-react';
 import { AppLogo } from '../components/ui/AppLogo.tsx';
@@ -21,6 +24,7 @@ import {
   signUpWithEmail,
   resetPasswordForEmail,
   updateAccountPassword,
+  compressImageToDataUrl,
   type User,
 } from '../lib/supabase.ts';
 import { clientDb } from '../lib/client-db.ts';
@@ -45,6 +49,9 @@ export function AuthScreen({
   const [authMode, setAuthMode] = useState<AuthMode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [photoLoading, setPhotoLoading] = useState(false);
   const [recoveryPassword, setRecoveryPassword] = useState('');
   const [recoveryConfirm, setRecoveryConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -52,6 +59,21 @@ export function AuthScreen({
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [hashNotice, setHashNotice] = useState<string | null>(null);
+
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoLoading(true);
+    try {
+      const dataUrl = await compressImageToDataUrl(file, 160, 0.85);
+      setAvatarUrl(dataUrl);
+      notify?.('Photo attached to profile!', 'ok');
+    } catch {
+      setErrorMsg('Failed to process image file. Please try another photo.');
+    } finally {
+      setPhotoLoading(false);
+    }
+  };
 
   const dict = UI_STRINGS[systemLanguage] || UI_STRINGS.en;
 
@@ -148,10 +170,10 @@ export function AuthScreen({
       }
 
       if (authMode === 'signup') {
-        const res = await signUpWithEmail(cleanEmail, password);
+        const res = await signUpWithEmail(cleanEmail, password, { fullName, avatarUrl });
         if (res.user) {
-          setSuccessMsg(`Account created! Welcome, ${cleanEmail}. Connecting ledger...`);
-          notify?.(`Account created! Welcome, ${cleanEmail}.`, 'ok');
+          setSuccessMsg(`Account created! Welcome, ${fullName || cleanEmail}. Connecting ledger...`);
+          notify?.(`Account created! Welcome, ${fullName || cleanEmail}.`, 'ok');
           await handlePostAuthSync();
           onLoginSuccess(res.user);
         }
@@ -376,6 +398,75 @@ export function AuthScreen({
                 </>
               ) : (
                 <>
+                  {authMode === 'signup' && (
+                    <div className="rounded-xl border border-[#D6CFC2] bg-[#FAF8F5] p-3.5 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-bold text-slate-800">
+                          Profile Identity (Name &amp; Photo)
+                        </label>
+                        <span className="text-[10px] text-slate-500 font-mono-data">Personalizes your app</span>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="relative group shrink-0">
+                          {avatarUrl ? (
+                            <img
+                              src={avatarUrl}
+                              alt="Avatar Preview"
+                              className="h-14 w-14 rounded-full object-cover border-2 border-[#C59B27] shadow-xs"
+                            />
+                          ) : (
+                            <div className="h-14 w-14 rounded-full bg-white border-2 border-dashed border-[#D6CFC2] flex flex-col items-center justify-center text-slate-400">
+                              <UserIcon className="h-6 w-6 text-slate-400" />
+                            </div>
+                          )}
+
+                          {avatarUrl && (
+                            <button
+                              type="button"
+                              onClick={() => setAvatarUrl('')}
+                              className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-xs hover:bg-rose-700 cursor-pointer"
+                              title="Remove photo"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="flex-1 space-y-1">
+                          <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#D6CFC2] bg-white text-xs font-semibold text-slate-800 hover:bg-[#F3EFEA] transition-colors cursor-pointer shadow-2xs">
+                            <Camera className="h-3.5 w-3.5 text-[#C59B27]" />
+                            <span>{photoLoading ? 'Processing...' : avatarUrl ? 'Change Photo' : 'Upload Profile Photo'}</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handlePhotoSelect}
+                              disabled={photoLoading}
+                              className="hidden"
+                            />
+                          </label>
+                          <p className="text-[10px] text-slate-500">
+                            Square JPEG/PNG photo. Automatically optimized for mobile and web.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1">Your Full Name</label>
+                        <div className="relative">
+                          <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                          <input
+                            type="text"
+                            value={fullName}
+                            onChange={(e) => setFullName(e.target.value)}
+                            placeholder="e.g. Sarkar Communication"
+                            className="w-full rounded-xl bg-white border border-slate-300 text-slate-900 placeholder-slate-400 pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-[#C59B27] focus:ring-2 focus:ring-[#C59B27]/15 transition-all"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">Account Email</label>
                     <div className="relative">

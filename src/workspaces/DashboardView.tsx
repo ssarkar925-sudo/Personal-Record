@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Building2,
   Calendar,
   ChevronDown,
+  Clock,
   Plus,
 } from 'lucide-react';
 import { api, type AdvisorBriefing, type DashboardSummary } from '../lib/api.ts';
@@ -50,7 +51,29 @@ export function DashboardView({
 }) {
   const [drillDownSpec, setDrillDownSpec] = useState<DrillDownFilterSpec | null>(null);
   const [mobileChartsOpen, setMobileChartsOpen] = useState(false);
+  const [currentTime, setCurrentTime] = useState(() => new Date());
   const dict = UI_STRINGS[systemLanguage];
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const liveLocale = systemLanguage === 'bn' ? 'bn-IN' : systemLanguage === 'hi' ? 'hi-IN' : 'en-IN';
+  const liveDateFormatted = currentTime.toLocaleDateString(liveLocale, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+  const liveTimeFormatted = currentTime.toLocaleTimeString(liveLocale, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
 
   if (loading || !data) {
     return (
@@ -91,8 +114,8 @@ export function DashboardView({
 
   return (
     <div className="space-y-5 animate-panel-in">
-      {/* Reference Telemetry Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* Live Precision Telemetry Header */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
         <div className="flex items-center gap-2 text-xs text-[#52504C]">
           <span className="inline-block h-2 w-2 rounded-full bg-[#059669]" />
           <span className="font-mono-data uppercase tracking-wider text-[11px] font-semibold text-[#111318]">
@@ -102,12 +125,28 @@ export function DashboardView({
           <span className="hidden sm:inline">Real-Time Double-Entry Telemetry</span>
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs text-[#52504C] font-mono-data tabular-nums ml-auto">
-          <Calendar className="w-3.5 h-3.5 text-[#C59B27]" />
-          <span>{dict.dashboard.referenceDate}:</span>
-          <strong className="font-semibold text-[#111318]">
-            {formatDisplayDate(data.referenceDate) || data.referenceDate}
-          </strong>
+        {/* Live Date & Time Clock Badge */}
+        <div className="flex flex-wrap items-center gap-2 text-xs font-mono-data tabular-nums ml-auto">
+          <div className="inline-flex items-center gap-2 rounded-xl border border-[#D6CFC2]/80 bg-white px-3 py-1.5 shadow-2xs">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            </span>
+            <Clock className="w-3.5 h-3.5 text-[#C59B27]" />
+            <span className="font-semibold text-[#111318]">{liveDateFormatted}</span>
+            <span className="text-[#A8A196]">·</span>
+            <span className="font-bold text-[#111318] tracking-wide">{liveTimeFormatted}</span>
+          </div>
+
+          {data.referenceDate && (
+            <span
+              title={`Ledger accounting reference date: ${formatDisplayDate(data.referenceDate)}`}
+              className="hidden sm:inline-flex items-center gap-1 text-[11px] text-[#716C64] bg-[#F3EFEA] border border-[#EAE5DC] px-2 py-1 rounded-lg"
+            >
+              <Calendar className="w-3 h-3 text-[#A8A196]" />
+              <span>Period: {data.referenceDate}</span>
+            </span>
+          )}
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   AlertCircle,
+  Camera,
   CheckCircle2,
   Copy,
   Download,
@@ -19,10 +20,13 @@ import {
   Shield,
   ShieldCheck,
   Smartphone,
+  Timer,
   Unplug,
   Upload,
   UploadCloud,
+  User as UserIcon,
   UserCheck,
+  X,
   Zap,
 } from 'lucide-react';
 import { Button, Card, FieldLabel, Input } from '../components/ui/Primitives.tsx';
@@ -30,6 +34,9 @@ import { AppLogo } from '../components/ui/AppLogo.tsx';
 import {
   signOut,
   updateAccountPassword,
+  updateUserProfile,
+  getUserProfile,
+  compressImageToDataUrl,
   resetPasswordForEmail,
   testSupabaseConnection,
   type User,
@@ -116,6 +123,8 @@ interface SettingsViewProps {
   bridgeState?: WhatsAppBridgeState;
   onBridgeStateChange?: (next: WhatsAppBridgeState) => void;
   initialTab?: SettingsTab;
+  inactivityMinutes?: number;
+  onInactivityMinutesChange?: (minutes: number) => void;
 }
 
 export type SettingsTab = 'account' | 'whatsapp' | 'updates' | 'vault_security' | 'cloud' | 'system';
@@ -132,8 +141,64 @@ export function SettingsView({
   bridgeState,
   onBridgeStateChange,
   initialTab,
+  inactivityMinutes = 15,
+  onInactivityMinutesChange,
 }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'account');
+
+  // Profile Update State
+  const [profileName, setProfileName] = useState('');
+  const [profileAvatar, setProfileAvatar] = useState('');
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [photoProcessing, setPhotoProcessing] = useState(false);
+  const [profileMsg, setProfileMsg] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null);
+
+  useEffect(() => {
+    if (currentUser) {
+      const p = getUserProfile(currentUser);
+      setProfileName(p.fullName);
+      setProfileAvatar(p.avatarUrl);
+    }
+  }, [currentUser]);
+
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoProcessing(true);
+    setProfileMsg(null);
+    try {
+      const dataUrl = await compressImageToDataUrl(file, 160, 0.85);
+      setProfileAvatar(dataUrl);
+      notify?.('Photo attached. Click "Save Profile Changes" to save.', 'ok');
+    } catch {
+      setProfileMsg({ text: 'Failed to process image file.', kind: 'err' });
+    } finally {
+      setPhotoProcessing(false);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileLoading(true);
+    setProfileMsg(null);
+    try {
+      const updated = await updateUserProfile({
+        fullName: profileName.trim(),
+        avatarUrl: profileAvatar.trim(),
+      });
+      if (updated) {
+        onUserChange(updated);
+      }
+      setProfileMsg({ text: 'Profile name and photo saved successfully!', kind: 'ok' });
+      notify?.('Profile details updated ✓', 'ok');
+    } catch (err) {
+      const msg = (err as Error).message || 'Failed to update profile.';
+      setProfileMsg({ text: msg, kind: 'err' });
+      notify?.(msg, 'err');
+    } finally {
+      setProfileLoading(false);
+    }
+  };
 
   // Account Password Reset State
   const [newPassword, setNewPassword] = useState('');
@@ -694,18 +759,209 @@ export function SettingsView({
               </Button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div className="rounded-xl bg-slate-50 p-3.5 border border-slate-100">
-                <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold block">Signed In As</span>
-                <span className="text-sm font-bold text-slate-900 mt-1 block truncate font-mono-data">
-                  {currentUser?.email || 'Not Signed In'}
-                </span>
+            <div className="flex items-center gap-4 p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+              {profileAvatar ? (
+                <img
+                  src={profileAvatar}
+                  alt={profileName || 'User Avatar'}
+                  className="h-14 w-14 rounded-2xl object-cover border-2 border-[#C59B27]/40 shadow-xs shrink-0"
+                />
+              ) : (
+                <div className="h-14 w-14 rounded-2xl bg-[#111318] border border-[#C59B27]/40 flex items-center justify-center text-[#E5C158] font-bold text-lg font-mono-data shrink-0">
+                  {currentUser?.email ? currentUser.email.charAt(0).toUpperCase() : 'U'}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-bold text-slate-900 truncate">
+                  {profileName || currentUser?.email || 'Not Signed In'}
+                </div>
+                {profileName && currentUser?.email && (
+                  <div className="text-xs text-slate-500 font-mono-data truncate">
+                    {currentUser.email}
+                  </div>
+                )}
+                <div className="text-[11px] text-slate-400 font-mono-data truncate mt-0.5">
+                  ID: {currentUser?.id || 'Local Anonymous'}
+                </div>
               </div>
-              <div className="rounded-xl bg-slate-50 p-3.5 border border-slate-100">
-                <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold block">Partition User ID</span>
-                <span className="text-xs font-mono-data text-slate-700 mt-1 block truncate">
-                  {currentUser?.id || 'Local Anonymous'}
-                </span>
+            </div>
+          </Card>
+
+          {/* Profile Name & Photo Customization Card */}
+          <Card className="p-5 sm:p-6 border-[#EAE5DC] bg-white space-y-5 shadow-xs">
+            <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
+              <div className="h-9 w-9 rounded-xl bg-[#111318] text-[#E5C158] flex items-center justify-center shrink-0">
+                <UserIcon className="h-4 w-4" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 font-display">Profile Identity &amp; Photo</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Update your display name and avatar photo across web and mobile app</p>
+              </div>
+            </div>
+
+            {profileMsg && (
+              <div
+                className={`flex items-start gap-2.5 rounded-xl border p-3 text-xs ${
+                  profileMsg.kind === 'ok'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                    : 'border-rose-200 bg-rose-50 text-rose-800'
+                }`}
+              >
+                {profileMsg.kind === 'ok' ? (
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
+                )}
+                <div className="flex-1 font-medium">{profileMsg.text}</div>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveProfile} className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl border border-[#D6CFC2]/70 bg-[#FAF8F5]">
+                <div className="relative group shrink-0">
+                  {profileAvatar ? (
+                    <img
+                      src={profileAvatar}
+                      alt="Avatar Preview"
+                      className="h-16 w-16 rounded-full object-cover border-2 border-[#C59B27] shadow-sm"
+                    />
+                  ) : (
+                    <div className="h-16 w-16 rounded-full bg-white border-2 border-dashed border-[#D6CFC2] flex flex-col items-center justify-center text-slate-400">
+                      <UserIcon className="h-7 w-7 text-slate-400" />
+                    </div>
+                  )}
+
+                  {profileAvatar && (
+                    <button
+                      type="button"
+                      onClick={() => setProfileAvatar('')}
+                      className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-xs hover:bg-rose-700 cursor-pointer"
+                      title="Remove profile photo"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-1.5 flex-1">
+                  <div className="flex items-center gap-2">
+                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#D6CFC2] bg-white text-xs font-semibold text-slate-800 hover:bg-[#F3EFEA] transition-colors cursor-pointer shadow-2xs">
+                      <Camera className="h-3.5 w-3.5 text-[#C59B27]" />
+                      <span>{photoProcessing ? 'Processing image...' : profileAvatar ? 'Change Photo' : 'Upload Profile Photo'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handlePhotoSelect}
+                        disabled={photoProcessing}
+                        className="hidden"
+                      />
+                    </label>
+                    {profileAvatar && (
+                      <button
+                        type="button"
+                        onClick={() => setProfileAvatar('')}
+                        className="text-xs text-rose-600 hover:text-rose-700 font-medium px-2 py-1"
+                      >
+                        Remove Photo
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Square PNG or JPEG photo. Automatically compressed to lightweight vector cache and synced to cloud.
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <FieldLabel htmlFor="settings-profile-name">Full Name / Business Title</FieldLabel>
+                <div className="relative mt-1">
+                  <Input
+                    id="settings-profile-name"
+                    type="text"
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    placeholder="e.g. Sarkar Communication"
+                    className="h-10 text-xs pl-9"
+                  />
+                  <UserIcon className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="sm"
+                  disabled={profileLoading || photoProcessing}
+                  className="bg-[#111318] text-[#E5C158] hover:bg-[#1B1E26] border border-[#C59B27]/40 text-xs px-4 h-9"
+                >
+                  {profileLoading ? 'Saving Profile...' : 'Save Profile Changes'}
+                </Button>
+              </div>
+            </form>
+          </Card>
+
+          {/* Inactivity Auto-Logout Timeout Card */}
+          <Card className="p-5 sm:p-6 border-[#EAE5DC] bg-white space-y-4 shadow-xs">
+            <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
+              <div className="h-9 w-9 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200">
+                <Timer className="h-4 w-4" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 font-display">Inactivity Auto-Logout Security</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Automatically log out cloud session and lock records when idle</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              To protect sensitive financial figures when you walk away from your desk or leave your phone unattended, Personal Ledger can automatically sign you out after a set period of inactivity (no clicks, taps, keystrokes, or scrolling).
+            </p>
+
+            <div className="space-y-2">
+              <span className="text-xs font-semibold text-slate-800 block">Idle Timeout Period:</span>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: 5, label: '5 Minutes', badge: 'High Security' },
+                  { value: 15, label: '15 Minutes', badge: 'Recommended' },
+                  { value: 30, label: '30 Minutes', badge: '' },
+                  { value: 60, label: '60 Minutes', badge: '' },
+                  { value: 0, label: 'Never (Disabled)', badge: '' },
+                ].map((opt) => {
+                  const active = inactivityMinutes === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        onInactivityMinutesChange?.(opt.value);
+                        notify?.(
+                          opt.value > 0
+                            ? `Inactivity auto-logout set to ${opt.label} ✓`
+                            : 'Inactivity auto-logout disabled',
+                          'ok'
+                        );
+                      }}
+                      className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-medium border transition-all cursor-pointer ${
+                        active
+                          ? 'border-[#C59B27] bg-[#111318] text-[#E5C158] font-bold shadow-xs'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300'
+                      }`}
+                    >
+                      <span>{opt.label}</span>
+                      {opt.badge && (
+                        <span
+                          className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold uppercase tracking-wider ${
+                            active
+                              ? 'bg-[#E5C158] text-[#111318]'
+                              : 'bg-slate-100 text-slate-600'
+                          }`}
+                        >
+                          {opt.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </Card>

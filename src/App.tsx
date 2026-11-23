@@ -49,7 +49,7 @@ import { CloudSyncModal } from './components/ui/CloudSyncModal.tsx';
 import { AuthModal } from './workspaces/AuthModal.tsx';
 import { AuthScreen } from './workspaces/AuthScreen.tsx';
 import { subscribeToSupabaseRealtime } from './lib/supabase-sync.ts';
-import type { User } from './lib/supabase.ts';
+import { getUserProfile, type User } from './lib/supabase.ts';
 import { AgentDrawer } from './components/AgentDrawer.tsx';
 import { DashboardView, type WorkspaceId } from './workspaces/DashboardView.tsx';
 import { AlertsSettingsModal } from './workspaces/AlertsSettingsModal.tsx';
@@ -73,8 +73,70 @@ const JobSheetsView = lazy(() =>
 const VaultView = lazy(() => import('./workspaces/VaultView.tsx').then((m) => ({ default: m.VaultView })));
 const SettingsView = lazy(() => import('./workspaces/SettingsView.tsx').then((m) => ({ default: m.SettingsView })));
 
+const VALID_WORKSPACES: WorkspaceId[] = [
+  'dashboard',
+  'cards',
+  'money',
+  'loans_dues',
+  'reports',
+  'notes',
+  'sheets',
+  'vault',
+  'settings',
+];
+
+function normalizeWorkspaceId(val?: string | null): WorkspaceId | null {
+  if (!val) return null;
+  const clean = val.toLowerCase().replace(/^#\/?/, '').replace(/-/g, '_').trim();
+  if (VALID_WORKSPACES.includes(clean as WorkspaceId)) return clean as WorkspaceId;
+  if (clean === 'home') return 'dashboard';
+  if (clean === 'banks' || clean === 'bank' || clean === 'cash') return 'money';
+  if (clean === 'loans' || clean === 'dues' || clean === 'loans-dues') return 'loans_dues';
+  if (clean === 'job_sheets' || clean === 'job-sheets' || clean === 'jobsheets') return 'sheets';
+  return null;
+}
+
+function getInitialWorkspace(): WorkspaceId {
+  if (typeof window !== 'undefined') {
+    const fromHash = normalizeWorkspaceId(window.location.hash);
+    if (fromHash) return fromHash;
+    try {
+      const stored = normalizeWorkspaceId(localStorage.getItem('pl_active_tab'));
+      if (stored) return stored;
+    } catch {}
+  }
+  return 'dashboard';
+}
+
 export function App() {
-  const [activeTab, setActiveTab] = useState<WorkspaceId>('dashboard');
+  const [activeTab, setActiveTabState] = useState<WorkspaceId>(getInitialWorkspace);
+
+  const setActiveTab = useCallback((tab: WorkspaceId) => {
+    setActiveTabState(tab);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('pl_active_tab', tab);
+        if (window.location.hash !== `#${tab}`) {
+          window.history.replaceState(null, '', `#${tab}`);
+        }
+      } catch {}
+    }
+  }, []);
+
+  // Sync with browser back/forward and hash changes
+  useEffect(() => {
+    const handleHashChange = () => {
+      const target = normalizeWorkspaceId(window.location.hash);
+      if (target && target !== activeTab) {
+        setActiveTabState(target);
+        try {
+          localStorage.setItem('pl_active_tab', target);
+        } catch {}
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [activeTab]);
   const [scopeFilter, setScopeFilter] = useState<Scope | 'all'>('all');
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -376,6 +438,66 @@ export function App() {
     };
   }, [preferences.hasAppPin, preferences.autoLockMinutes, appLocked, triggerServerLock]);
 
+  const [inactivityMinutes, setInactivityMinutes] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem('pl_inactivity_logout_minutes');
+      if (stored !== null) {
+        const val = parseInt(stored, 10);
+        return isNaN(val) ? 15 : val;
+      }
+    } catch {}
+    return 15; // default 15 minutes
+  });
+
+  const handleInactivityLogout = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const { signOut } = await import('./lib/supabase.ts');
+      await signOut().catch(() => {});
+    } catch {}
+    try {
+      const { clientDb } = await import('./lib/client-db.ts');
+      clientDb.resetToCleanSlate();
+    } catch {}
+    resetAllState();
+    setCurrentUser(null);
+    notify('Logged out due to inactivity for security. Please sign in to resume.', 'err');
+  }, [currentUser, resetAllState, notify]);
+
+  // Inactivity Auto-Logout Timer (listens to mouse, keyboard, touch, scroll)
+  useEffect(() => {
+    if (!currentUser || inactivityMinutes <= 0) return;
+
+    let lastInteraction = Date.now();
+    const timeoutMs = inactivityMinutes * 60_000;
+
+    const interval = window.setInterval(() => {
+      const elapsed = Date.now() - lastInteraction;
+      if (elapsed >= timeoutMs) {
+        void handleInactivityLogout();
+      }
+    }, 10_000);
+
+    let throttleTimer: ReturnType<typeof setTimeout> | null = null;
+    const onUserActivity = () => {
+      if (!throttleTimer) {
+        throttleTimer = setTimeout(() => {
+          lastInteraction = Date.now();
+          throttleTimer = null;
+        }, 1000);
+      }
+    };
+
+    const events = ['pointerdown', 'keydown', 'touchstart', 'wheel', 'scroll', 'mousemove'];
+    events.forEach((evt) => window.addEventListener(evt, onUserActivity, { passive: true }));
+
+    return () => {
+      window.clearInterval(interval);
+      if (throttleTimer) clearTimeout(throttleTimer);
+      events.forEach((evt) => window.removeEventListener(evt, onUserActivity));
+    };
+  }, [currentUser, inactivityMinutes, handleInactivityLogout]);
+
   const handleUnlockApp = async (e: React.FormEvent) => {
     e.preventDefault();
     setPinError('');
@@ -448,6 +570,7 @@ export function App() {
   };
 
   const dict = UI_STRINGS[preferences.systemLanguage];
+  const userProfile = getUserProfile(currentUser);
 
   // Exact bottom bar arrangement: Dashboard, Credit Cards, Bank & Cash, Notes, Loans & Dues, Reports, Vault
   const dockItems: DockWorkspaceItem[] = [
@@ -714,15 +837,23 @@ export function App() {
                   <button
                     type="button"
                     onClick={() => setAuthModalOpen(true)}
-                    title={`Sovereign Account: ${currentUser.email} • Realtime Cloud Sync Active`}
+                    title={`Sovereign Account: ${userProfile.fullName ? `${userProfile.fullName} (${currentUser.email})` : currentUser.email} • Realtime Cloud Sync Active`}
                     className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50/90 px-2 sm:px-2.5 text-xs font-semibold text-emerald-900 shadow-2xs hover:bg-emerald-100 transition-all cursor-pointer shrink-0"
                   >
-                    <span className="relative flex h-2 w-2 shrink-0">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                      <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                    </span>
-                    <span className="hidden sm:inline max-w-[140px] truncate font-mono-data text-[11px]">
-                      {currentUser.email}
+                    {userProfile.avatarUrl ? (
+                      <img
+                        src={userProfile.avatarUrl}
+                        alt={userProfile.fullName || 'Profile'}
+                        className="h-5 w-5 rounded-full object-cover border border-emerald-400 shrink-0 shadow-2xs"
+                      />
+                    ) : (
+                      <span className="relative flex h-2 w-2 shrink-0">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                      </span>
+                    )}
+                    <span className="hidden sm:inline max-w-[130px] truncate font-medium text-[11px]">
+                      {userProfile.fullName || currentUser.email}
                     </span>
                   </button>
                 ) : (
@@ -814,9 +945,9 @@ export function App() {
 
 
 
-        {/* Main Workspace Canvas (padded at bottom for Floating Glass Command Dock) */}
+        {/* Main Workspace Canvas (dynamically padded at bottom for Floating Command Dock) */}
         {!(appLocked && preferences.hasAppPin) && (
-          <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 sm:px-6 lg:px-8 pt-5 sm:pt-6 pb-36 sm:pb-40">
+          <main className="mx-auto w-full max-w-[1440px] flex-1 px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-24 sm:pb-28 xl:pb-32 max-h-[720px]:pb-20 max-h-[720px]:pt-2.5 transition-all">
             {loadError && (
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
                 <span>{loadError}</span>
@@ -957,6 +1088,13 @@ export function App() {
                     bridgeState={bridgeState}
                     onBridgeStateChange={setBridgeState}
                     initialTab={settingsInitialTab}
+                    inactivityMinutes={inactivityMinutes}
+                    onInactivityMinutesChange={(m) => {
+                      setInactivityMinutes(m);
+                      try {
+                        localStorage.setItem('pl_inactivity_logout_minutes', String(m));
+                      } catch {}
+                    }}
                   />
                 )}
               </Suspense>

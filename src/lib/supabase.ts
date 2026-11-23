@@ -138,19 +138,123 @@ export function getAuthRedirectUrl(): string {
 }
 
 // Authentication Helpers
-export async function signUpWithEmail(email: string, password: string) {
+export interface UserProfileData {
+  fullName: string;
+  avatarUrl: string;
+}
+
+export function getUserProfile(user?: User | null): UserProfileData {
+  if (!user) {
+    try {
+      const stored = localStorage.getItem('pl_user_profile');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return { fullName: '', avatarUrl: '' };
+  }
+  const meta = (user.user_metadata || {}) as Record<string, unknown>;
+  let fullName = typeof meta.full_name === 'string' ? meta.full_name : typeof meta.name === 'string' ? meta.name : '';
+  let avatarUrl = typeof meta.avatar_url === 'string' ? meta.avatar_url : typeof meta.picture === 'string' ? meta.picture : '';
+  if (!fullName || !avatarUrl) {
+    try {
+      const stored = localStorage.getItem('pl_user_profile');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (!fullName && parsed.fullName) fullName = parsed.fullName;
+        if (!avatarUrl && parsed.avatarUrl) avatarUrl = parsed.avatarUrl;
+      }
+    } catch {}
+  }
+  return { fullName, avatarUrl };
+}
+
+export function compressImageToDataUrl(file: File, maxDim = 160, quality = 0.82): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        if (width > height) {
+          if (width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          }
+        } else {
+          if (height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(e.target?.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function signUpWithEmail(
+  email: string,
+  password: string,
+  profile?: { fullName?: string; avatarUrl?: string }
+) {
   const client = getSupabaseClient();
   if (!client) throw new Error('Supabase is not configured. Please provide Project URL and Anon Key.');
   const redirectTo = getAuthRedirectUrl();
+  const metadata: Record<string, string> = {};
+  if (profile?.fullName) metadata.full_name = profile.fullName.trim();
+  if (profile?.avatarUrl) metadata.avatar_url = profile.avatarUrl.trim();
+
   const { data, error } = await client.auth.signUp({
     email,
     password,
     options: {
       emailRedirectTo: redirectTo,
+      data: metadata,
     },
   });
   if (error) throw error;
+  if (profile) {
+    try {
+      localStorage.setItem('pl_user_profile', JSON.stringify({
+        fullName: profile.fullName || '',
+        avatarUrl: profile.avatarUrl || '',
+      }));
+    } catch {}
+  }
   return data;
+}
+
+export async function updateUserProfile(profile: { fullName?: string; avatarUrl?: string }) {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('Supabase is not configured. Please provide Project URL and Anon Key.');
+  const metadata: Record<string, string> = {};
+  if (profile.fullName !== undefined) metadata.full_name = profile.fullName.trim();
+  if (profile.avatarUrl !== undefined) metadata.avatar_url = profile.avatarUrl.trim();
+
+  const { data, error } = await client.auth.updateUser({
+    data: metadata,
+  });
+  if (error) throw error;
+  try {
+    localStorage.setItem('pl_user_profile', JSON.stringify({
+      fullName: profile.fullName || '',
+      avatarUrl: profile.avatarUrl || '',
+    }));
+  } catch {}
+  return data.user;
 }
 
 export async function signInWithEmail(email: string, password: string) {
