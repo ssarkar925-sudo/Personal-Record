@@ -676,10 +676,13 @@ export function App() {
   }
 
   return (
-    <div className="relative min-h-screen flex flex-col canvas-studio text-[#111318]">
+    <div
+      data-scope={scopeFilter}
+      className="relative min-h-screen flex flex-col canvas-studio text-[#111318]"
+    >
       <div className="relative z-10 min-h-screen flex flex-col">
         {/* Editorial Sovereign Top Command Bar */}
-        <header className="sticky top-0 z-30 border-b border-[#EAE5DC] bg-[#FAF8F5]/92 backdrop-blur-md">
+        <header className="sticky top-0 z-30 border-b border-[#EAE5DC] bg-[#FAF8F5]/92 backdrop-blur-md ambient-scope-header transition-all duration-300">
           <div className="mx-auto max-w-[1440px] px-2.5 sm:px-6 lg:px-8">
             <div className="flex h-14 sm:h-16 items-center justify-between gap-1.5 sm:gap-3">
               {/* Brand Crest & Editorial Wordmark */}
@@ -706,26 +709,26 @@ export function App() {
               <div
                 role="group"
                 aria-label="Global Scope Filter"
-                className="hidden xl:inline-flex items-center rounded-xl bg-[#F3EFEA] p-1 border border-[#EAE5DC]"
+                className="hidden xl:inline-flex items-center rounded-2xl bg-[#F3EFEA] p-1 border border-[#EAE5DC] shadow-[inset_0_1px_2px_rgba(17,19,24,0.04)]"
               >
                 {scopePillOptions.map(([id, label]) => {
                   const active = scopeFilter === id;
                   const dotColor =
-                    id === 'all' ? 'bg-[#C59B27]' : SCOPE_META[id].dotClass;
+                    id === 'all' ? 'bg-[#C59B27]' : SCOPE_META[id as Scope].dotClass;
                   return (
                     <button
                       key={id}
                       type="button"
                       onClick={() => setScopeFilter(id)}
-                      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition-all cursor-pointer ${
+                      className={`relative inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all duration-150 cursor-pointer ${
                         active
-                          ? 'bg-[#111318] text-[#FAF8F5] shadow-2xs'
-                          : 'text-[#52504C] hover:text-[#111318]'
+                          ? 'bg-[#111318] text-[#FAF8F5] shadow-xs'
+                          : 'text-[#52504C] hover:text-[#111318] hover:bg-black/4'
                       }`}
                     >
                       <span
-                        className={`h-1.5 w-1.5 rounded-full ${
-                          active ? 'bg-[#E5C158]' : dotColor
+                        className={`h-2 w-2 rounded-full transition-transform duration-150 ${
+                          active ? 'bg-[#E5C158] scale-110 shadow-[0_0_8px_rgba(229,193,88,0.6)]' : dotColor
                         }`}
                       />
                       <span>{label}</span>
@@ -911,13 +914,13 @@ export function App() {
             <div
               role="group"
               aria-label="Mobile Global Scope Filter"
-              className="xl:hidden flex items-center justify-between gap-1 pb-2.5 pt-0.5 overflow-x-auto no-scrollbar"
+              className="xl:hidden flex items-center justify-between gap-1 pb-2 pt-0.5 overflow-x-auto no-scrollbar"
             >
-              <div className="inline-flex w-full items-center rounded-xl bg-[#F3EFEA] p-1 border border-[#EAE5DC]">
+              <div className="inline-flex w-full items-center rounded-xl bg-[#F3EFEA] p-0.5 border border-[#EAE5DC] shadow-[inset_0_1px_2px_rgba(17,19,24,0.04)]">
                 {scopePillOptions.map(([id, label]) => {
                   const active = scopeFilter === id;
                   const dotColor =
-                    id === 'all' ? 'bg-[#C59B27]' : SCOPE_META[id].dotClass;
+                    id === 'all' ? 'bg-[#C59B27]' : SCOPE_META[id as Scope].dotClass;
                   return (
                     <button
                       key={id}
@@ -925,13 +928,13 @@ export function App() {
                       onClick={() => setScopeFilter(id)}
                       className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-all cursor-pointer whitespace-nowrap ${
                         active
-                          ? 'bg-[#111318] text-[#FAF8F5] shadow-2xs'
-                          : 'text-[#52504C] hover:text-[#111318]'
+                          ? 'bg-[#111318] text-[#FAF8F5] shadow-xs'
+                          : 'text-[#52504C] hover:text-[#111318] hover:bg-black/3'
                       }`}
                     >
                       <span
-                        className={`h-1.5 w-1.5 rounded-full shrink-0 ${
-                          active ? 'bg-[#E5C158]' : dotColor
+                        className={`h-1.5 w-1.5 rounded-full shrink-0 transition-transform ${
+                          active ? 'bg-[#E5C158] scale-125' : dotColor
                         }`}
                       />
                       <span>{label}</span>
@@ -947,7 +950,7 @@ export function App() {
 
         {/* Main Workspace Canvas (dynamically padded at bottom for Floating Command Dock) */}
         {!(appLocked && preferences.hasAppPin) && (
-          <main className="mx-auto w-full max-w-[1440px] flex-1 px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-24 sm:pb-28 xl:pb-32 max-h-[720px]:pb-20 max-h-[720px]:pt-2.5 transition-all">
+          <main className="mx-auto w-full max-w-[1440px] flex-1 px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-28 sm:pb-32 xl:pb-36 max-h-[720px]:pb-24 max-h-[720px]:pt-2.5 transition-all">
             {loadError && (
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
                 <span>{loadError}</span>

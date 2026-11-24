@@ -16,8 +16,8 @@ export interface UpdateCheckResult {
   changelog: string;
 }
 
-export const CURRENT_APP_VERSION = '1.0.10';
-export const CURRENT_BUILD_NUMBER = 110;
+export const CURRENT_APP_VERSION = '1.0.11';
+export const CURRENT_BUILD_NUMBER = 111;
 export const APK_DOWNLOAD_URL = 'https://raw.githubusercontent.com/ssarkar925-sudo/Personal-Record/main/public/PersonalLedger-latest.apk';
 
 export async function checkForAppUpdate(): Promise<UpdateCheckResult> {

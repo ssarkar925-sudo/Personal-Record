@@ -23,6 +23,20 @@
   --status-positive: #047857;
   --status-negative: #be123c;
   --status-warning: #b45309;
+
+  /* Ambient Scope Signature Variables */
+  --scope-business: #c59b27;
+  --scope-business-bg: #fffcf4;
+  --scope-business-border: #fae7b9;
+  --scope-personal: #059669;
+  --scope-personal-bg: #f4fbf7;
+  --scope-personal-border: #c3e7d3;
+  --scope-family: #4f46e5;
+  --scope-family-bg: #f7f6ff;
+  --scope-family-border: #dcd7fe;
+  --scope-all: #111318;
+  --scope-all-bg: #f3efea;
+  --scope-all-border: #eae5dc;
 }
 
 @layer base {
@@ -193,6 +207,47 @@ html[data-privacy="masked"] main .tabular-nums:hover {
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+/* Sleek Architectural Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(133, 128, 120, 0.22);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(133, 128, 120, 0.42);
+}
+
+/* Ambient Scope Header & Container Tints */
+[data-scope="business"] .ambient-scope-header {
+  border-bottom-color: rgba(197, 155, 39, 0.35);
+  box-shadow: 0 4px 20px -8px rgba(197, 155, 39, 0.12);
+}
+[data-scope="personal"] .ambient-scope-header {
+  border-bottom-color: rgba(5, 150, 105, 0.35);
+  box-shadow: 0 4px 20px -8px rgba(5, 150, 105, 0.12);
+}
+[data-scope="family"] .ambient-scope-header {
+  border-bottom-color: rgba(79, 70, 229, 0.35);
+  box-shadow: 0 4px 20px -8px rgba(79, 70, 229, 0.12);
+}
+[data-scope="all"] .ambient-scope-header {
+  border-bottom-color: var(--border-hairline);
+  box-shadow: 0 1px 3px rgba(17, 19, 24, 0.02);
+}
+
+/* Enhanced Form Controls & Focus States */
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #c59b27 !important;
+  box-shadow: 0 0 0 3px rgba(197, 155, 39, 0.15) !important;
 }
 
 @keyframes barRise {

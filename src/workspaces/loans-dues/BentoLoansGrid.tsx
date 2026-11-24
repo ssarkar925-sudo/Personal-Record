@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { buildWhatsAppLink, formatINR } from '../../lib/format.ts';
+import { ScopeBadge } from '../../components/ui/Primitives.tsx';
 import type {
   LoanRecord,
   PersonDueRecord,
@@ -581,9 +582,12 @@ export function BentoLoansGrid({
                           <div className="text-[11px] text-[#52504C]">{loan.counterparty}</div>
                         </td>
                         <td className="py-2.5 px-3">
-                          <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full uppercase bg-[#F3EFEA] text-[#111318] border border-[#E6E1D6]">
-                            {loan.scope} · {isClosed ? 'Closed' : loan.direction === 'lent' ? 'Lent' : 'Borrow'}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <ScopeBadge scope={loan.scope} size="xs" />
+                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded-full uppercase bg-[#F3EFEA] text-[#52504C] border border-[#E6E1D6]">
+                              {isClosed ? 'Closed' : loan.direction === 'lent' ? 'Lent' : 'Borrow'}
+                            </span>
+                          </div>
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono font-bold text-sm text-[#111318]">
                           {formatINR(loan.remainingMinor)}
@@ -845,9 +849,7 @@ export function BentoLoansGrid({
                           </span>
                         </td>
                         <td className="py-2.5 px-3">
-                          <span className="text-[10px] font-mono uppercase text-[#52504C] font-semibold">
-                            {due.scope}
-                          </span>
+                          <ScopeBadge scope={due.scope} size="xs" />
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono font-bold text-sm">
                           <span
@@ -1094,9 +1096,12 @@ export function BentoLoansGrid({
                           </div>
                         </td>
                         <td className="py-2.5 px-3">
-                          <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full uppercase bg-[#F3EFEA] text-[#111318] border border-[#E6E1D6]">
-                            {g.scope} · {g.kind.replace('_', ' ')}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <ScopeBadge scope={g.scope} size="xs" />
+                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded-full uppercase bg-[#F3EFEA] text-[#52504C] border border-[#E6E1D6]">
+                              {g.kind.replace('_', ' ')}
+                            </span>
+                          </div>
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono font-bold text-sm text-[#059669]">
                           {formatINR(g.currentMinor)}

@@ -31,9 +31,9 @@ export const SCOPE_META = {
   },
   family: {
     label: 'Family',
-    badgeClass: 'bg-[#F3EFEA] text-[#111318] border-[#D6CFC2]',
-    dotClass: 'bg-[#111318]',
-    hex: '#111318',
+    badgeClass: 'bg-indigo-50/90 text-indigo-900 border-indigo-200',
+    dotClass: 'bg-[#4F46E5]',
+    hex: '#4F46E5',
   },
   general: {
     label: 'General',

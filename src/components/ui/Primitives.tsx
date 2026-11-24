@@ -81,6 +81,72 @@ export function Badge({
   );
 }
 
+export function ScopeBadge({
+  scope,
+  size = 'sm',
+  className,
+}: {
+  scope: 'personal' | 'business' | 'family' | 'all' | 'general' | string;
+  size?: 'xs' | 'sm' | 'md';
+  className?: string;
+}) {
+  const meta: Record<string, { label: string; bg: string; text: string; border: string; dot: string }> = {
+    personal: {
+      label: 'Personal',
+      bg: 'bg-emerald-50/90',
+      text: 'text-emerald-800',
+      border: 'border-emerald-200',
+      dot: 'bg-emerald-600',
+    },
+    business: {
+      label: 'Business',
+      bg: 'bg-amber-50/90',
+      text: 'text-amber-900',
+      border: 'border-amber-300/80',
+      dot: 'bg-[#C59B27]',
+    },
+    family: {
+      label: 'Family',
+      bg: 'bg-indigo-50/90',
+      text: 'text-indigo-900',
+      border: 'border-indigo-200',
+      dot: 'bg-[#4F46E5]',
+    },
+    general: {
+      label: 'General',
+      bg: 'bg-[#F3EFEA]',
+      text: 'text-[#52504C]',
+      border: 'border-[#EAE5DC]',
+      dot: 'bg-[#858078]',
+    },
+    all: {
+      label: 'All Scopes',
+      bg: 'bg-[#111318]',
+      text: 'text-[#FAF8F5]',
+      border: 'border-[#111318]',
+      dot: 'bg-[#E5C158]',
+    },
+  };
+
+  const current = meta[scope.toLowerCase()] || meta.general;
+
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full border font-mono font-bold uppercase tracking-wider shrink-0 transition-colors',
+        size === 'xs' ? 'px-1.5 py-0.2 text-[9px]' : size === 'sm' ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-xs',
+        current.bg,
+        current.text,
+        current.border,
+        className,
+      )}
+    >
+      <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', current.dot)} />
+      <span>{current.label}</span>
+    </span>
+  );
+}
+
 export function FieldLabel({
   htmlFor,
   children,
