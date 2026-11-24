@@ -22,7 +22,6 @@ import type { AccountRecord, TransactionRecord } from '../../lib/api.ts';
 import {
   formatINR,
   formatOrdinalDay,
-  SCOPE_META,
   todayISO,
 } from '../../lib/format.ts';
 import {
@@ -35,6 +34,7 @@ import {
   type Point2D,
   type TiltGlareState,
 } from '../dashboard/dashboardVisuals.ts';
+import { ScopeBadge } from '../../components/ui/Primitives.tsx';
 import {
   buildCardDailyVelocitySeries,
   computeCardCategoryMix,
@@ -420,13 +420,7 @@ export function CardsHeroWorkstation({
                         >
                           {finish.tierBadge}
                         </span>
-                        <span
-                          className={`text-[10px] font-medium uppercase tracking-wider ${
-                            finish.isLightSurface ? 'text-[#52504C]' : 'text-white/65'
-                          }`}
-                        >
-                          {SCOPE_META[activeCard.scope].label}
-                        </span>
+                        <ScopeBadge scope={activeCard.scope} size="xs" />
                       </div>
                       <h3 className="font-display text-base sm:text-lg font-bold tracking-tight mt-1.5 truncate">
                         {activeCard.name}

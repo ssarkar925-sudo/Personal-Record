@@ -49,6 +49,7 @@ import {
   Dialog,
   FieldLabel,
   Input,
+  ScopeBadge,
   Select,
   SortSelect,
   ViewModeToggle,
@@ -1305,9 +1306,7 @@ export function CardsView({
                           >
                             {card.institution || finish.tierBadge}
                           </span>
-                          <span className="text-[10px] font-mono-data opacity-75">
-                            {SCOPE_META[card.scope].label}
-                          </span>
+                          <ScopeBadge scope={card.scope} size="xs" />
                         </div>
                         <h3 className="font-display text-base font-bold tracking-tight mt-1.5 truncate">
                           {card.name}
@@ -1477,6 +1476,18 @@ export function CardsView({
                       >
                         <Edit3 className="h-3.5 w-3.5" />
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteCardConfirmId(card.id);
+                        }}
+                        className="p-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-[#E11D48] cursor-pointer"
+                        title="Delete Card"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1533,9 +1544,12 @@ export function CardsView({
                           ••{card.last4 || '0000'}
                         </span>
                       </div>
-                      <span className="text-[10px] font-mono-data uppercase tracking-wider text-[#52504C]">
-                        {card.institution || finish.label} · {SCOPE_META[card.scope].label}
-                      </span>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[10px] font-mono-data uppercase tracking-wider text-[#52504C]">
+                          {card.institution || finish.label}
+                        </span>
+                        <ScopeBadge scope={card.scope} size="xs" />
+                      </div>
                     </div>
                   </div>
 
@@ -1604,8 +1618,20 @@ export function CardsView({
                         handleOpenEditCard(card);
                       }}
                       className="p-1.5 rounded-lg border border-[#EAE5DC] bg-white text-[#52504C] hover:text-[#111318] cursor-pointer"
+                      title="Edit Card"
                     >
                       <Edit3 className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteCardConfirmId(card.id);
+                      }}
+                      className="p-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-[#E11D48] cursor-pointer"
+                      title="Delete Card"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>

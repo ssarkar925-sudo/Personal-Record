@@ -23,6 +23,7 @@ import {
   type MetallicFinishId,
   type TiltGlareState,
 } from './dashboardVisuals.ts';
+import { ScopeBadge } from '../../components/ui/Primitives.tsx';
 import type { DrillDownFilterSpec } from './LedgerDrillDownDrawer.tsx';
 import type { WorkspaceId } from './types.ts';
 
@@ -358,13 +359,7 @@ export function MetallicCardDeck({
                       >
                         {finish.tierBadge}
                       </span>
-                      <span
-                        className={`text-[10px] font-medium uppercase tracking-wider ${
-                          finish.isLightSurface ? 'text-[#52504C]' : 'text-white/65'
-                        }`}
-                      >
-                        {SCOPE_META[activeAccount.scope].label}
-                      </span>
+                      <ScopeBadge scope={activeAccount.scope} size="xs" />
                     </div>
                     <h3 className="font-display text-base sm:text-lg font-bold tracking-tight mt-1.5 truncate">
                       {activeAccount.name}

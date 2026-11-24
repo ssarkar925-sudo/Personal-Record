@@ -60,11 +60,11 @@ export function DashboardExecutiveKpiStrip({
             onNavigate('money');
           }
         }}
-        className="bento-card bento-card-hover rounded-2xl p-5 flex flex-col justify-between cursor-pointer min-w-[270px] sm:min-w-0 snap-start flex-1 shrink-0 sm:shrink"
+        className="bento-card bento-card-hover rounded-2xl p-5 flex flex-col justify-between cursor-pointer min-w-[270px] sm:min-w-0 snap-start flex-1 shrink-0 sm:shrink border border-[#EAE5DC] hover:border-[#059669]/40 transition-all duration-200"
       >
         <div>
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-mono-data uppercase tracking-widest text-[#858078] font-semibold">
+            <span className="text-[11px] font-mono-data uppercase tracking-widest text-[#716C64] font-semibold">
               Liquid Treasury
             </span>
             <span className="w-8 h-8 rounded-xl bg-[#F3EFEA] text-[#059669] border border-[#EAE5DC] flex items-center justify-center">
@@ -120,11 +120,11 @@ export function DashboardExecutiveKpiStrip({
             onNavigate('reports');
           }
         }}
-        className="bento-card bento-card-hover rounded-2xl p-5 flex flex-col justify-between cursor-pointer min-w-[270px] sm:min-w-0 snap-start flex-1 shrink-0 sm:shrink"
+        className="bento-card bento-card-hover rounded-2xl p-5 flex flex-col justify-between cursor-pointer min-w-[270px] sm:min-w-0 snap-start flex-1 shrink-0 sm:shrink border border-[#EAE5DC] hover:border-[#C59B27]/40 transition-all duration-200"
       >
         <div>
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-mono-data uppercase tracking-widest text-[#858078] font-semibold">
+            <span className="text-[11px] font-mono-data uppercase tracking-widest text-[#716C64] font-semibold">
               Monthly Cashflow
             </span>
             <span
@@ -193,11 +193,11 @@ export function DashboardExecutiveKpiStrip({
             onNavigate('cards');
           }
         }}
-        className="bento-card bento-card-hover rounded-2xl p-5 flex flex-col justify-between cursor-pointer min-w-[270px] sm:min-w-0 snap-start flex-1 shrink-0 sm:shrink"
+        className="bento-card bento-card-hover rounded-2xl p-5 flex flex-col justify-between cursor-pointer min-w-[270px] sm:min-w-0 snap-start flex-1 shrink-0 sm:shrink border border-[#EAE5DC] hover:border-[#111318]/40 transition-all duration-200"
       >
         <div>
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-mono-data uppercase tracking-widest text-[#858078] font-semibold">
+            <span className="text-[11px] font-mono-data uppercase tracking-widest text-[#716C64] font-semibold">
               Card Liabilities
             </span>
             <span className="w-8 h-8 rounded-xl bg-[#F3EFEA] text-[#111318] border border-[#EAE5DC] flex items-center justify-center">
@@ -270,11 +270,11 @@ export function DashboardExecutiveKpiStrip({
             onNavigate('loans_dues');
           }
         }}
-        className="bento-card bento-card-hover rounded-2xl p-5 flex flex-col justify-between cursor-pointer min-w-[270px] sm:min-w-0 snap-start flex-1 shrink-0 sm:shrink"
+        className="bento-card bento-card-hover rounded-2xl p-5 flex flex-col justify-between cursor-pointer min-w-[270px] sm:min-w-0 snap-start flex-1 shrink-0 sm:shrink border border-[#EAE5DC] hover:border-[#C59B27]/40 transition-all duration-200"
       >
         <div>
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-mono-data uppercase tracking-widest text-[#858078] font-semibold">
+            <span className="text-[11px] font-mono-data uppercase tracking-widest text-[#716C64] font-semibold">
               Khatabook &amp; Dues
             </span>
             <span className="w-8 h-8 rounded-xl bg-[#F3EFEA] text-[#C59B27] border border-[#EAE5DC] flex items-center justify-center">

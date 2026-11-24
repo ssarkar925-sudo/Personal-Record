@@ -18,6 +18,7 @@ import {
 } from './dashboardVisuals.ts';
 import type { DrillDownFilterSpec } from './LedgerDrillDownDrawer.tsx';
 import type { WorkspaceId } from './types.ts';
+import { ScopeBadge } from '../../components/ui/Primitives.tsx';
 
 export type WealthChartMode = 'net_worth' | 'cashflow' | 'allocation';
 
@@ -213,11 +214,14 @@ export function InteractiveWealthChart({
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-[#EAE5DC]">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] font-mono-data uppercase tracking-widest text-[#858078] font-semibold">
+            <span className="text-[11px] font-mono-data uppercase tracking-widest text-[#716C64] font-semibold">
               {scopeFilter === 'all'
                 ? 'Consolidated Sovereign Ledger'
                 : `${SCOPE_META[scopeFilter].label} Scope Ledger`}
             </span>
+            {scopeFilter !== 'all' && (
+              <ScopeBadge scope={scopeFilter} size="xs" />
+            )}
             <span
               className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-mono-data font-semibold border ${
                 periodDeltaMinor >= 0

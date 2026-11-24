@@ -14,7 +14,8 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { formatINR, SCOPE_META } from '../../lib/format.ts';
+import { formatINR } from '../../lib/format.ts';
+import { ScopeBadge } from '../../components/ui/Primitives.tsx';
 import type { AccountRecord, RecurringBillRecord } from '../../lib/api.ts';
 import type {
   AccountGroupTab,
@@ -328,9 +329,7 @@ export function AccountsHub({
                       <span className="text-[10px] font-mono-data uppercase font-semibold text-[#52504C] tracking-wider">
                         {acc.institution || (isBank ? 'Bank' : 'Cash')}
                       </span>
-                      <span className="text-[9px] font-mono-data px-1.5 py-0.5 rounded bg-[#F3EFEA] text-[#111318] border border-[#EAE5DC] uppercase">
-                        {SCOPE_META[acc.scope].label}
-                      </span>
+                      <ScopeBadge scope={acc.scope} size="xs" />
                     </div>
                   </div>
                 </div>

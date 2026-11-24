@@ -18,7 +18,8 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { formatINR, SCOPE_META } from '../../lib/format.ts';
+import { formatINR } from '../../lib/format.ts';
+import { ScopeBadge } from '../../components/ui/Primitives.tsx';
 import type { AccountRecord } from '../../lib/api.ts';
 import type { TxKind } from '../../../shared/ledger-core.ts';
 import {
@@ -177,13 +178,7 @@ function BentoMetallicAccountTile({
                 >
                   {isBank ? finish.tierBadge : 'LIQUID FLOAT'}
                 </span>
-                <span
-                  className={`text-[10px] font-mono-data uppercase tracking-wider ${
-                    finish.isLightSurface ? 'text-[#52504C]' : 'text-white/70'
-                  }`}
-                >
-                  {SCOPE_META[account.scope].label}
-                </span>
+                <ScopeBadge scope={account.scope} size="xs" />
               </div>
               <h4 className="font-display font-bold text-sm sm:text-base mt-1 truncate">
                 {account.name}
