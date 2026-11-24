@@ -1,7 +1,7 @@
 {
-  "version": "1.0.12",
-  "build": 112,
+  "version": "1.0.13",
+  "build": 113,
   "releaseDate": "2026-11-24",
   "apkUrl": "https://raw.githubusercontent.com/ssarkar925-sudo/Personal-Record/main/public/PersonalLedger-latest.apk",
-  "changelog": "Phase 2 UI/UX Overhaul: Modernized Core Financial Workspaces - Dashboard KPI strip with gold/emerald transitions, ScopeBadge integration across Cards and Treasury Banks, Credit Card delete actions in Grid/List, and refined Cashflow Chart."
+  "changelog": "Phase 3 UI/UX Overhaul: Productivity & Office Workspaces - Job Sheets formula bar, dropdown format converters, per-sheet custom statuses, PIN-protected card hub; Daily Notes Keep pastel cards & view modal; Encrypted Vault sam-size uniform cards & view-first copy popups."
 }

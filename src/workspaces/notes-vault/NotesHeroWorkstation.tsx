@@ -11,6 +11,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import type { NoteScope } from '../../../shared/ledger-core.ts';
+import { ScopeBadge } from '../../components/ui/Primitives.tsx';
 import type { DossierFoilFinish, NotesIntelligence } from './notesVaultAnalytics.ts';
 
 export interface NotesHeroWorkstationProps {
@@ -138,11 +139,16 @@ export const NotesHeroWorkstation: React.FC<NotesHeroWorkstationProps> = ({
               <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9A7418]">
                 EXECUTIVE MEMO DOSSIER
               </div>
-              <h3 className="text-xs font-bold text-[#111318]">
-                {activeScopeFilter === 'all'
-                  ? 'All Scopes Portfolio'
-                  : `${activeScopeFilter.charAt(0).toUpperCase() + activeScopeFilter.slice(1)} Dossier`}
-              </h3>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <h3 className="text-xs font-bold text-[#111318]">
+                  {activeScopeFilter === 'all'
+                    ? 'All Scopes Portfolio'
+                    : `${activeScopeFilter.charAt(0).toUpperCase() + activeScopeFilter.slice(1)} Dossier`}
+                </h3>
+                {activeScopeFilter !== 'all' && (
+                  <ScopeBadge scope={activeScopeFilter} size="xs" />
+                )}
+              </div>
             </div>
           </div>
 

@@ -38,16 +38,16 @@ import {
   type PersonDueRecord,
   type TransactionRecord,
 } from '../lib/api.ts';
-import { formatINR, SCOPE_META } from '../lib/format.ts';
+import { formatINR } from '../lib/format.ts';
 import {
   AnimatedTabs,
-  Badge,
   Button,
   Card,
   ConfirmDialog,
   Dialog,
   FieldLabel,
   Input,
+  ScopeBadge,
   Select,
   SortSelect,
   Textarea,
@@ -1202,7 +1202,7 @@ export function NotesView({
               <div className="flex flex-wrap items-center gap-2">
                 {n.pinned && <Pin className="h-3.5 w-3.5 text-amber-600 shrink-0" />}
                 <span className="text-xs font-semibold text-slate-900 truncate">{n.title}</span>
-                <Badge className={SCOPE_META[n.scope].badgeClass}>{SCOPE_META[n.scope].label}</Badge>
+                <ScopeBadge scope={n.scope} size="xs" />
                 {n.remindAt && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-amber-100/80 border border-amber-200 px-2 py-0.5 text-[10px] font-medium text-amber-800">
                     <BellRing className="h-2.5 w-2.5" />
@@ -1449,7 +1449,7 @@ export function NotesView({
 
         <div className="pt-2 border-t border-black/5 flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
-            <Badge className={SCOPE_META[n.scope].badgeClass}>{SCOPE_META[n.scope].label}</Badge>
+            <ScopeBadge scope={n.scope} size="xs" />
             {n.remindAt && (
               <span className="inline-flex items-center gap-1 rounded-full bg-amber-100/80 border border-amber-200 px-2 py-0.5 text-[10px] font-medium text-amber-800">
                 <BellRing className="h-2.5 w-2.5" />
@@ -2045,9 +2045,7 @@ export function NotesView({
                   <h2 className="text-lg font-bold text-slate-900 leading-snug break-words">
                     {activeReaderNote.title}
                   </h2>
-                  <Badge className={SCOPE_META[activeReaderNote.scope].badgeClass}>
-                    {SCOPE_META[activeReaderNote.scope].label}
-                  </Badge>
+                  <ScopeBadge scope={activeReaderNote.scope} size="xs" />
                   {activeReaderNote.remindAt && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-amber-100/90 border border-amber-300 px-2.5 py-0.5 text-[11px] font-medium text-amber-900">
                       <BellRing className="h-3 w-3 text-amber-700" />

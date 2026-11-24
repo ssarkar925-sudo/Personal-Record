@@ -13,6 +13,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { formatINR } from '../../lib/format.ts';
+import { ScopeBadge } from '../../components/ui/Primitives.tsx';
 import type {
   SheetSummaryMetrics,
   WorkbookPortfolioTelemetry,
@@ -306,11 +307,14 @@ export const SheetsHeroWorkstation: React.FC<SheetsHeroWorkstationProps> = ({
                         <Layers className="h-4 w-4 text-[#8C6D1F]" />
                       </div>
                       <div>
-                        <div
-                          className="text-[10px] font-mono font-semibold uppercase tracking-[0.14em]"
-                          style={{ color: theme.accentText }}
-                        >
-                          {summary.scope.toUpperCase()} · {isFinancialSheet ? 'FINANCIAL LEDGER' : 'WORKBOOK SHEET'}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <ScopeBadge scope={summary.scope} size="xs" />
+                          <span
+                            className="text-[10px] font-mono font-semibold uppercase tracking-[0.14em]"
+                            style={{ color: theme.accentText }}
+                          >
+                            {isFinancialSheet ? 'FINANCIAL LEDGER' : 'WORKBOOK SHEET'}
+                          </span>
                         </div>
                         <h4
                           className="text-sm sm:text-base font-bold text-[#111318] tracking-tight truncate max-w-[220px]"

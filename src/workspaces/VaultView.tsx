@@ -67,6 +67,7 @@ import {
   Dialog,
   FieldLabel,
   Input,
+  ScopeBadge,
   Select,
   SortSelect,
   Textarea,
@@ -2372,9 +2373,10 @@ export function VaultView({
                 {/* Linked Treasury Account */}
                 {vLinked && (
                   <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-2.5 flex items-center justify-between text-xs text-emerald-900">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <Link2 className="h-4 w-4 text-emerald-700" />
-                      <span>Linked Account: <strong>{vLinked.name}</strong> ({vLinked.type} · {vLinked.scope})</span>
+                      <span>Linked Account: <strong>{vLinked.name}</strong> ({vLinked.type})</span>
+                      <ScopeBadge scope={vLinked.scope} size="xs" />
                     </div>
                   </div>
                 )}

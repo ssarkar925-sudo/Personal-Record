@@ -53,6 +53,7 @@ import {
   Dialog,
   FieldLabel,
   Input,
+  ScopeBadge,
   Select,
   cn,
 } from '../components/ui/Primitives.tsx';
@@ -2110,16 +2111,7 @@ export function JobSheetsView({
                   <div>
                     {/* Card Header: Scope + Lock + Menu */}
                     <div className="flex items-center justify-between gap-1.5 pt-1">
-                      <span
-                        className={cn(
-                          'rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider',
-                          sheet.scope === 'business' && 'bg-amber-100 text-amber-900 border border-amber-200',
-                          sheet.scope === 'personal' && 'bg-emerald-100 text-emerald-900 border border-emerald-200',
-                          sheet.scope === 'family' && 'bg-blue-100 text-blue-900 border border-blue-200',
-                        )}
-                      >
-                        {sheet.scope}
-                      </span>
+                      <ScopeBadge scope={sheet.scope} size="xs" />
 
                       <div className="flex items-center gap-1">
                         {sheet.settings?.pinHash ? (
@@ -2364,16 +2356,7 @@ export function JobSheetsView({
               {activeSheet && (
                 <>
                   {/* Scope Tag */}
-                  <span
-                    className={cn(
-                      'rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider',
-                      activeSheet.scope === 'business' && 'bg-amber-100 text-amber-900 border border-amber-200',
-                      activeSheet.scope === 'personal' && 'bg-emerald-100 text-emerald-900 border border-emerald-200',
-                      activeSheet.scope === 'family' && 'bg-blue-100 text-blue-900 border border-blue-200',
-                    )}
-                  >
-                    {activeSheet.scope}
-                  </span>
+                  <ScopeBadge scope={activeSheet.scope} size="xs" />
 
                   {/* PIN Lock / Set PIN button */}
                   {activeSheet.settings?.pinHash ? (
