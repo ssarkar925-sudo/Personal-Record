@@ -713,6 +713,12 @@ export function App() {
               >
                 {scopePillOptions.map(([id, label]) => {
                   const active = scopeFilter === id;
+                  const activeDotStyle =
+                    id === 'personal'
+                      ? 'bg-emerald-400 scale-110 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
+                      : id === 'family'
+                      ? 'bg-indigo-400 scale-110 shadow-[0_0_8px_rgba(129,140,248,0.6)]'
+                      : 'bg-[#E5C158] scale-110 shadow-[0_0_8px_rgba(229,193,88,0.6)]';
                   const dotColor =
                     id === 'all' ? 'bg-[#C59B27]' : SCOPE_META[id as Scope].dotClass;
                   return (
@@ -728,7 +734,7 @@ export function App() {
                     >
                       <span
                         className={`h-2 w-2 rounded-full transition-transform duration-150 ${
-                          active ? 'bg-[#E5C158] scale-110 shadow-[0_0_8px_rgba(229,193,88,0.6)]' : dotColor
+                          active ? activeDotStyle : dotColor
                         }`}
                       />
                       <span>{label}</span>
@@ -919,6 +925,12 @@ export function App() {
               <div className="inline-flex w-full items-center rounded-xl bg-[#F3EFEA] p-0.5 border border-[#EAE5DC] shadow-[inset_0_1px_2px_rgba(17,19,24,0.04)]">
                 {scopePillOptions.map(([id, label]) => {
                   const active = scopeFilter === id;
+                  const activeDotStyle =
+                    id === 'personal'
+                      ? 'bg-emerald-400 scale-125'
+                      : id === 'family'
+                      ? 'bg-indigo-400 scale-125'
+                      : 'bg-[#E5C158] scale-125';
                   const dotColor =
                     id === 'all' ? 'bg-[#C59B27]' : SCOPE_META[id as Scope].dotClass;
                   return (
@@ -934,7 +946,7 @@ export function App() {
                     >
                       <span
                         className={`h-1.5 w-1.5 rounded-full shrink-0 transition-transform ${
-                          active ? 'bg-[#E5C158] scale-125' : dotColor
+                          active ? activeDotStyle : dotColor
                         }`}
                       />
                       <span>{label}</span>
