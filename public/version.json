@@ -1,7 +1,7 @@
 {
-  "version": "1.0.13",
-  "build": 113,
+  "version": "1.0.14",
+  "build": 114,
   "releaseDate": "2026-11-24",
   "apkUrl": "https://raw.githubusercontent.com/ssarkar925-sudo/Personal-Record/main/public/PersonalLedger-latest.apk",
-  "changelog": "Phase 3 UI/UX Overhaul: Productivity & Office Workspaces - Job Sheets formula bar, dropdown format converters, per-sheet custom statuses, PIN-protected card hub; Daily Notes Keep pastel cards & view modal; Encrypted Vault sam-size uniform cards & view-first copy popups."
+  "changelog": "Phase 4 UI/UX Sovereign Polish: Reports & Indian Tax Suite (Old vs New Sec 115BAC comparison, Advance Tax quarters), Settings & Inactivity Auto-Logout Security, Universal Module-Wise Archive Center, and unified ScopeBadges."
 }

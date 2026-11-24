@@ -392,19 +392,19 @@ export function ReportsHeroWorkstation({
                 <div className="p-2 rounded-xl bg-white border border-[#E6E1D6] shadow-2xs">
                   <span className="text-[10px] text-[#686E78] block">Business Net Profit</span>
                   <span className="font-mono font-bold text-[#111318] text-xs block mt-0.5">
-                    {formatINR(data?.scopePnl.business.netMinor ?? 0, { signed: true })}
+                    {formatINR(data?.scopePnl?.business?.netMinor ?? 0, { signed: true })}
                   </span>
                 </div>
                 <div className="p-2 rounded-xl bg-white border border-[#E6E1D6] shadow-2xs">
                   <span className="text-[10px] text-[#686E78] block">Personal Net Savings</span>
                   <span className="font-mono font-bold text-[#111318] text-xs block mt-0.5">
-                    {formatINR(data?.scopePnl.personal.netMinor ?? 0, { signed: true })}
+                    {formatINR(data?.scopePnl?.personal?.netMinor ?? 0, { signed: true })}
                   </span>
                 </div>
                 <div className="p-2 rounded-xl bg-white border border-[#E6E1D6] shadow-2xs">
                   <span className="text-[10px] text-[#686E78] block">Family Net Outflow</span>
                   <span className="font-mono font-bold text-[#111318] text-xs block mt-0.5">
-                    {formatINR(data?.scopePnl.family.netMinor ?? 0, { signed: true })}
+                    {formatINR(data?.scopePnl?.family?.netMinor ?? 0, { signed: true })}
                   </span>
                 </div>
                 <div className="p-2 rounded-xl bg-white border border-[#E6E1D6] shadow-2xs">

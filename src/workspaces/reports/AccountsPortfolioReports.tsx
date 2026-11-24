@@ -1,6 +1,6 @@
 import React from 'react';
-import { Badge, SortSelect } from '../../components/ui/Primitives.tsx';
-import { formatINR, SCOPE_META } from '../../lib/format.ts';
+import { ScopeBadge, SortSelect } from '../../components/ui/Primitives.tsx';
+import { formatINR } from '../../lib/format.ts';
 import type { DetailedReports } from '../../lib/api.ts';
 import type {
   CardSortOption,
@@ -128,9 +128,7 @@ export const AccountsPortfolioReports: React.FC<AccountsPortfolioReportsProps> =
                           )}
                         </td>
                         <td className="py-3 pr-3 font-sans">
-                          <Badge className={SCOPE_META[c.scope].badgeClass}>
-                            {SCOPE_META[c.scope].label}
-                          </Badge>
+                          <ScopeBadge scope={c.scope} size="xs" />
                         </td>
                         <td className="py-3 pr-3 text-right font-bold text-[#111318]">
                           {formatINR(c.cardCycle?.statementDueMinor ?? 0)}
@@ -223,9 +221,7 @@ export const AccountsPortfolioReports: React.FC<AccountsPortfolioReportsProps> =
                           )}
                         </td>
                         <td className="py-3 pr-3 font-sans">
-                          <Badge className={SCOPE_META[b.scope].badgeClass}>
-                            {SCOPE_META[b.scope].label}
-                          </Badge>
+                          <ScopeBadge scope={b.scope} size="xs" />
                         </td>
                         <td className="py-3 pr-3 text-right text-[#059669] font-semibold">
                           +{formatINR(b.periodInflowMinor)}
@@ -446,9 +442,7 @@ export const AccountsPortfolioReports: React.FC<AccountsPortfolioReportsProps> =
                           </span>
                         </td>
                         <td className="py-3 pr-3 font-sans">
-                          <Badge className={SCOPE_META[d.scope].badgeClass}>
-                            {SCOPE_META[d.scope].label}
-                          </Badge>
+                          <ScopeBadge scope={d.scope} size="xs" />
                         </td>
                         <td className="py-3 pr-3 text-[#52504C]">{d.dueDate || '—'}</td>
                         <td className="py-3 text-right font-bold text-[#111318]">

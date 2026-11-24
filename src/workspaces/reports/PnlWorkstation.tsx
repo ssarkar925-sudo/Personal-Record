@@ -63,19 +63,19 @@ export const PnlWorkstation: React.FC<PnlWorkstationProps> = ({ data }) => {
               {
                 scope: 'business',
                 label: 'Business',
-                amountMinor: data.scopePnl.business.expenseMinor,
+                amountMinor: data?.scopePnl?.business?.expenseMinor ?? 0,
                 colorHex: '#C59B27',
               },
               {
                 scope: 'personal',
                 label: 'Personal',
-                amountMinor: data.scopePnl.personal.expenseMinor,
+                amountMinor: data?.scopePnl?.personal?.expenseMinor ?? 0,
                 colorHex: '#111318',
               },
               {
                 scope: 'family',
                 label: 'Family',
-                amountMinor: data.scopePnl.family.expenseMinor,
+                amountMinor: data?.scopePnl?.family?.expenseMinor ?? 0,
                 colorHex: '#059669',
               },
             ]}

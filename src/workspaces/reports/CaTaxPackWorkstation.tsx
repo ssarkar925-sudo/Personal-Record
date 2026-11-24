@@ -8,8 +8,8 @@ import {
   Printer,
   Share2,
 } from 'lucide-react';
-import { Badge, Button, Input, Select } from '../../components/ui/Primitives.tsx';
-import { formatINR, SCOPE_META } from '../../lib/format.ts';
+import { Badge, Button, Input, ScopeBadge, Select } from '../../components/ui/Primitives.tsx';
+import { formatINR } from '../../lib/format.ts';
 import type { TaxSummaryPack } from '../../lib/api.ts';
 import type { AdvanceTaxInstallment, TaxComparisonResult } from '../../../shared/tax-engine.ts';
 
@@ -97,7 +97,7 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
             <Landmark className="h-4 w-4 text-[#C59B27]" />
             Indian Income Tax Engine &amp; CA Dossier ({taxPack?.fiscalYearLabel ?? `FY ${fyStartYear}-${String(fyStartYear + 1).slice(-2)}`})
           </h2>
-          <p className="text-xs text-[#6B7280] mt-0.5">
+          <p className="text-xs text-[#52504C] mt-0.5">
             Finance Act 2024 updated slabs · Old vs. New Regime (Sec 115BAC) · Deduction Optimizer · Advance Tax Schedule
           </p>
         </div>
@@ -143,7 +143,7 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
       </div>
 
       {taxLoading || !taxPack || !taxComparison ? (
-        <div className="rounded-2xl border border-[#E6E1D6] bg-white p-8 text-center text-xs text-[#6B7280]">
+        <div className="rounded-2xl border border-[#E6E1D6] bg-white p-8 text-center text-xs text-[#52504C]">
           Compiling Indian Income Tax Regime Comparison &amp; CA Pack...
         </div>
       ) : (
@@ -170,7 +170,7 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
                         ? 'Old Tax Regime'
                         : 'Both Equal'}
                   </Badge>
-                  <span className="text-[11px] text-[#6B7280]">
+                  <span className="text-[11px] text-[#52504C]">
                     (Nil tax up to ₹7.75L for Salaried in New Regime)
                   </span>
                 </div>
@@ -181,7 +181,7 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
 
               <div className="flex items-center gap-4 text-xs tabular-nums">
                 <div className="text-right">
-                  <div className="text-[#6B7280] text-[11px]">New Regime Tax</div>
+                  <div className="text-[#52504C] text-[11px]">New Regime Tax</div>
                   <div className="text-base font-bold text-[#111318]">
                     {formatINR(taxComparison.newRegime.totalTaxLiabilityMinor)}
                   </div>
@@ -191,11 +191,11 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
                 </div>
                 <div className="h-8 w-px bg-[#E6E1D6]" />
                 <div className="text-right">
-                  <div className="text-[#6B7280] text-[11px]">Old Regime Tax</div>
+                  <div className="text-[#52504C] text-[11px]">Old Regime Tax</div>
                   <div className="text-base font-bold text-[#111318]">
                     {formatINR(taxComparison.oldRegime.totalTaxLiabilityMinor)}
                   </div>
-                  <div className="text-[10px] text-[#6B7280] font-semibold">
+                  <div className="text-[10px] text-[#52504C] font-semibold">
                     {taxComparison.oldRegime.effectiveTaxRatePct}% effective
                   </div>
                 </div>
@@ -211,7 +211,7 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
                   <Calculator className="h-4 w-4 text-[#C59B27]" />
                   Interactive Deduction Optimizer &amp; Profile Adjustments
                 </h3>
-                <p className="text-xs text-[#6B7280]">
+                <p className="text-xs text-[#52504C]">
                   Tweak deductions to see real-time tax comparison between regimes
                 </p>
               </div>
@@ -256,7 +256,7 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
                 </label>
                 <Input
                   type="number"
-                  placeholder={`From Ledger: ${formatINR(taxPack.scopePnl.personal.incomeMinor)}`}
+                  placeholder={`From Ledger: ${formatINR(taxPack?.scopePnl?.personal?.incomeMinor ?? 0)}`}
                   value={salaryOverrideRupees}
                   onChange={(e) => onSalaryOverrideChange(e.target.value)}
                   className="h-8 text-xs w-full bg-[#FAF8F5] border-[#E6E1D6]"
@@ -427,7 +427,7 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
                   <h3 className="text-sm font-bold text-[#111318] flex items-center gap-1.5">
                     New Tax Regime (Section 115BAC)
                   </h3>
-                  <p className="text-[11px] text-[#6B7280]">Finance Act 2024 updated slabs &amp; standard deduction</p>
+                  <p className="text-[11px] text-[#52504C]">Finance Act 2024 updated slabs &amp; standard deduction</p>
                 </div>
                 <Badge className="bg-[#C59B27]/15 text-[#9A7418] border-[#C59B27]/30 font-semibold">
                   Default Regime
@@ -436,7 +436,7 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
 
               <div className="space-y-2 text-xs tabular-nums">
                 <div className="flex justify-between py-1 border-b border-[#F3EFEA]">
-                  <span className="text-[#6B7280]">Gross Total Income</span>
+                  <span className="text-[#52504C]">Gross Total Income</span>
                   <span className="font-semibold text-[#111318]">
                     {formatINR(taxComparison.newRegime.grossTotalIncomeMinor)}
                   </span>
@@ -452,11 +452,11 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
 
                 {/* Slabs */}
                 <div className="pt-2">
-                  <div className="text-[11px] font-semibold text-[#6B7280] mb-1.5">Tax Slab Computation:</div>
+                  <div className="text-[11px] font-semibold text-[#52504C] mb-1.5">Tax Slab Computation:</div>
                   <div className="space-y-1 bg-[#FAF8F5] p-2.5 rounded-xl border border-[#E6E1D6]">
                     {taxComparison.newRegime.slabs.map((s) => (
                       <div key={s.slabLabel} className="flex justify-between text-[11px]">
-                        <span className="text-[#6B7280]">
+                        <span className="text-[#52504C]">
                           {s.slabLabel} ({s.ratePct}% on {formatINR(s.taxableInSlabMinor, { compact: true })})
                         </span>
                         <span className="font-semibold text-[#111318]">{formatINR(s.taxAmountMinor)}</span>
@@ -472,7 +472,7 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
                   </div>
                 )}
 
-                <div className="flex justify-between py-1 text-[#6B7280]">
+                <div className="flex justify-between py-1 text-[#52504C]">
                   <span>Health &amp; Education Cess (4%)</span>
                   <span>+{formatINR(taxComparison.newRegime.cessMinor)}</span>
                 </div>
@@ -492,7 +492,7 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
                   <h3 className="text-sm font-bold text-[#111318] flex items-center gap-1.5">
                     Old Tax Regime
                   </h3>
-                  <p className="text-[11px] text-[#6B7280]">With full Chapter VI-A deductions &amp; Sec 24(b)</p>
+                  <p className="text-[11px] text-[#52504C]">With full Chapter VI-A deductions &amp; Sec 24(b)</p>
                 </div>
                 <Badge className="bg-[#FAF8F5] text-[#111318] border-[#E6E1D6]">
                   Optional
@@ -501,7 +501,7 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
 
               <div className="space-y-2 text-xs tabular-nums">
                 <div className="flex justify-between py-1 border-b border-[#F3EFEA]">
-                  <span className="text-[#6B7280]">Gross Total Income</span>
+                  <span className="text-[#52504C]">Gross Total Income</span>
                   <span className="font-semibold text-[#111318]">
                     {formatINR(taxComparison.oldRegime.grossTotalIncomeMinor)}
                   </span>
@@ -521,11 +521,11 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
 
                 {/* Slabs */}
                 <div className="pt-2">
-                  <div className="text-[11px] font-semibold text-[#6B7280] mb-1.5">Tax Slab Computation:</div>
+                  <div className="text-[11px] font-semibold text-[#52504C] mb-1.5">Tax Slab Computation:</div>
                   <div className="space-y-1 bg-[#FAF8F5] p-2.5 rounded-xl border border-[#E6E1D6]">
                     {taxComparison.oldRegime.slabs.map((s) => (
                       <div key={s.slabLabel} className="flex justify-between text-[11px]">
-                        <span className="text-[#6B7280]">
+                        <span className="text-[#52504C]">
                           {s.slabLabel} ({s.ratePct}% on {formatINR(s.taxableInSlabMinor, { compact: true })})
                         </span>
                         <span className="font-semibold text-[#111318]">{formatINR(s.taxAmountMinor)}</span>
@@ -541,7 +541,7 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
                   </div>
                 )}
 
-                <div className="flex justify-between py-1 text-[#6B7280]">
+                <div className="flex justify-between py-1 text-[#52504C]">
                   <span>Health &amp; Education Cess (4%)</span>
                   <span>+{formatINR(taxComparison.oldRegime.cessMinor)}</span>
                 </div>
@@ -562,7 +562,7 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
                   <Clock className="h-4 w-4 text-[#C59B27]" />
                   Advance Tax Installment Calendar (Section 208 / 211)
                 </h3>
-                <p className="text-xs text-[#6B7280]">
+                <p className="text-xs text-[#52504C]">
                   Applicable if total annual net tax liability exceeds ₹10,000. Avoid 234B/234C interest penalties
                 </p>
               </div>
@@ -591,11 +591,11 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
                       {inst.status === 'paid' ? 'Paid' : inst.status === 'overdue' ? 'Past Due' : 'Upcoming'}
                     </Badge>
                   </div>
-                  <div className="text-[11px] text-[#6B7280]">Due: {inst.dueDate}</div>
+                  <div className="text-[11px] text-[#52504C]">Due: {inst.dueDate}</div>
                   <div className="text-base font-bold text-[#111318] mt-1">
                     {formatINR(inst.installmentTargetMinor)}
                   </div>
-                  <div className="text-[10px] text-[#6B7280] mt-0.5">
+                  <div className="text-[10px] text-[#52504C] mt-0.5">
                     Cumulative: {formatINR(inst.cumulativeTargetMinor)} ({inst.cumulativePct}%)
                   </div>
                 </div>
@@ -610,14 +610,14 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
                 <PieChart className="h-4 w-4 text-[#C59B27]" />
                 Capital Gains Taxation Rates (Finance Act 2024)
               </h3>
-              <p className="text-xs text-[#6B7280] mb-3">
+              <p className="text-xs text-[#52504C] mb-3">
                 Budget updated rates applicable from July 23, 2024 onwards
               </p>
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between items-center p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E6E1D6]">
                   <div>
                     <div className="font-bold text-[#111318]">Equity STCG (Sec 111A)</div>
-                    <div className="text-[11px] text-[#6B7280]">Held &lt;12 months in listed shares / equity funds</div>
+                    <div className="text-[11px] text-[#52504C]">Held &lt;12 months in listed shares / equity funds</div>
                   </div>
                   <Badge className="bg-[#C59B27]/15 text-[#9A7418] border-[#C59B27]/30 font-semibold">
                     20% flat
@@ -627,7 +627,7 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
                 <div className="flex justify-between items-center p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E6E1D6]">
                   <div>
                     <div className="font-bold text-[#111318]">Equity LTCG (Sec 112A)</div>
-                    <div className="text-[11px] text-[#6B7280]">Exemption up to ₹1.25 Lakhs per FY</div>
+                    <div className="text-[11px] text-[#52504C]">Exemption up to ₹1.25 Lakhs per FY</div>
                   </div>
                   <Badge className="bg-[#C59B27]/15 text-[#9A7418] border-[#C59B27]/30 font-semibold">
                     12.5% &gt; ₹1.25L
@@ -637,7 +637,7 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
                 <div className="flex justify-between items-center p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E6E1D6]">
                   <div>
                     <div className="font-bold text-[#111318]">Unlisted &amp; Debt Mutual Funds</div>
-                    <div className="text-[11px] text-[#6B7280]">Specified debt mutual funds purchased after Apr 1, 2023</div>
+                    <div className="text-[11px] text-[#52504C]">Specified debt mutual funds purchased after Apr 1, 2023</div>
                   </div>
                   <Badge className="bg-white text-[#111318] border-[#E6E1D6] font-semibold">
                     Slab Rates
@@ -651,12 +651,12 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
                 <Landmark className="h-4 w-4 text-[#059669]" />
                 Portfolio Wealth &amp; ITR Disclosed Balances
               </h3>
-              <p className="text-xs text-[#6B7280] mb-3">
+              <p className="text-xs text-[#52504C] mb-3">
                 Consolidated liquid cash, loan liability, and asset distribution
               </p>
               <div className="space-y-2 text-xs tabular-nums">
                 <div className="flex justify-between py-1.5 border-b border-[#F3EFEA]">
-                  <span className="text-[#6B7280]">Disclosed Bank Balances (Liquid)</span>
+                  <span className="text-[#52504C]">Disclosed Bank Balances (Liquid)</span>
                   <span className="font-semibold text-[#111318]">
                     {formatINR(
                       (taxPack.bankAccounts ?? []).reduce((s, b) => s + Math.max(0, b.currentBalanceMinor), 0),
@@ -664,19 +664,19 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
                   </span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-[#F3EFEA]">
-                  <span className="text-[#6B7280]">Total Portfolio Investments Recorded</span>
+                  <span className="text-[#52504C]">Total Portfolio Investments Recorded</span>
                   <span className="font-semibold text-[#059669]">
                     {formatINR(taxPack.totalInvestedMinor)}
                   </span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-[#F3EFEA]">
-                  <span className="text-[#6B7280]">Tax Reserve Earmarked in Goals</span>
+                  <span className="text-[#52504C]">Tax Reserve Earmarked in Goals</span>
                   <span className="font-semibold text-[#9A7418]">
                     {formatINR(taxPack.totalTaxReservedMinor)} / {formatINR(taxPack.totalTaxTargetMinor)}
                   </span>
                 </div>
                 <div className="flex justify-between py-1.5 font-medium text-[#111318]">
-                  <span className="text-[#6B7280]">Borrowed Liabilities Outstanding</span>
+                  <span className="text-[#52504C]">Borrowed Liabilities Outstanding</span>
                   <span className="font-semibold text-[#E11D48]">
                     {formatINR(
                       (taxPack.loans ?? [])
@@ -694,18 +694,18 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
             <h3 className="text-sm font-bold text-[#111318] mb-1">
               Business Deductible Expense Categories ({taxPack.fiscalYearLabel})
             </h3>
-            <p className="text-xs text-[#6B7280] mb-3">
+            <p className="text-xs text-[#52504C] mb-3">
               Legitimate business expenses deducted against business revenue for net profit determination
             </p>
             {taxPack.businessExpenseCategories.length === 0 ? (
-              <p className="text-xs text-[#6B7280] py-6 text-center">
+              <p className="text-xs text-[#52504C] py-6 text-center">
                 No Business-scoped expenses recorded between {taxPack.fromDate} and {taxPack.toDate}.
               </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs tabular-nums">
                   <thead>
-                    <tr className="border-b border-[#E6E1D6] text-[#6B7280] uppercase text-[10px] tracking-[0.12em]">
+                    <tr className="border-b border-[#E6E1D6] text-[#52504C] uppercase text-[10px] tracking-[0.12em]">
                       <th className="py-2.5 pr-3 font-bold">Category</th>
                       <th className="py-2.5 pr-3 font-bold text-right">Entries</th>
                       <th className="py-2.5 font-bold text-right">Total Spend</th>
@@ -715,7 +715,7 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
                     {taxPack.businessExpenseCategories.map((c) => (
                       <tr key={c.category} className="hover:bg-[#FAF8F5] transition-colors">
                         <td className="py-2.5 pr-3 font-semibold text-[#111318]">{c.category}</td>
-                        <td className="py-2.5 pr-3 text-right text-[#6B7280]">{c.count}</td>
+                        <td className="py-2.5 pr-3 text-right text-[#52504C]">{c.count}</td>
                         <td className="py-2.5 text-right font-semibold text-[#111318]">
                           {formatINR(c.totalMinor)}
                         </td>
@@ -732,13 +732,13 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
             <h3 className="text-sm font-bold text-[#111318] mb-1">
               Schedule of Bank Accounts (Mandatory ITR Disclosure)
             </h3>
-            <p className="text-xs text-[#6B7280] mb-3">
+            <p className="text-xs text-[#52504C] mb-3">
               All savings and current accounts maintained during the financial year
             </p>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs tabular-nums">
                 <thead>
-                  <tr className="border-b border-[#E6E1D6] text-[#6B7280] uppercase text-[10px] tracking-[0.12em]">
+                  <tr className="border-b border-[#E6E1D6] text-[#52504C] uppercase text-[10px] tracking-[0.12em]">
                     <th className="py-2.5 pr-3 font-bold">Account Name</th>
                     <th className="py-2.5 pr-3 font-bold">Bank / Institution</th>
                     <th className="py-2.5 pr-3 font-bold">Last 4</th>
@@ -750,10 +750,10 @@ export const CaTaxPackWorkstation: React.FC<CaTaxPackWorkstationProps> = ({
                   {(taxPack.bankAccounts ?? []).map((b) => (
                     <tr key={b.id} className="hover:bg-[#FAF8F5] transition-colors">
                       <td className="py-2.5 pr-3 font-semibold text-[#111318]">{b.name}</td>
-                      <td className="py-2.5 pr-3 text-[#6B7280]">{b.institution || '—'}</td>
-                      <td className="py-2.5 pr-3 text-[#6B7280]">{b.last4 ? `••• ${b.last4}` : '—'}</td>
+                      <td className="py-2.5 pr-3 text-[#52504C]">{b.institution || '—'}</td>
+                      <td className="py-2.5 pr-3 text-[#52504C]">{b.last4 ? `••• ${b.last4}` : '—'}</td>
                       <td className="py-2.5 pr-3">
-                        <Badge className={SCOPE_META[b.scope].badgeClass}>{SCOPE_META[b.scope].label}</Badge>
+                        <ScopeBadge scope={b.scope} size="xs" />
                       </td>
                       <td className="py-2.5 text-right font-bold text-[#111318]">
                         {formatINR(b.currentBalanceMinor)}

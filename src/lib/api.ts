@@ -1829,32 +1829,66 @@ export const api = {
     }
   },
 
-  getTaxSummaryPack: async (fyStartYear?: number) => {
+  getTaxSummaryPack: async (fyStartYear?: number): Promise<TaxSummaryPack> => {
+    const startYear = fyStartYear ?? (Number(new Date().toISOString().slice(5, 7)) >= 4 ? Number(new Date().toISOString().slice(0, 4)) : Number(new Date().toISOString().slice(0, 4)) - 1);
+    const fromDate = `${startYear}-04-01`;
+    const toDate = `${startYear + 1}-03-31`;
+    const fiscalYearLabel = `FY ${startYear}-${String(startYear + 1).slice(-2)}`;
+
+    const fallbackPack: TaxSummaryPack = {
+      fiscalYearLabel,
+      fromDate,
+      toDate,
+      scopePnl: {
+        personal: { incomeMinor: 0, expenseMinor: 0, netMinor: 0 },
+        business: { incomeMinor: 0, expenseMinor: 0, netMinor: 0 },
+        family: { incomeMinor: 0, expenseMinor: 0, netMinor: 0 },
+      },
+      businessExpenseCategories: [],
+      personalExpenseCategories: [],
+      incomeCategories: [],
+      loanInterestPaidMinor: 0,
+      loanPrincipalPaidMinor: 0,
+      totalTaxReservedMinor: 0,
+      totalTaxTargetMinor: 0,
+      totalInvestedMinor: 0,
+      transactionCount: 0,
+      bankAccounts: [],
+      loans: [],
+    };
+
     if (isStandaloneClient()) {
-      return {
-        fyLabel: `FY ${fyStartYear ?? 2026}-${((fyStartYear ?? 2026) + 1).toString().slice(-2)}`,
-        businessTurnoverMinor: 0,
-        businessExpensesMinor: 0,
-        netProfitMinor: 0,
-        section80cEligibleMinor: 0,
-        section80dEligibleMinor: 0,
-        homeLoanInterestMinor: 0,
-        accountsAudited: [],
-      } as unknown as TaxSummaryPack;
+      try {
+        const detailed = clientDb.getReports({ fromDate, toDate });
+        const accounts = clientDb.getAccounts();
+        const loans = clientDb.getLoans();
+        return {
+          ...fallbackPack,
+          scopePnl: detailed.scopePnl,
+          businessExpenseCategories: detailed.categories.filter((c: { scope: Scope; kind: string }) => c.scope === 'business' && c.kind === 'expense'),
+          personalExpenseCategories: detailed.categories.filter((c: { scope: Scope; kind: string }) => c.scope === 'personal' && c.kind === 'expense'),
+          incomeCategories: detailed.categories.filter((c: { kind: string }) => c.kind === 'income'),
+          transactionCount: detailed.categories.reduce((s: number, c: { count: number }) => s + c.count, 0),
+          bankAccounts: accounts
+            .filter((a) => a.type === 'bank')
+            .map((a) => ({
+              id: a.id,
+              name: a.name,
+              institution: a.institution,
+              last4: a.last4 || '',
+              scope: a.scope,
+              currentBalanceMinor: (a as any).currentBalanceMinor ?? (a as any).balanceMinor ?? 0,
+            })),
+          loans,
+        };
+      } catch {
+        return fallbackPack;
+      }
     }
     try {
-      return await request<{ data: TaxSummaryPack }>(`/api/reports/tax-pack${fyStartYear ? `?fyStartYear=${fyStartYear}` : ''}`).then((r) => r.data);
+      return await request<{ data: TaxSummaryPack }>(`/api/reports/tax-pack?fyStartYear=${startYear}`).then((r) => r.data);
     } catch {
-      return {
-        fyLabel: `FY ${fyStartYear ?? 2026}-${((fyStartYear ?? 2026) + 1).toString().slice(-2)}`,
-        businessTurnoverMinor: 0,
-        businessExpensesMinor: 0,
-        netProfitMinor: 0,
-        section80cEligibleMinor: 0,
-        section80dEligibleMinor: 0,
-        homeLoanInterestMinor: 0,
-        accountsAudited: [],
-      } as unknown as TaxSummaryPack;
+      return fallbackPack;
     }
   },
 
